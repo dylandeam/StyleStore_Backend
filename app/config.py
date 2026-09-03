@@ -5,22 +5,28 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load .env file from backend directory
+# Load .env file from backend directory if it exists
 env_path = Path(__file__).resolve().parent.parent / ".env"
-load_dotenv(dotenv_path=env_path)
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+
+
+def _format_db_url(url: str | None) -> str:
+    """Ensure database URL starts with postgresql:// instead of postgres://"""
+    if not url:
+        return "postgresql://postgres:021405@localhost:5432/stylestore_db"
+    if url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql://", 1)
+    return url
 
 
 class Settings:
     """Application settings loaded from environment variables."""
 
     # Database
-    DATABASE_URL: str = os.getenv(
-        "DATABASE_URL",
-        "postgresql://postgres:021405@localhost:5432/stylestore_db"
-    )
-    DATABASE_URL_TEST: str = os.getenv(
-        "DATABASE_URL_TEST",
-        "postgresql://postgres:021405@localhost:5432/stylestore_db_test"
+    DATABASE_URL: str = _format_db_url(os.getenv("DATABASE_URL"))
+    DATABASE_URL_TEST: str = _format_db_url(
+        os.getenv("DATABASE_URL_TEST", "postgresql://postgres:021405@localhost:5432/stylestore_db_test")
     )
 
     # JWT
@@ -37,14 +43,18 @@ class Settings:
     )
 
     # CORS
-    CORS_ORIGINS: list[str] = os.getenv(
-        "CORS_ORIGINS", "http://localhost:4200,http://localhost:8000"
-    ).split(",")
+    CORS_ORIGINS: list[str] = [
+        origin.strip()
+        for origin in os.getenv(
+            "CORS_ORIGINS", "http://localhost:4200,http://localhost:8000,*"
+        ).split(",")
+        if origin.strip()
+    ]
 
     # Server
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
-    DEBUG: bool = os.getenv("DEBUG", "true").lower() == "true"
+    DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
 
 
 settings = Settings()
