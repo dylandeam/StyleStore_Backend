@@ -20,6 +20,9 @@ from app.core.exceptions import (
 )
 
 
+from app.services.bitacora_service import BitacoraService
+
+
 class AuthService:
     """Handles authentication business logic."""
 
@@ -28,66 +31,77 @@ class AuthService:
 
     def register(self, request: RegisterRequest) -> User:
         """
-        Register a new user.
-        
-        Args:
-            request: Registration data with email, password, name.
-        
-        Returns:
-            The created User object.
-        
-        Raises:
-            UserAlreadyExistsException: If email is already registered.
+        Register a new client user.
         """
         # Check if user already exists
         existing_user = (
             self.db.query(User).filter(User.email == request.email).first()
         )
         if existing_user:
-            raise UserAlreadyExistsException()
+            raise UserAlreadyExistsException("Ya existe un usuario registrado con este correo electrónico.")
 
-        # Create new user
+        # Create new user with default client role
         user = User(
             email=request.email,
             name=request.name,
             hashed_password=hash_password(request.password),
+            role="cliente",
         )
         self.db.add(user)
         self.db.commit()
         self.db.refresh(user)
+
+        # Log registration in bitacora
+        BitacoraService.registrar(
+            db=self.db,
+            user=user,
+            action="Registró un nuevo usuario",
+            module="auth",
+        )
+
         return user
 
     def login(self, email: str, password: str) -> TokenResponse:
         """
         Authenticate a user and return JWT tokens.
-        
-        Args:
-            email: User email.
-            password: Plain-text password.
-        
-        Returns:
-            TokenResponse with access and refresh tokens.
-        
-        Raises:
-            CredentialsException: If email/password is invalid.
         """
         # Find user by email
         user = self.db.query(User).filter(User.email == email).first()
         if not user:
-            raise CredentialsException(detail="Invalid email or password")
+            BitacoraService.registrar(
+                db=self.db,
+                user=email,
+                action="Intento fallido de inicio de sesión (correo no registrado)",
+                module="auth",
+            )
+            raise CredentialsException(detail="Correo o contraseña incorrectos")
 
         # Verify password
         if not verify_password(password, user.hashed_password):
-            raise CredentialsException(detail="Invalid email or password")
+            BitacoraService.registrar(
+                db=self.db,
+                user=user,
+                action="Intento fallido de inicio de sesión (contraseña incorrecta)",
+                module="auth",
+            )
+            raise CredentialsException(detail="Correo o contraseña incorrectos")
 
         # Check if user is active
         if not user.is_active:
-            raise CredentialsException(detail="User account is deactivated")
+            raise CredentialsException(detail="La cuenta de usuario está desactivada")
 
         # Generate tokens
-        token_data = {"sub": str(user.id)}
+        token_data = {"sub": str(user.id), "role": user.role, "email": user.email}
         access_token = create_access_token(data=token_data)
-        refresh_token = create_refresh_token(data=token_data)
+        refresh_token = create_refresh_token(data={"sub": str(user.id)})
+
+        # Log successful login in bitacora
+        BitacoraService.registrar(
+            db=self.db,
+            user=user,
+            action="Inició sesión",
+            module="auth",
+        )
 
         return TokenResponse(
             access_token=access_token,
@@ -95,12 +109,9 @@ class AuthService:
             token_type="bearer",
         )
 
-    def logout(self, token: str) -> None:
+    def logout(self, token: str, current_user: User | None = None) -> None:
         """
         Revoke a token by adding it to the blacklist.
-        
-        Args:
-            token: The JWT token to blacklist.
         """
         # Check if token is already blacklisted
         existing = (
@@ -112,6 +123,14 @@ class AuthService:
             blacklisted = TokenBlacklist(token=token)
             self.db.add(blacklisted)
             self.db.commit()
+
+        if current_user:
+            BitacoraService.registrar(
+                db=self.db,
+                user=current_user,
+                action="Cerró sesión",
+                module="auth",
+            )
 
     def is_token_blacklisted(self, token: str) -> bool:
         """Check if a token has been revoked."""

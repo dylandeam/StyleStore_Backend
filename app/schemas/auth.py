@@ -1,7 +1,8 @@
 """
 Pydantic schemas for authentication requests and responses.
 """
-from pydantic import BaseModel, EmailStr, Field
+import re
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class RegisterRequest(BaseModel):
@@ -16,6 +17,13 @@ class RegisterRequest(BaseModel):
         ..., min_length=2, max_length=100,
         description="User full name"
     )
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_strength(cls, v: str) -> str:
+        if not re.search(r"[a-z]", v) or not re.search(r"[A-Z]", v) or not re.search(r"[!@#$%^&*()_+\-=\[\]{};:\'\",.<>/?\\|`~]", v):
+            raise ValueError("La contraseña debe contener al menos una mayúscula, una minúscula y un carácter especial.")
+        return v
 
 
 class LoginRequest(BaseModel):

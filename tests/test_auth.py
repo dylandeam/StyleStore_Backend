@@ -32,7 +32,8 @@ def test_register_duplicate_email(client):
 
     res2 = client.post("/api/v1/auth/register", json=user_payload)
     assert res2.status_code == 409
-    assert "already exists" in res2.json()["detail"].lower()
+    detail = res2.json()["detail"].lower()
+    assert "ya existe" in detail or "already exists" in detail
 
 
 def test_register_invalid_data(client):
@@ -67,7 +68,7 @@ def test_login_success(client):
         "/api/v1/auth/register",
         json={
             "email": "login@example.com",
-            "password": "ValidPassword123",
+            "password": "ValidPassword123!",
             "name": "Login User",
         },
     )
@@ -77,7 +78,7 @@ def test_login_success(client):
         "/api/v1/auth/login",
         json={
             "email": "login@example.com",
-            "password": "ValidPassword123",
+            "password": "ValidPassword123!",
         },
     )
     assert response.status_code == 200
@@ -93,7 +94,7 @@ def test_login_invalid_password(client):
         "/api/v1/auth/register",
         json={
             "email": "wrongpass@example.com",
-            "password": "CorrectPassword123",
+            "password": "CorrectPassword123!",
             "name": "User",
         },
     )
@@ -102,7 +103,7 @@ def test_login_invalid_password(client):
         "/api/v1/auth/login",
         json={
             "email": "wrongpass@example.com",
-            "password": "IncorrectPassword123",
+            "password": "IncorrectPassword123!",
         },
     )
     assert response.status_code == 401

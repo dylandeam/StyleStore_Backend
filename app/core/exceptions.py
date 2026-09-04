@@ -44,3 +44,44 @@ class InvalidTokenException(HTTPException):
             detail=detail,
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+
+class ForbiddenException(HTTPException):
+    """Raised when the user does not have permission to perform an action."""
+
+    def __init__(self, detail: str = "No tiene permisos para realizar esta acción"):
+        super().__init__(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=detail,
+        )
+
+
+class InvalidOrExpiredTokenException(HTTPException):
+    """Raised when a password reset or confirmation token is invalid or expired."""
+
+    def __init__(self, detail: str = "El enlace de confirmación no es válido o ha expirado"):
+        super().__init__(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=detail,
+        )
+
+
+class NotFoundException(HTTPException):
+    """Generic 404 exception for entities."""
+
+    def __init__(self, detail: str = "Recurso no encontrado"):
+        super().__init__(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=detail,
+        )
+
+
+class ConflictException(HTTPException):
+    """Generic 409 exception for entity conflicts."""
+
+    def __init__(self, detail: str = "El recurso ya existe o genera conflicto"):
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=detail,
+        )
+

@@ -51,6 +51,14 @@ class Settings:
         if origin.strip()
     ]
 
+    # SMTP / Email
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USER: str = os.getenv("SMTP_USER", "")
+    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+    FROM_EMAIL: str = os.getenv("FROM_EMAIL", os.getenv("SMTP_USER", "noreply@stylestore.com"))
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:4200")
+
     # Server
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
