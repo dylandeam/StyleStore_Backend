@@ -84,6 +84,17 @@ class RoleService:
                 if not existing:
                     self.db.add(RolePermission(role="cajero", permission_id=perm.id))
 
+        # Default assignments for cliente (productos.ver, sucursales.ver)
+        for perm in all_perms:
+            if perm.code in ["productos.ver", "sucursales.ver"]:
+                existing = (
+                    self.db.query(RolePermission)
+                    .filter(RolePermission.role == "cliente", RolePermission.permission_id == perm.id)
+                    .first()
+                )
+                if not existing:
+                    self.db.add(RolePermission(role="cliente", permission_id=perm.id))
+
         self.db.commit()
 
     def list_roles(self) -> list[dict]:

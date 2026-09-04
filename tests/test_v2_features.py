@@ -228,3 +228,62 @@ def test_productos_crud(client, admin_token):
     # Delete
     del_res = client.delete(f"/api/v1/productos/{prod_id}", headers=headers)
     assert del_res.status_code == 200
+
+
+def test_cliente_can_view_productos_and_sucursales(client):
+    """Verify that a client role can view products and branches, but cannot create them."""
+    # Register client user
+    reg_res = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "cliente_test@stylestore.com",
+            "password": "Password123!",
+            "name": "Cliente Test",
+        },
+    )
+    assert reg_res.status_code == 201
+
+    # Login as client
+    login_res = client.post(
+        "/api/v1/auth/login",
+        json={"email": "cliente_test@stylestore.com", "password": "Password123!"},
+    )
+    assert login_res.status_code == 200
+    token = login_res.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Can list productos
+    prod_res = client.get("/api/v1/productos", headers=headers)
+    assert prod_res.status_code == 200
+
+    # Can list sucursales
+    suc_res = client.get("/api/v1/sucursales", headers=headers)
+    assert suc_res.status_code == 200
+
+    # Cannot create producto (403 Forbidden)
+    create_prod_res = client.post(
+        "/api/v1/productos",
+        headers=headers,
+        json={
+            "name": "Intento no autorizado",
+            "category": "Ropa",
+            "size": "M",
+            "color": "Azul",
+            "price": "99.99",
+            "stock": 10,
+        },
+    )
+    assert create_prod_res.status_code == 403
+
+    # Cannot create sucursal (403 Forbidden)
+    create_suc_res = client.post(
+        "/api/v1/sucursales",
+        headers=headers,
+        json={
+            "name": "Sucursal no autorizada",
+            "address": "Calle 1",
+            "city": "Santa Cruz",
+        },
+    )
+    assert create_suc_res.status_code == 403
+

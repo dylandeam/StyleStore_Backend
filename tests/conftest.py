@@ -23,6 +23,13 @@ def setup_test_db():
     """Create all tables before testing and drop them after."""
     Base.metadata.drop_all(bind=test_engine)
     Base.metadata.create_all(bind=test_engine)
+    
+    # Seed default permissions and roles for test DB
+    db = TestingSessionLocal()
+    from app.services.role_service import RoleService
+    RoleService(db).seed_default_permissions_and_roles()
+    db.close()
+    
     yield
     Base.metadata.drop_all(bind=test_engine)
 
