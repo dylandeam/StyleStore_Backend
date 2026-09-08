@@ -4,6 +4,8 @@ FastAPI application entry point.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+import os
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from app.config import settings
 from app.api.v1.router import api_v1_router
@@ -45,6 +47,12 @@ register_error_handlers(app)
 
 # Include API v1 router
 app.include_router(api_v1_router, prefix="/api/v1")
+
+# Ensure uploads directory and mount static files
+uploads_dir = os.path.join(os.getcwd(), "uploads")
+os.makedirs(os.path.join(uploads_dir, "productos"), exist_ok=True)
+os.makedirs(os.path.join(uploads_dir, "empleados"), exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 
 
 @app.get("/", tags=["Root"])

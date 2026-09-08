@@ -18,6 +18,7 @@ from app.api.v1.colores import router as colores_router
 from app.api.v1.tallas import router as tallas_router
 from app.api.v1.temporadas import router as temporadas_router
 from app.api.v1.proveedores import router as proveedores_router
+from app.api.v1.uploads import router as uploads_router
 
 api_v1_router = APIRouter()
 
@@ -36,4 +37,5 @@ api_v1_router.include_router(colores_router)
 api_v1_router.include_router(tallas_router)
 api_v1_router.include_router(temporadas_router)
 api_v1_router.include_router(proveedores_router)
+api_v1_router.include_router(uploads_router)
 
