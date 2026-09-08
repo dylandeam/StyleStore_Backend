@@ -19,6 +19,7 @@ from app.models.producto import Producto
 from app.models.producto_color import ProductoColor
 from app.models.stock_inventario import StockInventario
 from app.models.proveedor import Proveedor
+from app.models.uploaded_file import UploadedFile
 
 __all__ = [
     "User",
@@ -38,5 +39,6 @@ __all__ = [
     "ProductoColor",
     "StockInventario",
     "Proveedor",
+    "UploadedFile",
 ]
 
