@@ -108,9 +108,9 @@ class RoleService:
                 if not existing:
                     self.db.add(RolePermission(role="encargado_sucursal", permission_id=perm.id))
 
-        # Default assignments for cajero (productos.ver, sucursales.ver)
+        # Default assignments for cajero
         for perm in all_perms:
-            if perm.code in ["productos.ver", "sucursales.ver"]:
+            if perm.code in ["productos.ver", "sucursales.ver", "categorias.ver", "colores.ver", "tallas.ver", "temporadas.ver", "clientes.ver"]:
                 existing = (
                     self.db.query(RolePermission)
                     .filter(RolePermission.role == "cajero", RolePermission.permission_id == perm.id)
@@ -119,9 +119,9 @@ class RoleService:
                 if not existing:
                     self.db.add(RolePermission(role="cajero", permission_id=perm.id))
 
-        # Default assignments for cliente (productos.ver, sucursales.ver)
+        # Default assignments for cliente (ver catálogo y filtros de productos)
         for perm in all_perms:
-            if perm.code in ["productos.ver", "sucursales.ver"]:
+            if perm.code in ["productos.ver", "sucursales.ver", "categorias.ver", "colores.ver", "tallas.ver", "temporadas.ver"]:
                 existing = (
                     self.db.query(RolePermission)
                     .filter(RolePermission.role == "cliente", RolePermission.permission_id == perm.id)
