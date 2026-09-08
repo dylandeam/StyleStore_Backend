@@ -2,6 +2,7 @@
 Service para gestión de Empleados (CU8).
 """
 import re
+from decimal import Decimal
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -30,7 +31,47 @@ class EmpleadoService:
         cuatro_digitos = ci_digitos[:4].ljust(4, "0")
         return f"{letra_ap}{letra_nom}{cuatro_digitos}"
 
+    def _sync_orphan_staff_users(self):
+        """Asegura que todos los usuarios con roles de empleado/staff tengan su registro en Empleado."""
+        orphan_users = (
+            self.db.query(User)
+            .filter(User.role.in_(["administrador", "encargado_sucursal", "cajero"]))
+            .outerjoin(Empleado, Empleado.user_id == User.id)
+            .filter(Empleado.codigo == None)
+            .all()
+        )
+        if not orphan_users:
+            return
+
+        default_sucursal = self.db.query(Sucursal).first()
+        if not default_sucursal:
+            default_sucursal = Sucursal(name="Sucursal Central", city="Santa Cruz", address="Av. Principal #100")
+            self.db.add(default_sucursal)
+            self.db.flush()
+
+        for u in orphan_users:
+            base_codigo = self.generar_codigo(u.apellido or "Staff", u.name or "User", u.ci or "1000")
+            codigo = base_codigo
+            counter = 1
+            while self.db.query(Empleado).filter(Empleado.codigo == codigo).first():
+                codigo = f"{base_codigo}-{counter}"
+                counter += 1
+
+            new_emp = Empleado(
+                codigo=codigo,
+                user_id=u.id,
+                sucursal_id=default_sucursal.id,
+                edad=30,
+                sueldo=Decimal("3500.00") if u.role == "administrador" else Decimal("2800.00"),
+                telefono="70000000",
+                direccion="Oficina Central",
+                foto=None,
+            )
+            self.db.add(new_emp)
+        self.db.commit()
+
     def list_empleados(self) -> list[EmpleadoResponse]:
+        self._sync_orphan_staff_users()
         empleados = self.db.query(Empleado).all()
         result = []
         for emp in empleados:
@@ -181,6 +222,8 @@ class EmpleadoService:
                 emp.user.apellido = req.apellido
             if req.ci is not None:
                 emp.user.ci = req.ci
+            if req.role is not None:
+                emp.user.role = req.role
 
         self.db.commit()
         self.db.refresh(emp)

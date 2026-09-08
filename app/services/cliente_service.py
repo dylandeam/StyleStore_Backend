@@ -30,7 +30,37 @@ class ClienteService:
         cuatro_digitos = ci_digitos[:4].ljust(4, "0")
         return f"{letra_ap}{letra_nom}{cuatro_digitos}"
 
+    def _sync_orphan_cliente_users(self):
+        """Asegura que todos los usuarios con rol 'cliente' tengan su registro en la tabla Cliente."""
+        orphan_users = (
+            self.db.query(User)
+            .filter(User.role == "cliente")
+            .outerjoin(Cliente, Cliente.user_id == User.id)
+            .filter(Cliente.codigo == None)
+            .all()
+        )
+        if not orphan_users:
+            return
+
+        for u in orphan_users:
+            base_codigo = self.generar_codigo(u.apellido or "Cliente", u.name or "C", u.ci or "1000")
+            codigo = base_codigo
+            counter = 1
+            while self.db.query(Cliente).filter(Cliente.codigo == codigo).first():
+                codigo = f"{base_codigo}-{counter}"
+                counter += 1
+
+            new_cli = Cliente(
+                codigo=codigo,
+                user_id=u.id,
+                telefono="70000000",
+                direccion="Sin dirección registrada",
+            )
+            self.db.add(new_cli)
+        self.db.commit()
+
     def list_clientes(self) -> list[ClienteResponse]:
+        self._sync_orphan_cliente_users()
         clientes = self.db.query(Cliente).all()
         result = []
         for cli in clientes:
@@ -44,6 +74,7 @@ class ClienteService:
                     apellido=cli.user.apellido if cli.user else None,
                     ci=cli.user.ci if cli.user else None,
                     email=cli.user.email if cli.user else None,
+                    role=cli.user.role if (cli.user and cli.user.role) else "cliente",
                     created_at=cli.created_at,
                     updated_at=cli.updated_at,
                 )
@@ -66,6 +97,7 @@ class ClienteService:
             apellido=cli.user.apellido if cli.user else None,
             ci=cli.user.ci if cli.user else None,
             email=cli.user.email if cli.user else None,
+            role=cli.user.role if (cli.user and cli.user.role) else "cliente",
             created_at=cli.created_at,
             updated_at=cli.updated_at,
         )

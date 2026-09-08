@@ -41,6 +41,7 @@ class ClienteResponse(BaseModel):
     apellido: str | None = None
     ci: str | None = None
     email: str | None = None
+    role: str | None = "cliente"
 
     created_at: datetime
     updated_at: datetime

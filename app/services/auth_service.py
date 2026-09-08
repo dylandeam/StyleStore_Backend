@@ -51,6 +51,26 @@ class AuthService:
         self.db.commit()
         self.db.refresh(user)
 
+        # Create corresponding Cliente record (CU9)
+        from app.models.cliente import Cliente
+        letra_nom = request.name.strip()[0].upper() if request.name and request.name.strip() else "C"
+        codigo = f"CL{letra_nom}{user.id:04d}"
+        # Ensure unique codigo
+        c = 1
+        base_codigo = codigo
+        while self.db.query(Cliente).filter(Cliente.codigo == codigo).first():
+            codigo = f"{base_codigo}-{c}"
+            c += 1
+
+        cliente = Cliente(
+            codigo=codigo,
+            user_id=user.id,
+            telefono="70000000",
+            direccion="Sin dirección registrada",
+        )
+        self.db.add(cliente)
+        self.db.commit()
+
         # Log registration in bitacora
         BitacoraService.registrar(
             db=self.db,

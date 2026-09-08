@@ -30,6 +30,7 @@ class EmpleadoUpdate(BaseModel):
     nombre: str | None = None
     apellido: str | None = None
     ci: str | None = None
+    role: str | None = None
     sucursal_id: int | None = None
     edad: int | None = Field(None, ge=18, le=100)
     sueldo: Decimal | None = Field(None, ge=0)
