@@ -17,6 +17,10 @@ def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
 
+get_password_hash = hash_password
+
+
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a plain-text password against a bcrypt hash."""
     return pwd_context.verify(plain_password, hashed_password)

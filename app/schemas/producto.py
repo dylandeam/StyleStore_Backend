@@ -1,46 +1,58 @@
 """
-Pydantic schemas for Productos (Product Catalog & Inventory).
+Pydantic schemas para Productos (CU10).
+Conforme a Especificación StyleStore v4 (Diagrama DB Oficial).
+PK: codigo.
 """
 from datetime import datetime
 from decimal import Decimal
 from pydantic import BaseModel, Field
+from app.schemas.color import ColorResponse
 
 
-class ProductoBase(BaseModel):
-    """Base schema for Producto."""
+class ProductoCreate(BaseModel):
+    """Schema para crear un nuevo producto."""
 
-    name: str = Field(..., min_length=2, max_length=150, description="Product name")
-    description: str | None = Field(None, max_length=1000, description="Product description")
-    category: str = Field(..., min_length=2, max_length=100, description="Product category (e.g. Ropa, Calzado, Accesorios)")
-    size: str = Field(..., min_length=1, max_length=20, description="Product size (e.g. XS, S, M, L, XL, 38, 40)")
-    color: str = Field(..., min_length=2, max_length=50, description="Color variant")
-    price: Decimal = Field(..., gt=0, decimal_places=2, description="Unit price in local currency")
-    stock: int = Field(default=0, ge=0, description="Available inventory count")
-    active: bool = Field(default=True, description="Whether product is active for sale")
-
-
-class ProductoCreate(ProductoBase):
-    """Schema for creating a new product."""
-    pass
+    codigo: str | None = Field(None, description="Código de negocio (se autogenera PROD-XXXX si se omite)")
+    nombre: str = Field(..., min_length=2, max_length=150)
+    descripcion: str | None = None
+    foto: str | None = None
+    precio: Decimal = Field(..., gt=0)
+    categoria_id: int
+    temporada_id: int
+    color_ids: list[int] = Field(default_factory=list, description="IDs de colores habilitados")
+    active: bool = True
 
 
 class ProductoUpdate(BaseModel):
-    """Schema for updating an existing product."""
+    """Schema para actualizar producto existente."""
 
-    name: str | None = Field(None, min_length=2, max_length=150)
-    description: str | None = Field(None, max_length=1000)
-    category: str | None = Field(None, min_length=2, max_length=100)
-    size: str | None = Field(None, min_length=1, max_length=20)
-    color: str | None = Field(None, min_length=2, max_length=50)
-    price: Decimal | None = Field(None, gt=0, decimal_places=2)
-    stock: int | None = Field(None, ge=0)
+    nombre: str | None = None
+    descripcion: str | None = None
+    foto: str | None = None
+    precio: Decimal | None = Field(None, gt=0)
+    categoria_id: int | None = None
+    temporada_id: int | None = None
+    color_ids: list[int] | None = None
     active: bool | None = None
 
 
-class ProductoResponse(ProductoBase):
-    """Schema for returning product details."""
+class ProductoResponse(BaseModel):
+    """Schema para exponer producto en la API con detalles de catálogo e inventario."""
 
-    id: int
+    codigo: str
+    nombre: str
+    descripcion: str | None = None
+    foto: str | None = None
+    precio: Decimal
+    categoria_id: int
+    categoria_nombre: str | None = None
+    temporada_id: int
+    temporada_nombre: str | None = None
+    active: bool
+
+    colores: list[ColorResponse] = Field(default_factory=list)
+    stock_total: int = 0
+
     created_at: datetime
     updated_at: datetime
 

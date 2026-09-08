@@ -61,3 +61,30 @@ def client(db_session):
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(scope="function")
+def admin_token(db_session, client):
+    """Fixture providing an authenticated administrator token."""
+    from app.models.user import User
+    from app.core.security import hash_password
+
+    admin = db_session.query(User).filter(User.email == "admin_test@stylestore.com").first()
+    if not admin:
+        admin = User(
+            email="admin_test@stylestore.com",
+            name="Admin Test",
+            apellido="StyleStore",
+            ci="1234567",
+            hashed_password=hash_password("AdminPass123!"),
+            role="administrador",
+            is_active=True,
+        )
+        db_session.add(admin)
+        db_session.commit()
+
+    login_res = client.post(
+        "/api/v1/auth/login",
+        json={"email": "admin_test@stylestore.com", "password": "AdminPass123!"},
+    )
+    return login_res.json()["access_token"]

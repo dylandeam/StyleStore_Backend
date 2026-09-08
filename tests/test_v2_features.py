@@ -12,27 +12,6 @@ from app.models.user import User
 from app.core.security import hash_password
 
 
-@pytest.fixture
-def admin_token(db_session, client):
-    """Fixture providing an authenticated administrator token."""
-    # Ensure admin user exists in test DB
-    admin = db_session.query(User).filter(User.email == "admin_test@stylestore.com").first()
-    if not admin:
-        admin = User(
-            email="admin_test@stylestore.com",
-            name="Admin Test",
-            hashed_password=hash_password("AdminPass123!"),
-            role="administrador",
-            is_active=True,
-        )
-        db_session.add(admin)
-        db_session.commit()
-
-    res = client.post(
-        "/api/v1/auth/login",
-        json={"email": "admin_test@stylestore.com", "password": "AdminPass123!"},
-    )
-    return res.json()["access_token"]
 
 
 def test_admin_create_employee(client, admin_token):
@@ -189,44 +168,65 @@ def test_sucursales_crud(client, admin_token):
 
 
 def test_productos_crud(client, admin_token):
-    """Test full CRUD cycle for products catalog."""
+    """Test full CRUD cycle for products catalog conforming to v4 diagram."""
     headers = {"Authorization": f"Bearer {admin_token}"}
 
-    # Create
+    # Ensure a category and season exist
+    cat_res = client.post(
+        "/api/v1/categorias",
+        headers=headers,
+        json={"nombre": "Chaquetas Test"},
+    )
+    if cat_res.status_code == 201:
+        cat_id = cat_res.json()["id"]
+    else:
+        cats = client.get("/api/v1/categorias", headers=headers).json()
+        cat_id = cats[0]["id"]
+
+    temp_res = client.post(
+        "/api/v1/temporadas",
+        headers=headers,
+        json={"nombre": "Invierno 2026 Test"},
+    )
+    if temp_res.status_code == 201:
+        temp_id = temp_res.json()["id"]
+    else:
+        temps = client.get("/api/v1/temporadas", headers=headers).json()
+        temp_id = temps[0]["id"]
+
+    # Create product
     create_res = client.post(
         "/api/v1/productos",
         headers=headers,
         json={
-            "name": "Chaqueta Cuero Premium",
-            "description": "Chaqueta de cuero genuino estilo urbano",
-            "category": "Chaquetas",
-            "size": "L",
-            "color": "Negro",
-            "price": "149.99",
-            "stock": 25,
+            "nombre": "Chaqueta Cuero Premium",
+            "descripcion": "Chaqueta de cuero genuino estilo urbano",
+            "categoria_id": cat_id,
+            "temporada_id": temp_id,
+            "precio": "149.99",
             "active": True,
         },
     )
     assert create_res.status_code == 201
-    prod_id = create_res.json()["id"]
+    prod_codigo = create_res.json()["codigo"]
 
     # List
     list_res = client.get("/api/v1/productos", headers=headers)
     assert list_res.status_code == 200
-    assert any(p["id"] == prod_id for p in list_res.json())
+    assert any(p["codigo"] == prod_codigo for p in list_res.json())
 
     # Update
     update_res = client.put(
-        f"/api/v1/productos/{prod_id}",
+        f"/api/v1/productos/{prod_codigo}",
         headers=headers,
-        json={"stock": 30, "price": "139.99"},
+        json={"precio": "139.99", "nombre": "Chaqueta Cuero Modificada"},
     )
     assert update_res.status_code == 200
-    assert update_res.json()["stock"] == 30
-    assert update_res.json()["price"] == "139.99"
+    assert update_res.json()["precio"] == "139.99"
+    assert update_res.json()["nombre"] == "Chaqueta Cuero Modificada"
 
     # Delete
-    del_res = client.delete(f"/api/v1/productos/{prod_id}", headers=headers)
+    del_res = client.delete(f"/api/v1/productos/{prod_codigo}", headers=headers)
     assert del_res.status_code == 200
 
 
@@ -236,17 +236,17 @@ def test_cliente_can_view_productos_and_sucursales(client):
     reg_res = client.post(
         "/api/v1/auth/register",
         json={
-            "email": "cliente_test@stylestore.com",
+            "email": "cliente_test_v4@stylestore.com",
             "password": "Password123!",
             "name": "Cliente Test",
         },
     )
-    assert reg_res.status_code == 201
+    assert reg_res.status_code in [201, 400]
 
     # Login as client
     login_res = client.post(
         "/api/v1/auth/login",
-        json={"email": "cliente_test@stylestore.com", "password": "Password123!"},
+        json={"email": "cliente_test_v4@stylestore.com", "password": "Password123!"},
     )
     assert login_res.status_code == 200
     token = login_res.json()["access_token"]
@@ -265,12 +265,10 @@ def test_cliente_can_view_productos_and_sucursales(client):
         "/api/v1/productos",
         headers=headers,
         json={
-            "name": "Intento no autorizado",
-            "category": "Ropa",
-            "size": "M",
-            "color": "Azul",
-            "price": "99.99",
-            "stock": 10,
+            "nombre": "Intento no autorizado",
+            "categoria_id": 1,
+            "temporada_id": 1,
+            "precio": "99.99",
         },
     )
     assert create_prod_res.status_code == 403

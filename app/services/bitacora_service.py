@@ -12,6 +12,9 @@ from app.models.user import User
 class BitacoraService:
     """Service for registering and querying system audit logs."""
 
+    def __init__(self, db: Session | None = None):
+        self.db = db
+
     @staticmethod
     def registrar(
         db: Session,
@@ -41,6 +44,34 @@ class BitacoraService:
         db.add(log_entry)
         db.commit()
         db.refresh(log_entry)
+        return log_entry
+
+    def registrar_accion(
+        self,
+        action: str,
+        module: str | None = None,
+        user: User | str | None = None,
+        user_id: int | None = None,
+        user_snapshot: str | None = None,
+        db: Session | None = None,
+    ) -> Bitacora:
+        """Helper para registrar acciones cuando el servicio ya fue instanciado con db."""
+        target_db = db or self.db
+        if not target_db:
+            raise ValueError("No database session provided to registrar_accion")
+
+        if user is not None:
+            return self.registrar(db=target_db, user=user, action=action, module=module)
+
+        log_entry = Bitacora(
+            user_id=user_id,
+            user_snapshot=user_snapshot or "Sistema",
+            action=action,
+            module=module,
+        )
+        target_db.add(log_entry)
+        target_db.commit()
+        target_db.refresh(log_entry)
         return log_entry
 
     def list_logs(
