@@ -9,7 +9,8 @@ from pydantic import BaseModel, Field
 class StockItemUpdate(BaseModel):
     """Línea para actualizar stock de una combinación específica."""
 
-    color_id: int
+    color_id: int | None = None
+    producto_color_id: int | None = None
     talla_id: int
     sucursal_id: int
     cantidad: int = Field(..., ge=0)
@@ -25,6 +26,7 @@ class StockInventarioResponse(BaseModel):
     id: int
     producto_codigo: str
     color_id: int
+    producto_color_id: int | None = None
     color_nombre: str
     talla_id: int
     talla_nombre: str
