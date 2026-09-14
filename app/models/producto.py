@@ -1,8 +1,8 @@
 """
 Modelo Producto (CU10).
-Conforme a Especificación StyleStore v4 (Diagrama DB Oficial).
+Conforme a Especificación StyleStore v5.
 PK: codigo (String(50)).
-FK: categoria_id, temporada_id.
+FK: categoria_id, temporada_id, coleccion_id.
 """
 from datetime import datetime
 from decimal import Decimal
@@ -13,7 +13,7 @@ from app.database import Base
 
 
 class Producto(Base):
-    """Product catalog table conforming to official v4 diagram."""
+    """Product catalog table conforming to official v5 specification."""
 
     __tablename__ = "productos"
 
@@ -29,7 +29,11 @@ class Producto(Base):
     temporada_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("temporadas.id", ondelete="RESTRICT"), nullable=False
     )
+    coleccion_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("colecciones.id", ondelete="RESTRICT"), nullable=True
+    )
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    visible_en_catalogo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -41,6 +45,7 @@ class Producto(Base):
     # Relaciones
     categoria = relationship("Categoria", backref="productos_rel", lazy="joined")
     temporada = relationship("Temporada", backref="productos_rel", lazy="joined")
+    coleccion = relationship("Coleccion", back_populates="productos", lazy="joined")
     colores_rel = relationship("ProductoColor", back_populates="producto", cascade="all, delete-orphan", lazy="selectin")
 
     def __repr__(self) -> str:

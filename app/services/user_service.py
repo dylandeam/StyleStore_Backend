@@ -1,12 +1,14 @@
 """
-User service — business logic for user-related operations and employee management.
+User service — business logic for user-related operations, personal profile and employee management.
+Conforme a Especificación StyleStore v5.
 """
 from sqlalchemy.orm import Session
 
 from app.models.user import User
-from app.schemas.user import UserCreateByAdmin, UserUpdateByAdmin
+from app.models.role import Role
+from app.schemas.user import UserCreateByAdmin, UserUpdateByAdmin, UserProfileUpdateRequest
 from app.core.security import hash_password
-from app.core.exceptions import UserNotFoundException, UserAlreadyExistsException
+from app.core.exceptions import UserNotFoundException, UserAlreadyExistsException, BadRequestException
 from app.services.bitacora_service import BitacoraService
 
 
@@ -35,26 +37,94 @@ class UserService:
         """List users with optional search and role filtering."""
         query = self.db.query(User)
         if role:
-            query = query.filter(User.role == role)
+            if role.isdigit():
+                query = query.filter(User.role_id == int(role))
+            else:
+                query = query.filter(
+                    (User.role.ilike(role)) | (User.role.ilike(f"%{role}%"))
+                )
         if search:
+            search_term = f"%{search.strip()}%"
             query = query.filter(
-                (User.name.ilike(f"%{search}%")) | (User.email.ilike(f"%{search}%"))
+                (User.name.ilike(search_term))
+                | (User.apellido.ilike(search_term))
+                | (User.email.ilike(search_term))
+                | (User.ci.ilike(search_term))
             )
         return query.order_by(User.created_at.desc()).all()
 
-    def create_employee(self, request: UserCreateByAdmin, current_user: User) -> User:
+    def update_profile(self, user_id: int, request: UserProfileUpdateRequest) -> User:
+        """Update personal profile information (CU2 / v5 Sección 2).
+        CI is NOT modified to preserve identifier integrity.
         """
-        Create an employee account with assigned role (CU1).
+        user = self.get_user_by_id(user_id)
+
+        if request.email and request.email != user.email:
+            existing = self.get_user_by_email(request.email)
+            if existing and existing.id != user.id:
+                raise UserAlreadyExistsException("Ya existe otro usuario con este correo electrónico.")
+            user.email = request.email
+
+        if request.name is not None:
+            user.name = request.name.strip()
+        if request.apellido is not None:
+            user.apellido = request.apellido.strip()
+        if request.telefono is not None:
+            user.telefono = request.telefono.strip()
+        if request.direccion is not None:
+            user.direccion = request.direccion.strip()
+        if request.foto is not None:
+            user.foto = request.foto.strip()
+
+        self.db.commit()
+        self.db.refresh(user)
+
+        BitacoraService.registrar(
+            db=self.db,
+            user=user,
+            action=f"Actualizó su información personal de perfil",
+            module="usuarios",
+        )
+        return user
+
+    def create_employee(self, request: UserCreateByAdmin, current_user: User) -> User:
+        """Create a user/employee account with assigned role (CU1 / v5 Sección 4).
+        Default password is CI if not explicitly specified.
         """
         existing = self.get_user_by_email(request.email)
         if existing:
             raise UserAlreadyExistsException("Ya existe un usuario con este correo electrónico.")
 
+        if request.ci:
+            existing_ci = self.db.query(User).filter(User.ci == request.ci.strip()).first()
+            if existing_ci:
+                raise BadRequestException(f"Ya existe un usuario con el CI '{request.ci}'.")
+
+        # Resolve role
+        role_obj = None
+        if request.role_id:
+            role_obj = self.db.query(Role).filter(Role.id == request.role_id).first()
+        if not role_obj and request.role:
+            role_obj = (
+                self.db.query(Role)
+                .filter((Role.nombre.ilike(request.role.replace("_", " "))) | (Role.nombre.ilike(request.role)))
+                .first()
+            )
+
+        role_str = role_obj.nombre.lower().replace(" ", "_") if role_obj else request.role.lower()
+        role_id_val = role_obj.id if role_obj else None
+
+        # v5 Rule: Default password equals CI
+        raw_password = request.password if (request.password and request.password.strip()) else request.ci.strip()
+
         user = User(
             email=request.email,
-            name=request.name,
-            hashed_password=hash_password(request.password),
-            role=request.role,
+            name=request.name.strip(),
+            apellido=request.apellido.strip() if request.apellido else None,
+            ci=request.ci.strip() if request.ci else None,
+            hashed_password=hash_password(raw_password),
+            role=role_str,
+            role_id=role_id_val,
             is_active=True,
         )
         self.db.add(user)
@@ -65,7 +135,7 @@ class UserService:
         BitacoraService.registrar(
             db=self.db,
             user=current_user,
-            action=f"Registró empleado '{user.name}' ({user.email}) con rol '{user.role}'",
+            action=f"Registró usuario/empleado '{user.name}' ({user.email}) con rol '{user.role}'",
             module="usuarios",
         )
 
@@ -78,9 +148,33 @@ class UserService:
         user = self.get_user_by_id(user_id)
 
         if request.name is not None:
-            user.name = request.name
-        if request.role is not None:
-            user.role = request.role
+            user.name = request.name.strip()
+        if request.apellido is not None:
+            user.apellido = request.apellido.strip()
+        if request.ci is not None:
+            user.ci = request.ci.strip()
+        if request.telefono is not None:
+            user.telefono = request.telefono.strip()
+        if request.direccion is not None:
+            user.direccion = request.direccion.strip()
+
+        if request.role_id is not None:
+            role_obj = self.db.query(Role).filter(Role.id == request.role_id).first()
+            if role_obj:
+                user.role_id = role_obj.id
+                user.role = role_obj.nombre.lower().replace(" ", "_")
+        elif request.role is not None:
+            role_obj = (
+                self.db.query(Role)
+                .filter((Role.nombre.ilike(request.role.replace("_", " "))) | (Role.nombre.ilike(request.role)))
+                .first()
+            )
+            if role_obj:
+                user.role_id = role_obj.id
+                user.role = role_obj.nombre.lower().replace(" ", "_")
+            else:
+                user.role = request.role
+
         if request.is_active is not None:
             user.is_active = request.is_active
 

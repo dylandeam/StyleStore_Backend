@@ -85,13 +85,16 @@ def require_permission(permission_code: str):
         if current_user.role == "administrador":
             return current_user
 
+        query_filter = [Permission.code == permission_code]
+        if current_user.role_id:
+            query_filter.append((RolePermission.role_id == current_user.role_id) | (RolePermission.role == current_user.role))
+        else:
+            query_filter.append(RolePermission.role == current_user.role)
+
         has_perm = (
             db.query(RolePermission)
             .join(Permission, RolePermission.permission_id == Permission.id)
-            .filter(
-                RolePermission.role == current_user.role,
-                Permission.code == permission_code,
-            )
+            .filter(*query_filter)
             .first()
         )
         if not has_perm:

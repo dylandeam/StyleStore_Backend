@@ -85,3 +85,13 @@ class ConflictException(HTTPException):
             detail=detail,
         )
 
+
+class BadRequestException(HTTPException):
+    """Generic 400 exception for bad requests."""
+
+    def __init__(self, detail: str = "Solicitud incorrecta o datos inválidos"):
+        super().__init__(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=detail,
+        )
+

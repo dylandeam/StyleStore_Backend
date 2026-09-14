@@ -1,7 +1,8 @@
 """
-Pydantic schemas para Productos (CU10).
-Conforme a Especificación StyleStore v4 (Diagrama DB Oficial).
+Pydantic schemas para Productos (CU10 / v5).
+Conforme a Especificación StyleStore v5 (Sección 13 y 14).
 PK: codigo.
+FK: categoria_id, temporada_id, coleccion_id.
 """
 from datetime import datetime
 from decimal import Decimal
@@ -19,8 +20,10 @@ class ProductoCreate(BaseModel):
     precio: Decimal = Field(..., gt=0)
     categoria_id: int
     temporada_id: int
+    coleccion_id: int | None = Field(None, description="ID de colección de prendas")
     color_ids: list[int] = Field(default_factory=list, description="IDs de colores habilitados")
     active: bool = True
+    visible_en_catalogo: bool = True
 
 
 class ProductoUpdate(BaseModel):
@@ -32,8 +35,10 @@ class ProductoUpdate(BaseModel):
     precio: Decimal | None = Field(None, gt=0)
     categoria_id: int | None = None
     temporada_id: int | None = None
+    coleccion_id: int | None = None
     color_ids: list[int] | None = None
     active: bool | None = None
+    visible_en_catalogo: bool | None = None
 
 
 class ProductoResponse(BaseModel):
@@ -48,7 +53,10 @@ class ProductoResponse(BaseModel):
     categoria_nombre: str | None = None
     temporada_id: int
     temporada_nombre: str | None = None
+    coleccion_id: int | None = None
+    coleccion_nombre: str | None = None
     active: bool
+    visible_en_catalogo: bool = True
 
     colores: list[ColorResponse] = Field(default_factory=list)
     stock_total: int = 0

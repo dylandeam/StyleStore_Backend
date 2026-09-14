@@ -1,5 +1,6 @@
 """
 Pydantic schemas for user data and employee management.
+Conforme a Especificación StyleStore v5.
 """
 from datetime import datetime
 import re
@@ -14,26 +15,32 @@ class UserCreate(BaseModel):
     name: str
     hashed_password: str
     role: str = "cliente"
+    role_id: int | None = None
+
+
+class UserProfileUpdateRequest(BaseModel):
+    """Schema for user updating their own profile information (CU2 / v5 Sección 2).
+    CI is deliberately omitted to prevent changing historical identifier.
+    """
+
+    name: str | None = Field(None, min_length=2, max_length=100)
+    apellido: str | None = Field(None, min_length=2, max_length=100)
+    email: EmailStr | None = None
+    telefono: str | None = Field(None, max_length=20)
+    direccion: str | None = Field(None, max_length=255)
+    foto: str | None = Field(None, max_length=255)
 
 
 class UserCreateByAdmin(BaseModel):
-    """Schema for administrator creating employee accounts (CU1)."""
+    """Schema for administrator creating user or employee accounts (CU1 / v5 Sección 4)."""
 
-    email: EmailStr = Field(..., description="Employee email address")
-    name: str = Field(..., min_length=2, max_length=100, description="Employee first name")
-    apellido: str | None = Field(None, min_length=2, max_length=100, description="Employee last name")
-    ci: str | None = Field(None, max_length=20, description="Employee CI")
-    password: str = Field(..., min_length=8, max_length=100, description="Temporary or initial password")
-    role: Literal["cajero", "encargado_sucursal", "administrador"] = Field(
-        ..., description="Assigned role for employee"
-    )
-
-    @field_validator("password")
-    @classmethod
-    def validate_password_strength(cls, v: str) -> str:
-        if not re.search(r"[a-z]", v) or not re.search(r"[A-Z]", v) or not re.search(r"[!@#$%^&*()_+\-=\[\]{};:\'\",.<>/?\\|`~]", v):
-            raise ValueError("La contraseña debe contener al menos una mayúscula, una minúscula y un carácter especial.")
-        return v
+    email: EmailStr = Field(..., description="Correo electrónico")
+    name: str = Field(..., min_length=2, max_length=100, description="Nombres")
+    apellido: str | None = Field(None, min_length=2, max_length=100, description="Apellidos")
+    ci: str | None = Field(None, max_length=20, description="Cédula de Identidad")
+    password: str | None = Field(None, description="Contraseña opcional (por defecto igual al CI)")
+    role: str = Field(..., description="Nombre o código del rol asignado")
+    role_id: int | None = Field(None, description="ID opcional del rol asignado")
 
 
 class UserUpdateByAdmin(BaseModel):
@@ -42,7 +49,10 @@ class UserUpdateByAdmin(BaseModel):
     name: str | None = Field(None, min_length=2, max_length=100)
     apellido: str | None = Field(None, min_length=2, max_length=100)
     ci: str | None = Field(None, max_length=20)
-    role: Literal["cajero", "encargado_sucursal", "administrador", "cliente"] | None = None
+    telefono: str | None = Field(None, max_length=20)
+    direccion: str | None = Field(None, max_length=255)
+    role: str | None = None
+    role_id: int | None = None
     is_active: bool | None = None
 
 
@@ -54,9 +64,12 @@ class UserResponse(BaseModel):
     name: str = Field(..., description="User full name")
     apellido: str | None = Field(None, description="User last name")
     ci: str | None = Field(None, description="User CI")
+    telefono: str | None = Field(None, description="User phone")
+    direccion: str | None = Field(None, description="User address")
+    foto: str | None = Field(None, description="Profile photo URL")
+    role_id: int | None = Field(None, description="Role ID")
     role: str = Field(..., description="User role")
     is_active: bool = Field(..., description="Whether the user is active")
     created_at: datetime = Field(..., description="Account creation timestamp")
 
     model_config = {"from_attributes": True}
-

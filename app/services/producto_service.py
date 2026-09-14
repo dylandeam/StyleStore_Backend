@@ -12,6 +12,7 @@ from app.models.producto_color import ProductoColor
 from app.models.color import Color
 from app.models.categoria import Categoria
 from app.models.temporada import Temporada
+from app.models.coleccion import Coleccion
 from app.models.stock_inventario import StockInventario
 from app.models.user import User
 from app.schemas.producto import ProductoCreate, ProductoUpdate, ProductoResponse
@@ -61,7 +62,10 @@ class ProductoService:
             categoria_nombre=prod.categoria.nombre if prod.categoria else None,
             temporada_id=prod.temporada_id,
             temporada_nombre=prod.temporada.nombre if prod.temporada else None,
+            coleccion_id=prod.coleccion_id,
+            coleccion_nombre=prod.coleccion.nombre if prod.coleccion else None,
             active=prod.active,
+            visible_en_catalogo=prod.visible_en_catalogo,
             colores=colores_resp,
             stock_total=total_stock,
             created_at=prod.created_at,
@@ -73,6 +77,7 @@ class ProductoService:
         active_only: bool = False,
         categoria_id: int | None = None,
         temporada_id: int | None = None,
+        coleccion_id: int | None = None,
     ) -> list[ProductoResponse]:
         query = self.db.query(Producto)
         if active_only:
@@ -81,6 +86,8 @@ class ProductoService:
             query = query.filter(Producto.categoria_id == categoria_id)
         if temporada_id:
             query = query.filter(Producto.temporada_id == temporada_id)
+        if coleccion_id:
+            query = query.filter(Producto.coleccion_id == coleccion_id)
 
         prods = query.order_by(Producto.nombre.asc()).all()
         return [self._to_response(p) for p in prods]
@@ -95,11 +102,13 @@ class ProductoService:
         return self._to_response(prod)
 
     def create_producto(self, req: ProductoCreate, current_user: User | None = None) -> ProductoResponse:
-        # Validar categoria y temporada
+        # Validar categoria, temporada y coleccion
         if not self.db.query(Categoria).filter(Categoria.id == req.categoria_id).first():
             raise HTTPException(status_code=404, detail=f"Categoría ID {req.categoria_id} no existe.")
         if not self.db.query(Temporada).filter(Temporada.id == req.temporada_id).first():
             raise HTTPException(status_code=404, detail=f"Temporada ID {req.temporada_id} no existe.")
+        if req.coleccion_id is not None and not self.db.query(Coleccion).filter(Coleccion.id == req.coleccion_id).first():
+            raise HTTPException(status_code=404, detail=f"Colección ID {req.coleccion_id} no existe.")
 
         codigo = req.codigo.strip() if req.codigo and req.codigo.strip() else self._generar_codigo_siguiente()
         if self.db.query(Producto).filter(Producto.codigo == codigo).first():
@@ -116,7 +125,9 @@ class ProductoService:
             precio=req.precio,
             categoria_id=req.categoria_id,
             temporada_id=req.temporada_id,
+            coleccion_id=req.coleccion_id,
             active=req.active,
+            visible_en_catalogo=req.visible_en_catalogo,
         )
         self.db.add(prod)
         self.db.flush()
@@ -161,6 +172,11 @@ class ProductoService:
                 raise HTTPException(status_code=404, detail=f"Temporada ID {req.temporada_id} no existe.")
             prod.temporada_id = req.temporada_id
 
+        if req.coleccion_id is not None:
+            if not self.db.query(Coleccion).filter(Coleccion.id == req.coleccion_id).first():
+                raise HTTPException(status_code=404, detail=f"Colección ID {req.coleccion_id} no existe.")
+            prod.coleccion_id = req.coleccion_id
+
         if req.nombre is not None:
             prod.nombre = req.nombre.strip()
         if req.descripcion is not None:
@@ -171,6 +187,8 @@ class ProductoService:
             prod.precio = req.precio
         if req.active is not None:
             prod.active = req.active
+        if req.visible_en_catalogo is not None:
+            prod.visible_en_catalogo = req.visible_en_catalogo
 
         # Sincronizar colores si se envían
         if req.color_ids is not None:

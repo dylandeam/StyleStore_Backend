@@ -1,0 +1,254 @@
+"""
+Ventas endpoints (v5 secciones 18, 21 y 23).
+Gestión de ventas presenciales y en línea, e historial de compras del cliente.
+"""
+from datetime import datetime
+from decimal import Decimal
+from fastapi import APIRouter, Depends, status
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.models.user import User
+from app.models.cliente import Cliente
+from app.models.orden_venta import OrdenVenta, DetalleVenta
+from app.models.pago import Pago
+from app.models.stock_inventario import StockInventario
+from app.schemas.pago_envio import (
+    OrdenVentaResponse,
+    VentaPresencialCreate,
+    DetalleVentaResponse,
+)
+from app.api.deps import get_current_user, require_permission
+from app.core.exceptions import NotFoundException, BadRequestException
+from app.services.bitacora_service import BitacoraService
+
+router = APIRouter(prefix="/ventas", tags=["Ventas"])
+
+
+def _serialize_orden(o: OrdenVenta) -> dict:
+    detalles = []
+    for d in o.detalles:
+        detalles.append({
+            "id": d.id,
+            "producto_nombre": d.producto_nombre,
+            "color_nombre": d.color_nombre,
+            "talla_nombre": d.talla_nombre,
+            "cantidad": d.cantidad,
+            "precio_unitario": d.precio_unitario,
+            "subtotal": d.subtotal,
+        })
+
+    cli_nom = None
+    cli_email = None
+    cli_tel = None
+    if o.cliente:
+        cli_tel = o.cliente.telefono
+        if o.cliente.user:
+            u = o.cliente.user
+            cli_nom = f"{u.name} {u.apellido or ''}".strip()
+            cli_email = u.email
+
+    envio_dict = None
+    if o.envios:
+        env = o.envios[0]
+        envio_dict = {
+            "id": env.id,
+            "orden_venta_id": env.orden_venta_id,
+            "direccion": env.direccion,
+            "ciudad": env.ciudad,
+            "referencia": env.referencia,
+            "costo": env.costo,
+            "estado": env.estado,
+            "fecha": env.fecha,
+            "created_at": env.created_at,
+            "cliente_nombre": cli_nom,
+        }
+
+    return {
+        "id": o.id,
+        "fecha": o.fecha,
+        "estado": o.estado,
+        "total": o.total,
+        "tipo_venta": o.tipo_venta,
+        "codigo_cliente": o.codigo_cliente,
+        "cliente_nombre": cli_nom,
+        "cliente_email": cli_email,
+        "cliente_telefono": cli_tel,
+        "sucursal_ciudad": o.sucursal.ciudad if o.sucursal else None,
+        "detalles": detalles,
+        "envio": envio_dict,
+        "created_at": o.created_at,
+    }
+
+
+@router.get("", response_model=list[OrdenVentaResponse], summary="Listar ventas combinadas (Administración)")
+async def list_ventas(
+    current_user: User = Depends(require_permission("ventas.ver")),
+    db: Session = Depends(get_db),
+):
+    """Lista combinada de ventas presenciales y en línea (v5 sección 23)."""
+    ventas = db.query(OrdenVenta).order_by(OrdenVenta.created_at.desc()).all()
+    return [_serialize_orden(v) for v in ventas]
+
+
+@router.get("/mias", summary="Historial de compras del cliente (v5 sección 21)")
+async def list_my_purchases(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Devuelve las compras del cliente separadas en:
+    - compras_carrito: Compras en línea vía carrito.
+    - compras_presenciales: Compras presenciales en tienda física.
+    """
+    cliente = db.query(Cliente).filter(Cliente.user_id == current_user.id).first()
+    if not cliente:
+        return {"compras_carrito": [], "compras_presenciales": []}
+
+    ventas = db.query(OrdenVenta).filter(OrdenVenta.codigo_cliente == cliente.codigo).order_by(OrdenVenta.created_at.desc()).all()
+
+    carrito_list = [_serialize_orden(v) for v in ventas if v.tipo_venta == "en linea"]
+    presenciales_list = [_serialize_orden(v) for v in ventas if v.tipo_venta == "presencial"]
+
+    return {
+        "compras_carrito": carrito_list,
+        "compras_presenciales": presenciales_list,
+    }
+
+
+@router.get("/{venta_id}", response_model=OrdenVentaResponse, summary="Detalle de venta")
+async def get_venta(
+    venta_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Detalle completo de una orden de venta."""
+    venta = db.query(OrdenVenta).filter(OrdenVenta.id == venta_id).first()
+    if not venta:
+        raise NotFoundException(f"Venta con ID {venta_id} no encontrada.")
+    return _serialize_orden(venta)
+
+
+@router.post("/presencial", response_model=OrdenVentaResponse, status_code=status.HTTP_201_CREATED, summary="Registrar venta presencial en caja")
+async def create_venta_presencial(
+    payload: VentaPresencialCreate,
+    current_user: User = Depends(require_permission("productos.editar")),
+    db: Session = Depends(get_db),
+):
+    """
+    Registra una compra presencial desde caja:
+    - Descuenta existencias en inventario atómicamente.
+    - Genera la OrdenVenta y DetalleVenta.
+    - Registra el Pago en caja inmediatamente.
+    """
+    cliente = db.query(Cliente).filter(Cliente.codigo == payload.codigo_cliente).first()
+    if not cliente:
+        raise NotFoundException(f"Cliente con código '{payload.codigo_cliente}' no encontrado.")
+
+    now = datetime.now()
+    total_venta = Decimal("0.00")
+    detalles_orden = []
+
+    for item in payload.items:
+        stock = db.query(StockInventario).filter(StockInventario.id == item.stock_inventario_id).with_for_update().first()
+        if not stock:
+            db.rollback()
+            raise NotFoundException(f"Inventario #{item.stock_inventario_id} no encontrado.")
+
+        if stock.cantidad < item.cantidad:
+            db.rollback()
+            raise BadRequestException(f"Stock insuficiente. Disponible: {stock.cantidad}, solicitado: {item.cantidad}.")
+
+        stock.cantidad -= item.cantidad
+
+        precio = Decimal("0.00")
+        prod_nom = "Prenda"
+        col_nom = None
+        talla_nom = None
+        if stock.producto_color:
+            col_nom = stock.producto_color.color.nombre if stock.producto_color.color else None
+            if stock.producto_color.producto:
+                precio = stock.producto_color.producto.precio
+                prod_nom = stock.producto_color.producto.nombre
+        if stock.talla:
+            talla_nom = stock.talla.nombre
+
+        subtotal = precio * item.cantidad
+        total_venta += subtotal
+
+        detalles_orden.append({
+            "stock_inventario_id": stock.id,
+            "producto_nombre": prod_nom,
+            "color_nombre": col_nom,
+            "talla_nombre": talla_nom,
+            "cantidad": item.cantidad,
+            "precio_unitario": precio,
+            "subtotal": subtotal,
+        })
+
+    orden = OrdenVenta(
+        fecha=now.date(),
+        estado="pagada",
+        total=total_venta,
+        tipo_venta="presencial",
+        codigo_cliente=cliente.codigo,
+        sucursal_id=payload.sucursal_id,
+    )
+    db.add(orden)
+    db.flush()
+
+    for d in detalles_orden:
+        dv = DetalleVenta(
+            orden_venta_id=orden.id,
+            stock_inventario_id=d["stock_inventario_id"],
+            producto_nombre=d["producto_nombre"],
+            color_nombre=d["color_nombre"],
+            talla_nombre=d["talla_nombre"],
+            cantidad=d["cantidad"],
+            precio_unitario=d["precio_unitario"],
+            subtotal=d["subtotal"],
+        )
+        db.add(dv)
+
+    pago = Pago(
+        orden_venta_id=orden.id,
+        monto=total_venta,
+        tipo_pago="en caja",
+        estado="aprobado",
+    )
+    db.add(pago)
+
+    db.commit()
+    db.refresh(orden)
+
+    BitacoraService.registrar(
+        db=db,
+        user=current_user,
+        action=f"Registró venta presencial #{orden.id} en caja por Bs {orden.total} para cliente '{cliente.codigo}'",
+        module="ventas",
+    )
+
+    return _serialize_orden(orden)
+
+
+@router.delete("/{venta_id}", summary="Eliminar venta")
+async def delete_venta(
+    venta_id: int,
+    current_user: User = Depends(require_permission("ventas.eliminar")),
+    db: Session = Depends(get_db),
+):
+    """Eliminar un registro de orden de venta."""
+    orden = db.query(OrdenVenta).filter(OrdenVenta.id == venta_id).first()
+    if not orden:
+        raise NotFoundException(f"Venta con ID {venta_id} no encontrada.")
+
+    db.delete(orden)
+    db.commit()
+
+    BitacoraService.registrar(
+        db=db,
+        user=current_user,
+        action=f"Eliminó la venta #{venta_id}",
+        module="ventas",
+    )
+    return {"message": f"Venta #{venta_id} eliminada exitosamente."}

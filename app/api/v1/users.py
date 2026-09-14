@@ -6,7 +6,12 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User
-from app.schemas.user import UserResponse, UserCreateByAdmin, UserUpdateByAdmin
+from app.schemas.user import (
+    UserResponse,
+    UserCreateByAdmin,
+    UserUpdateByAdmin,
+    UserProfileUpdateRequest,
+)
 from app.api.deps import get_current_user, require_permission
 from app.services.user_service import UserService
 
@@ -22,6 +27,22 @@ router = APIRouter(prefix="/users", tags=["Users"])
 async def get_me(current_user: User = Depends(get_current_user)):
     """Get the current authenticated user's profile."""
     return current_user
+
+
+@router.patch(
+    "/me",
+    response_model=UserResponse,
+    summary="Actualizar información personal (CU2)",
+    description="Permite modificar Nombre, Apellido, Email, Teléfono, Dirección y Foto (CI no editable).",
+)
+async def update_my_profile(
+    request: UserProfileUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Actualizar datos personales del usuario en sesión."""
+    service = UserService(db)
+    return service.update_profile(current_user.id, request)
 
 
 @router.get(
