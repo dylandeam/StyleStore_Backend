@@ -26,5 +26,21 @@ class Sucursal(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
+    @property
+    def nombre(self) -> str:
+        return self.name
+
+    @property
+    def ciudad(self) -> str:
+        return self.city
+
+    @property
+    def direccion(self) -> str:
+        return self.address
+
+    @property
+    def telefono(self) -> str:
+        return self.phone
+
     def __repr__(self) -> str:
         return f"<Sucursal(id={self.id}, name='{self.name}', city='{self.city}')>"

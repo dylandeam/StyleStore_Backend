@@ -71,16 +71,19 @@ async def get_inventario_global(
         if s.talla:
             talla_nom = s.talla.nombre
         if s.sucursal:
-            suc_nom = f"{s.sucursal.ciudad} - {s.sucursal.direccion}"
+            name = getattr(s.sucursal, "name", getattr(s.sucursal, "nombre", ""))
+            city = getattr(s.sucursal, "city", getattr(s.sucursal, "ciudad", ""))
+            addr = getattr(s.sucursal, "address", getattr(s.sucursal, "direccion", ""))
+            suc_nom = f"{name} ({city} - {addr})" if name and (city or addr) else (name or f"{city} - {addr}".strip(" -"))
 
         # Filtrado en memoria si aplica
         if search and search.lower() not in (p_nom or "").lower() and search.lower() not in (p_cod or "").lower():
             continue
-        if categoria_id and prod and prod.categoria_id != categoria_id:
+        if categoria_id and (not prod or prod.categoria_id != categoria_id):
             continue
-        if temporada_id and prod and prod.temporada_id != temporada_id:
+        if temporada_id and (not prod or prod.temporada_id != temporada_id):
             continue
-        if coleccion_id and prod and prod.coleccion_id != coleccion_id:
+        if coleccion_id and (not prod or prod.coleccion_id != coleccion_id):
             continue
 
         result.append({
@@ -120,6 +123,7 @@ async def get_inventario_sucursal(
         p_foto = None
         color_nom = None
         talla_nom = None
+        suc_nom = None
 
         if s.producto_color:
             color_nom = s.producto_color.color.nombre if s.producto_color.color else None
@@ -132,6 +136,12 @@ async def get_inventario_sucursal(
         if s.talla:
             talla_nom = s.talla.nombre
 
+        if s.sucursal:
+            name = getattr(s.sucursal, "name", getattr(s.sucursal, "nombre", ""))
+            city = getattr(s.sucursal, "city", getattr(s.sucursal, "ciudad", ""))
+            addr = getattr(s.sucursal, "address", getattr(s.sucursal, "direccion", ""))
+            suc_nom = f"{name} ({city} - {addr})" if name and (city or addr) else (name or f"{city} - {addr}".strip(" -"))
+
         result.append({
             "stock_inventario_id": s.id,
             "producto_codigo": p_cod,
@@ -143,9 +153,11 @@ async def get_inventario_sucursal(
             "talla_id": s.talla_id,
             "talla": talla_nom,
             "sucursal_id": s.sucursal_id,
+            "sucursal": suc_nom,
             "cantidad": s.cantidad,
         })
     return result
+
 
 
 @router.post("/ajustar", summary="Ajustar o registrar stock de inventario")
