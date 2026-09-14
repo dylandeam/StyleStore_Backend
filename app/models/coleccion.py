@@ -28,5 +28,9 @@ class Coleccion(Base):
 
     productos = relationship("Producto", back_populates="coleccion", lazy="select")
 
+    @property
+    def productos_count(self) -> int:
+        return len(self.productos) if self.productos else 0
+
     def __repr__(self) -> str:
         return f"<Coleccion(id={self.id}, nombre='{self.nombre}')>"

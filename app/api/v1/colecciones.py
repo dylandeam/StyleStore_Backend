@@ -18,11 +18,49 @@ router = APIRouter(prefix="/colecciones", tags=["Colecciones"])
 
 @router.get("", response_model=list[ColeccionResponse], summary="Listar colecciones")
 async def list_colecciones(
-    current_user: User = Depends(require_permission("colecciones.ver")),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Listar todas las colecciones de prendas."""
     return db.query(Coleccion).order_by(Coleccion.nombre).all()
+
+
+@router.get("/{coleccion_id}/productos", summary="Listar productos de una colección")
+async def get_coleccion_productos(
+    coleccion_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Retorna los productos activos pertenecientes a una colección."""
+    item = db.query(Coleccion).filter(Coleccion.id == coleccion_id).first()
+    if not item:
+        raise NotFoundException(f"Colección con ID {coleccion_id} no encontrada.")
+
+    prods = (
+        db.query(Producto)
+        .filter(Producto.coleccion_id == coleccion_id, Producto.active.is_(True))
+        .order_by(Producto.nombre.asc())
+        .all()
+    )
+    result = []
+    for p in prods:
+        colores = []
+        for pc in p.colores_rel:
+            if pc.color and pc.color.nombre and pc.color.nombre not in colores:
+                colores.append(pc.color.nombre)
+        result.append({
+            "codigo": p.codigo,
+            "nombre": p.nombre,
+            "descripcion": p.descripcion,
+            "foto": p.foto,
+            "precio": float(p.precio),
+            "categoria": p.categoria.nombre if p.categoria else None,
+            "temporada": p.temporada.nombre if p.temporada else None,
+            "colores": colores,
+            "coleccion_id": p.coleccion_id,
+            "coleccion_nombre": item.nombre,
+        })
+    return result
 
 
 @router.post("", response_model=ColeccionResponse, status_code=status.HTTP_201_CREATED, summary="Crear colección")
@@ -57,7 +95,7 @@ async def create_coleccion(
 @router.get("/{coleccion_id}", response_model=ColeccionResponse, summary="Obtener detalle de colección")
 async def get_coleccion(
     coleccion_id: int,
-    current_user: User = Depends(require_permission("colecciones.ver")),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Obtener una colección por ID."""
@@ -65,6 +103,7 @@ async def get_coleccion(
     if not item:
         raise NotFoundException(f"Colección con ID {coleccion_id} no encontrada.")
     return item
+
 
 
 @router.put("/{coleccion_id}", response_model=ColeccionResponse, summary="Editar colección")

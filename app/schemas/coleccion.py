@@ -23,6 +23,7 @@ class ColeccionUpdate(BaseModel):
 class ColeccionResponse(ColeccionBase):
     id: int
     active: bool
+    productos_count: int = 0
     created_at: datetime
     updated_at: datetime
 
