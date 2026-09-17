@@ -110,35 +110,48 @@ async def get_producto_detalle(
     Obtiene la ficha técnica y comercial del producto con todas sus variantes de color,
     tallas asociadas y existencias de stock disponibles para venta directa o carrito.
     """
-    p = db.query(Producto).filter(Producto.codigo == codigo, Producto.active.is_(True)).first()
+    # Búsqueda insensible a mayúsculas/minúsculas y espacios
+    clean_cod = codigo.strip().lower()
+    p = db.query(Producto).filter(func.lower(Producto.codigo) == clean_cod).first()
     if not p:
         raise NotFoundException(f"Producto con código '{codigo}' no encontrado.")
 
     variantes = []
     stock_total = 0
 
-    for pc in p.colores_rel:
-        stocks = db.query(StockInventario).filter(StockInventario.producto_color_id == pc.id).all()
-        tallas_stock = []
-        for s in stocks:
-            stock_total += s.cantidad
-            tallas_stock.append({
-                "stock_inventario_id": s.id,
-                "talla_id": s.talla_id,
-                "talla_nombre": s.talla.nombre if s.talla else None,
-                "sucursal_id": s.sucursal_id,
-                "sucursal_ciudad": s.sucursal.ciudad if s.sucursal else None,
-                "cantidad": s.cantidad,
-            })
+    if p.colores_rel:
+        for pc in p.colores_rel:
+            stocks = db.query(StockInventario).filter(StockInventario.producto_color_id == pc.id).all()
+            tallas_stock = []
+            for s in stocks:
+                stock_total += s.cantidad
+                tallas_stock.append({
+                    "stock_inventario_id": s.id,
+                    "talla_id": s.talla_id,
+                    "talla_nombre": s.talla.nombre if s.talla else None,
+                    "sucursal_id": s.sucursal_id,
+                    "sucursal_ciudad": s.sucursal.ciudad if s.sucursal else None,
+                    "cantidad": s.cantidad,
+                })
 
-        if pc.color:
-            variantes.append({
-                "producto_color_id": pc.id,
-                "color_id": pc.color.id,
-                "color_nombre": pc.color.nombre,
-                "color_hex": getattr(pc.color, "codigo_hex", None) or getattr(pc.color, "hex", None),
-                "existencias": tallas_stock,
-            })
+            if pc.color:
+                variantes.append({
+                    "producto_color_id": pc.id,
+                    "color_id": pc.color.id,
+                    "color_nombre": pc.color.nombre,
+                    "color_hex": getattr(pc.color, "codigo_hex", None) or getattr(pc.color, "hex", None),
+                    "existencias": tallas_stock,
+                })
+
+    # Si no tiene variantes de color asociadas, agregamos una variante estándar
+    if not variantes:
+        variantes.append({
+            "producto_color_id": 0,
+            "color_id": 0,
+            "color_nombre": "Único",
+            "color_hex": "#14263D",
+            "existencias": [],
+        })
 
     return {
         "codigo": p.codigo,

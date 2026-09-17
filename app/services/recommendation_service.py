@@ -5,6 +5,7 @@ para sugerir productos afines e incrementar el interés de compra del cliente.
 """
 import re
 from typing import List, Dict, Any
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from app.models.producto import Producto
 from app.models.producto_color import ProductoColor
@@ -35,6 +36,7 @@ class RecommendationService:
         """
         Retorna los productos recomendados más similares al producto con el código dado.
         """
+        clean_cod = codigo.strip().lower()
         target = (
             self.db.query(Producto)
             .options(
@@ -43,7 +45,7 @@ class RecommendationService:
                 joinedload(Producto.temporada),
                 joinedload(Producto.colores_rel).joinedload(ProductoColor.color),
             )
-            .filter(Producto.codigo == codigo)
+            .filter(func.lower(Producto.codigo) == clean_cod)
             .first()
         )
         if not target:
