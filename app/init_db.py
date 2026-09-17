@@ -32,6 +32,8 @@ def _run_column_migrations(db: Session):
         "ALTER TABLE envios ADD COLUMN IF NOT EXISTS yango_tracking_code VARCHAR(100)",
         "ALTER TABLE envios ADD COLUMN IF NOT EXISTS yango_tracking_url VARCHAR(500)",
         "ALTER TABLE envios ADD COLUMN IF NOT EXISTS delivery_conductor VARCHAR(150)",
+        # Backup Logs
+        "ALTER TABLE backup_logs ADD COLUMN IF NOT EXISTS contenido_json TEXT",
     ]
     for stmt in statements:
         try:
@@ -62,6 +64,18 @@ def init_db():
         # Seed permissions and roles
         role_service = RoleService(db)
         role_service.seed_default_permissions_and_roles()
+
+        # Seed default backup configuration if not exists
+        from app.models.backup_config import BackupConfig
+        cfg = db.query(BackupConfig).first()
+        if not cfg:
+            cfg = BackupConfig(
+                auto_backup_enabled=False,
+                frequency_hours=24,
+                retention_days=30,
+            )
+            db.add(cfg)
+            db.commit()
 
         # Seed initial admin if none exists
         admin_user = db.query(User).filter(User.role == "administrador").first()

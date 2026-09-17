@@ -30,6 +30,7 @@ from app.models.pago import Pago
 from app.models.envio import Envio
 from app.models.uploaded_file import UploadedFile
 from app.models.backup_log import BackupLog
+from app.models.backup_config import BackupConfig
 
 __all__ = [
     "Role",
@@ -65,4 +66,5 @@ __all__ = [
     "Envio",
     "UploadedFile",
     "BackupLog",
+    "BackupConfig",
 ]

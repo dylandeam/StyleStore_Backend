@@ -3,7 +3,7 @@ Modelo BackupLog.
 Registro de copias de seguridad del sistema StyleStore con hash SHA-256.
 """
 from datetime import datetime
-from sqlalchemy import String, Integer, BigInteger, DateTime, ForeignKey, func
+from sqlalchemy import String, Integer, BigInteger, DateTime, ForeignKey, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -20,6 +20,7 @@ class BackupLog(Base):
     tamano_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     tipo: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")  # 'manual', 'automatico'
     estado: Mapped[str] = mapped_column(String(20), nullable=False, default="exitoso")  # 'exitoso', 'fallido'
+    contenido_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     creado_por_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

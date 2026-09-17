@@ -188,6 +188,40 @@ def test_backups_sha256_flow(client: TestClient, admin_token: str):
     assert res_ver.status_code == 200
     assert res_ver.json()["es_valido"] is True
 
+    # 4. Descargar backup
+    res_dl = client.get(f"/api/v1/backups/{backup_id}/descargar", headers=headers)
+    assert res_dl.status_code == 200
+    assert len(res_dl.content) > 0
+
+    # 5. Configuración automática de periodicidad
+    res_cfg = client.get("/api/v1/backups/config", headers=headers)
+    assert res_cfg.status_code == 200
+    res_up_cfg = client.put(
+        "/api/v1/backups/config",
+        json={"auto_backup_enabled": True, "frequency_hours": 12, "retention_days": 15},
+        headers=headers,
+    )
+    assert res_up_cfg.status_code == 200
+    assert res_up_cfg.json()["frequency_hours"] == 12
+
+    # 6. Restaurar desde el servidor
+    res_rst = client.post(f"/api/v1/backups/{backup_id}/restaurar", headers=headers)
+    if res_rst.status_code != 200:
+        print("FAIL RESTORE DETAIL:", res_rst.status_code, res_rst.text)
+    assert res_rst.status_code == 200
+    assert res_rst.json()["success"] is True
+
+    # 7. Subir archivo JSON y restaurar
+    res_upload_rst = client.post(
+        "/api/v1/backups/subir-restaurar",
+        files={"file": ("backup_test.json", res_dl.content, "application/json")},
+        headers=headers,
+    )
+    if res_upload_rst.status_code != 200:
+        print("FAIL UPLOAD RESTORE DETAIL:", res_upload_rst.status_code, res_upload_rst.text)
+    assert res_upload_rst.status_code == 200
+    assert res_upload_rst.json()["success"] is True
+
 
 def test_reportes_excel_pdf(client: TestClient, admin_token: str):
     headers = {"Authorization": f"Bearer {admin_token}"}
