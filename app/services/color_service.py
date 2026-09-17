@@ -90,7 +90,7 @@ class ColorService:
                 detail=f"Color con ID {color_id} no encontrado.",
             )
         # Validación v4: no tener Stock_Inventario asociado vía ProductoColor
-        prod_colores = self.db.query(ProductoColor.id).filter(ProductoColor.color_id == color_id).subquery()
+        prod_colores = self.db.query(ProductoColor.id).filter(ProductoColor.color_id == color_id).scalar_subquery()
         tiene_stock = self.db.query(StockInventario).filter(StockInventario.producto_color_id.in_(prod_colores)).first()
         if tiene_stock:
             raise HTTPException(

@@ -18,7 +18,7 @@ class EmpleadoCreate(BaseModel):
 
     sucursal_id: int
     edad: int = Field(..., ge=18, le=100)
-    sueldo: Decimal = Field(..., ge=0)
+    sueldo: Decimal = Field(..., ge=Decimal("0"))
     telefono: str = Field(..., min_length=5, max_length=20)
     direccion: str = Field(..., min_length=3, max_length=255)
     foto: str | None = None
@@ -33,7 +33,7 @@ class EmpleadoUpdate(BaseModel):
     role: str | None = None
     sucursal_id: int | None = None
     edad: int | None = Field(None, ge=18, le=100)
-    sueldo: Decimal | None = Field(None, ge=0)
+    sueldo: Decimal | None = Field(None, ge=Decimal("0"))
     telefono: str | None = None
     direccion: str | None = None
     foto: str | None = None

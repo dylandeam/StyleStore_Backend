@@ -115,7 +115,8 @@ class UserService:
         role_id_val = role_obj.id if role_obj else None
 
         # v5 Rule: Default password equals CI
-        raw_password = request.password if (request.password and request.password.strip()) else request.ci.strip()
+        ci_str = request.ci.strip() if request.ci else "12345678"
+        raw_password = request.password.strip() if (request.password and request.password.strip()) else ci_str
 
         user = User(
             email=request.email,
