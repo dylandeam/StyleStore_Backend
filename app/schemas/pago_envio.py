@@ -134,6 +134,9 @@ class OrdenVentaResponse(BaseModel):
     total: Decimal
     tipo_venta: str
     codigo_cliente: str
+    metodo_pago: str | None = None
+    ticket_numero: str | None = None
+    sucursal_id: int | None = None
     cliente_nombre: str | None = None
     cliente_email: str | None = None
     cliente_telefono: str | None = None

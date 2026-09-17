@@ -177,7 +177,7 @@ async def process_caja_payment(
 
     if payload.efectivo_recibido < orden.total:
         diff = orden.total - payload.efectivo_recibido
-        raise BadRequestException(f"El monto recibido (${payload.efectivo_recibido}) es inferior al total a pagar (${orden.total}). Faltan: ${diff}")
+        raise BadRequestException(f"El monto recibido (Bs. {payload.efectivo_recibido}) es inferior al total a pagar (Bs. {orden.total}). Faltan: Bs. {diff}")
 
     cambio = payload.efectivo_recibido - orden.total
     ticket_num = f"TKT-{datetime.now().strftime('%Y%m%d')}-{orden.id:04d}"
@@ -207,7 +207,7 @@ async def process_caja_payment(
     BitacoraService.registrar(
         db=db,
         user=current_user,
-        action=f"Emitió ticket de caja {ticket_num} para Orden #{orden.id}. Recibido: ${payload.efectivo_recibido}, Cambio: ${cambio}",
+        action=f"Emitió ticket de caja {ticket_num} para Orden #{orden.id}. Recibido: Bs. {payload.efectivo_recibido}, Cambio: Bs. {cambio}",
         module="pagos",
     )
 
