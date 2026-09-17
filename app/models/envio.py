@@ -23,8 +23,11 @@ class Envio(Base):
     ciudad: Mapped[str] = mapped_column(String(100), nullable=False)
     referencia: Mapped[str | None] = mapped_column(Text, nullable=True)
     costo: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=0.00)
-    estado: Mapped[str] = mapped_column(String(30), nullable=False, default="pendiente")  # 'pendiente', 'completado'
+    estado: Mapped[str] = mapped_column(String(30), nullable=False, default="pendiente")  # 'pendiente', 'en camino', 'entregado', 'completado'
     fecha: Mapped[date] = mapped_column(Date, default=func.current_date(), nullable=False)
+    yango_tracking_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    yango_tracking_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    delivery_conductor: Mapped[str | None] = mapped_column(String(150), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

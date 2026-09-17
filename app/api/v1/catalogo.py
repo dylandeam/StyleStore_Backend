@@ -95,3 +95,78 @@ async def get_catalogo(
         })
 
     return result
+
+
+from app.core.exceptions import NotFoundException
+from app.services.recommendation_service import RecommendationService
+
+
+@router.get("/{codigo}/detalle", summary="Obtener detalle completo de un producto para compra")
+async def get_producto_detalle(
+    codigo: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Obtiene la ficha técnica y comercial del producto con todas sus variantes de color,
+    tallas asociadas y existencias de stock disponibles para venta directa o carrito.
+    """
+    p = db.query(Producto).filter(Producto.codigo == codigo, Producto.active.is_(True)).first()
+    if not p:
+        raise NotFoundException(f"Producto con código '{codigo}' no encontrado.")
+
+    variantes = []
+    stock_total = 0
+
+    for pc in p.colores_rel:
+        stocks = db.query(StockInventario).filter(StockInventario.producto_color_id == pc.id).all()
+        tallas_stock = []
+        for s in stocks:
+            stock_total += s.cantidad
+            tallas_stock.append({
+                "stock_inventario_id": s.id,
+                "talla_id": s.talla_id,
+                "talla_nombre": s.talla.nombre if s.talla else None,
+                "sucursal_id": s.sucursal_id,
+                "sucursal_ciudad": s.sucursal.ciudad if s.sucursal else None,
+                "cantidad": s.cantidad,
+            })
+
+        if pc.color:
+            variantes.append({
+                "producto_color_id": pc.id,
+                "color_id": pc.color.id,
+                "color_nombre": pc.color.nombre,
+                "color_hex": getattr(pc.color, "codigo_hex", None) or getattr(pc.color, "hex", None),
+                "existencias": tallas_stock,
+            })
+
+    return {
+        "codigo": p.codigo,
+        "nombre": p.nombre,
+        "descripcion": p.descripcion,
+        "foto": p.foto,
+        "precio": float(p.precio),
+        "categoria_id": p.categoria_id,
+        "categoria_nombre": p.categoria.nombre if p.categoria else None,
+        "temporada_id": p.temporada_id,
+        "temporada_nombre": p.temporada.nombre if p.temporada else None,
+        "coleccion_id": p.coleccion_id,
+        "coleccion_nombre": p.coleccion.nombre if p.coleccion else None,
+        "variantes": variantes,
+        "stock_total": stock_total,
+    }
+
+
+@router.get("/{codigo}/recomendados", summary="Recomendaciones de IA local para un producto")
+async def get_producto_recomendados(
+    codigo: str,
+    limit: int = Query(4, ge=1, le=12),
+    db: Session = Depends(get_db),
+):
+    """
+    Analiza las características del producto y genera sugerencias afines mediante
+    el motor de IA local de StyleStore.
+    """
+    service = RecommendationService(db)
+    return service.get_recommendations_for_product(codigo=codigo, limit=limit)
+

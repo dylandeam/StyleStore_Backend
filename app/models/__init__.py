@@ -29,6 +29,7 @@ from app.models.orden_venta import OrdenVenta, DetalleVenta
 from app.models.pago import Pago
 from app.models.envio import Envio
 from app.models.uploaded_file import UploadedFile
+from app.models.backup_log import BackupLog
 
 __all__ = [
     "Role",
@@ -63,4 +64,5 @@ __all__ = [
     "Pago",
     "Envio",
     "UploadedFile",
+    "BackupLog",
 ]

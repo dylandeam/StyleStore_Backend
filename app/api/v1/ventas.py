@@ -62,6 +62,9 @@ def _serialize_orden(o: OrdenVenta) -> dict:
             "fecha": env.fecha,
             "created_at": env.created_at,
             "cliente_nombre": cli_nom,
+            "yango_tracking_code": getattr(env, "yango_tracking_code", None),
+            "yango_tracking_url": getattr(env, "yango_tracking_url", None),
+            "delivery_conductor": getattr(env, "delivery_conductor", None),
         }
 
     return {
@@ -81,12 +84,19 @@ def _serialize_orden(o: OrdenVenta) -> dict:
     }
 
 
-@router.get("", response_model=list[OrdenVentaResponse], summary="Listar ventas combinadas (Administración)")
+@router.get("", response_model=list[OrdenVentaResponse], summary="Listar ventas combinadas (Administración y Clientes)")
 async def list_ventas(
-    current_user: User = Depends(require_permission("ventas.ver")),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Lista combinada de ventas presenciales y en línea (v5 sección 23)."""
+    """Lista combinada de ventas. Si es cliente retorna sus compras, si es staff retorna todas."""
+    if current_user.role == "cliente":
+        cliente = db.query(Cliente).filter(Cliente.user_id == current_user.id).first()
+        if not cliente:
+            return []
+        ventas = db.query(OrdenVenta).filter(OrdenVenta.codigo_cliente == cliente.codigo).order_by(OrdenVenta.created_at.desc()).all()
+        return [_serialize_orden(v) for v in ventas]
+
     ventas = db.query(OrdenVenta).order_by(OrdenVenta.created_at.desc()).all()
     return [_serialize_orden(v) for v in ventas]
 
@@ -114,6 +124,20 @@ async def list_my_purchases(
         "compras_carrito": carrito_list,
         "compras_presenciales": presenciales_list,
     }
+
+
+@router.get("/mis-compras", response_model=list[OrdenVentaResponse], summary="Historial de compras para aplicación móvil y web")
+async def list_mis_compras(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Devuelve la lista unificada de todas las órdenes de venta del cliente actual."""
+    cliente = db.query(Cliente).filter(Cliente.user_id == current_user.id).first()
+    if not cliente:
+        return []
+
+    ventas = db.query(OrdenVenta).filter(OrdenVenta.codigo_cliente == cliente.codigo).order_by(OrdenVenta.created_at.desc()).all()
+    return [_serialize_orden(v) for v in ventas]
 
 
 @router.get("/{venta_id}", response_model=OrdenVentaResponse, summary="Detalle de venta")

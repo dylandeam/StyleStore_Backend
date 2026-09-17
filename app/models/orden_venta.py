@@ -32,6 +32,12 @@ class OrdenVenta(Base):
         Integer, ForeignKey("carritos.id", ondelete="SET NULL"), nullable=True, index=True
     )
 
+    ticket_numero: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    efectivo_recibido: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    cambio_devuelto: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    metodo_pago: Mapped[str | None] = mapped_column(String(50), default="EFECTIVO", nullable=True)
+
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

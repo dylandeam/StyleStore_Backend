@@ -27,3 +27,7 @@ alembic/versions/__pycache__/
 # Uploads
 uploads/*
 !uploads/**/.gitkeep
+
+# Backups
+backups/*
+!backups/**/.gitkeep

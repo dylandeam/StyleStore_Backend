@@ -23,6 +23,7 @@ class Pago(Base):
     tipo_pago: Mapped[str] = mapped_column(String(30), nullable=False, default="en linea")  # 'en linea' | 'en caja'
     estado: Mapped[str] = mapped_column(String(30), nullable=False, default="pendiente")  # 'pendiente', 'aprobado', 'fallido'
     paypal_order_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    paypal_capture_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

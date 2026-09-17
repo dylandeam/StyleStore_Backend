@@ -11,6 +11,7 @@ class PagoCreateRequest(BaseModel):
     orden_venta_id: int
     tipo_pago: str = Field("en linea", description="'en linea' (PayPal) o 'en caja'")
     paypal_order_id: str | None = None
+    paypal_capture_id: str | None = None
 
 
 class PagoResponse(BaseModel):
@@ -20,9 +21,36 @@ class PagoResponse(BaseModel):
     tipo_pago: str
     estado: str
     paypal_order_id: str | None = None
+    paypal_capture_id: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class PayPalCrearOrdenRequest(BaseModel):
+    orden_venta_id: int
+    return_url: str | None = None
+    cancel_url: str | None = None
+
+
+class PayPalCapturarOrdenRequest(BaseModel):
+    paypal_order_id: str
+    orden_venta_id: int
+
+
+class CobroCajaRequest(BaseModel):
+    orden_venta_id: int
+    efectivo_recibido: Decimal = Field(..., ge=0)
+
+
+class CobroCajaResponse(BaseModel):
+    pago_id: int
+    orden_venta_id: int
+    total: Decimal
+    efectivo_recibido: Decimal
+    cambio_devuelto: Decimal
+    ticket_numero: str
+    fecha: datetime
 
 
 # --- ENVÍOS ---
@@ -45,6 +73,16 @@ class EnvioUpdateRequest(BaseModel):
     referencia: str | None = None
     costo: Decimal | None = None
     estado: str | None = None
+    yango_tracking_code: str | None = None
+    yango_tracking_url: str | None = None
+    delivery_conductor: str | None = None
+
+
+class EnvioYangoUpdateRequest(BaseModel):
+    yango_tracking_code: str | None = None
+    yango_tracking_url: str | None = None
+    delivery_conductor: str | None = None
+    estado: str | None = None
 
 
 class EnvioResponse(BaseModel):
@@ -56,6 +94,9 @@ class EnvioResponse(BaseModel):
     costo: Decimal
     estado: str
     fecha: date
+    yango_tracking_code: str | None = None
+    yango_tracking_url: str | None = None
+    delivery_conductor: str | None = None
     created_at: datetime
     cliente_nombre: str | None = None
 

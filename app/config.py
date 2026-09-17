@@ -64,5 +64,16 @@ class Settings:
     PORT: int = int(os.getenv("PORT", "8000"))
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
 
+    # PayPal Config
+    PAYPAL_CLIENT_ID: str = os.getenv("PAYPAL_CLIENT_ID", "mock_paypal_client_id")
+    PAYPAL_CLIENT_SECRET: str = os.getenv("PAYPAL_CLIENT_SECRET", "mock_paypal_secret")
+    PAYPAL_MODE: str = os.getenv("PAYPAL_MODE", "sandbox")  # 'sandbox' | 'live'
+
+    # Security & Master Key for Bitácora
+    ADMIN_MASTER_KEY: str = os.getenv("ADMIN_MASTER_KEY", "StyleStoreMaster2025#")
+
+    # Backups directory
+    BACKUP_DIR: Path = Path(__file__).resolve().parent.parent / "backups"
+
 
 settings = Settings()

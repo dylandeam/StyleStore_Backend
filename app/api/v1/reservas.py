@@ -71,12 +71,19 @@ def _serialize_reserva(res: Reserva) -> dict:
     }
 
 
-@router.get("", response_model=list[ReservaResponse], summary="Listar reservas (Administración)")
+@router.get("", response_model=list[ReservaResponse], summary="Listar reservas (Administración y Clientes)")
 async def list_reservas(
-    current_user: User = Depends(require_permission("reservas.ver")),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Listado administrativo de reservas para Encargado y Administrador."""
+    """Listado de reservas. Si es cliente retorna sus reservas, si es staff retorna todas."""
+    if current_user.role == "cliente":
+        cliente = db.query(Cliente).filter(Cliente.user_id == current_user.id).first()
+        if not cliente:
+            return []
+        reservas = db.query(Reserva).filter(Reserva.codigo_cliente == cliente.codigo).order_by(Reserva.created_at.desc()).all()
+        return [_serialize_reserva(r) for r in reservas]
+
     reservas = db.query(Reserva).order_by(Reserva.created_at.desc()).all()
     return [_serialize_reserva(r) for r in reservas]
 

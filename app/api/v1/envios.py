@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User
+from app.models.cliente import Cliente
 from app.models.orden_venta import OrdenVenta
 from app.models.envio import Envio
 from app.schemas.pago_envio import (
@@ -56,6 +57,9 @@ def _serialize_envio(e: Envio) -> dict:
         "costo": e.costo,
         "estado": e.estado,
         "fecha": e.fecha,
+        "yango_tracking_code": e.yango_tracking_code,
+        "yango_tracking_url": e.yango_tracking_url,
+        "delivery_conductor": e.delivery_conductor,
         "created_at": e.created_at,
         "cliente_nombre": cli_name,
     }
@@ -141,12 +145,82 @@ async def complete_envio(
     return _serialize_envio(envio)
 
 
-@router.get("", response_model=list[EnvioResponse], summary="Listar envíos (Administración)")
-async def list_envios(
-    current_user: User = Depends(require_permission("envios.ver")),
+from app.schemas.pago_envio import EnvioYangoUpdateRequest
+
+
+@router.patch("/{envio_id}/yango", response_model=EnvioResponse, summary="Asignar o actualizar tracking de Yango Delivery")
+async def update_yango_tracking(
+    envio_id: int,
+    payload: EnvioYangoUpdateRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Listado administrativo de despachos y envíos."""
+    """
+    El encargado ingresa a mano el código de Yango Delivery, URL de seguimiento y conductor.
+    Actualiza el estado a 'en camino' si no se especifica otro.
+    """
+    envio = db.query(Envio).filter(Envio.id == envio_id).first()
+    if not envio:
+        raise NotFoundException(f"Envío con ID {envio_id} no encontrado.")
+
+    if payload.yango_tracking_code is not None:
+        envio.yango_tracking_code = payload.yango_tracking_code.strip()
+    if payload.yango_tracking_url is not None:
+        envio.yango_tracking_url = payload.yango_tracking_url.strip()
+    if payload.delivery_conductor is not None:
+        envio.delivery_conductor = payload.delivery_conductor.strip()
+    if payload.estado is not None:
+        envio.estado = payload.estado
+    else:
+        envio.estado = "en camino"
+
+    if envio.orden_venta and envio.estado == "en camino":
+        envio.orden_venta.estado = "en camino"
+
+    db.commit()
+    db.refresh(envio)
+
+    BitacoraService.registrar(
+        db=db,
+        user=current_user,
+        action=f"Actualizó despacho Yango para Envío #{envio.id} (Código: {envio.yango_tracking_code}, Repartidor: {envio.delivery_conductor})",
+        module="envios",
+    )
+    return _serialize_envio(envio)
+
+
+@router.get("/orden/{orden_id}", response_model=EnvioResponse, summary="Consultar envío por Orden de Venta")
+async def get_envio_by_orden(
+    orden_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Permite al cliente o encargado ver el estado y tracking en vivo del envío de su orden."""
+    envio = db.query(Envio).filter(Envio.orden_venta_id == orden_id).first()
+    if not envio:
+        raise NotFoundException(f"No hay despacho registrado para la orden #{orden_id}.")
+    return _serialize_envio(envio)
+
+
+@router.get("", response_model=list[EnvioResponse], summary="Listar envíos (Administración y Clientes)")
+async def list_envios(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Listado de envíos. Si es cliente retorna sus envíos, si es staff retorna todos."""
+    if current_user.role == "cliente":
+        cliente = db.query(Cliente).filter(Cliente.user_id == current_user.id).first()
+        if not cliente:
+            return []
+        envios = (
+            db.query(Envio)
+            .join(OrdenVenta, Envio.orden_venta_id == OrdenVenta.id)
+            .filter(OrdenVenta.codigo_cliente == cliente.codigo)
+            .order_by(Envio.created_at.desc())
+            .all()
+        )
+        return [_serialize_envio(e) for e in envios]
+
     envios = db.query(Envio).order_by(Envio.created_at.desc()).all()
     return [_serialize_envio(e) for e in envios]
 

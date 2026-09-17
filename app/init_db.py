@@ -4,12 +4,49 @@ Database initialization and default admin / permissions seeder.
 import logging
 from sqlalchemy.orm import Session
 
+from sqlalchemy import text
 from app.database import SessionLocal, Base, engine
 from app.models.user import User
 from app.core.security import hash_password
 from app.services.role_service import RoleService
 
 logger = logging.getLogger("init_db")
+
+
+def _run_column_migrations(db: Session):
+    """Ejecuta migraciones defensivas para añadir columnas nuevas si no existen."""
+    statements = [
+        # Users
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS developer_key_hash VARCHAR(255)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS bitacora_password_hash VARCHAR(255)",
+        # Bitacora
+        "ALTER TABLE bitacora ADD COLUMN IF NOT EXISTS ip_address VARCHAR(50)",
+        # OrdenVenta
+        "ALTER TABLE orden_venta ADD COLUMN IF NOT EXISTS ticket_numero VARCHAR(50)",
+        "ALTER TABLE orden_venta ADD COLUMN IF NOT EXISTS efectivo_recibido NUMERIC(10, 2)",
+        "ALTER TABLE orden_venta ADD COLUMN IF NOT EXISTS cambio_devuelto NUMERIC(10, 2)",
+        "ALTER TABLE orden_venta ADD COLUMN IF NOT EXISTS metodo_pago VARCHAR(50)",
+        # Pagos
+        "ALTER TABLE pagos ADD COLUMN IF NOT EXISTS paypal_capture_id VARCHAR(100)",
+        # Envios
+        "ALTER TABLE envios ADD COLUMN IF NOT EXISTS yango_tracking_code VARCHAR(100)",
+        "ALTER TABLE envios ADD COLUMN IF NOT EXISTS yango_tracking_url VARCHAR(500)",
+        "ALTER TABLE envios ADD COLUMN IF NOT EXISTS delivery_conductor VARCHAR(150)",
+    ]
+    for stmt in statements:
+        try:
+            db.execute(text(stmt))
+            db.commit()
+        except Exception:
+            db.rollback()
+            # SQLite fallback: en sqlite 'ADD COLUMN IF NOT EXISTS' puede no ser soportado
+            # así que intentamos sin 'IF NOT EXISTS'
+            sqlite_stmt = stmt.replace(" IF NOT EXISTS", "")
+            try:
+                db.execute(text(sqlite_stmt))
+                db.commit()
+            except Exception:
+                db.rollback()
 
 
 def init_db():
@@ -19,6 +56,9 @@ def init_db():
 
     db: Session = SessionLocal()
     try:
+        # Run defensive column migrations
+        _run_column_migrations(db)
+
         # Seed permissions and roles
         role_service = RoleService(db)
         role_service.seed_default_permissions_and_roles()

@@ -13,6 +13,7 @@ class BitacoraResponse(BaseModel):
     user_snapshot: str = Field(..., description="User email or name at time of event")
     action: str = Field(..., description="Description of the action performed")
     module: str | None = Field(None, description="Module where action occurred")
+    ip_address: str | None = Field(None, description="IP address of client who performed action")
     created_at: datetime = Field(..., description="Timestamp of the event")
 
     model_config = {"from_attributes": True}

@@ -29,6 +29,8 @@ class User(Base):
         Integer, ForeignKey("roles.id", ondelete="SET NULL"), nullable=True, index=True
     )
     role: Mapped[str] = mapped_column(String(50), nullable=False, default="cliente", server_default="cliente")
+    developer_key_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    bitacora_password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

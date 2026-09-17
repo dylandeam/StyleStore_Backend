@@ -29,6 +29,8 @@ from app.api.v1.envios import router as envios_router
 from app.api.v1.ventas import router as ventas_router
 from app.api.v1.inventario import router as inventario_router
 from app.api.v1.uploads import router as uploads_router
+from app.api.v1.backups import router as backups_router
+from app.api.v1.reportes import router as reportes_router
 
 api_v1_router = APIRouter()
 
@@ -58,3 +60,5 @@ api_v1_router.include_router(envios_router)
 api_v1_router.include_router(ventas_router)
 api_v1_router.include_router(inventario_router)
 api_v1_router.include_router(uploads_router)
+api_v1_router.include_router(backups_router)
+api_v1_router.include_router(reportes_router)

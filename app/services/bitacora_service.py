@@ -21,6 +21,7 @@ class BitacoraService:
         user: User | str | None,
         action: str,
         module: str | None = None,
+        ip_address: str | None = None,
     ) -> Bitacora:
         """
         Record an action in the audit log.
@@ -40,6 +41,7 @@ class BitacoraService:
             user_snapshot=user_snapshot,
             action=action,
             module=module,
+            ip_address=ip_address or "127.0.0.1",
         )
         db.add(log_entry)
         db.commit()
@@ -53,6 +55,7 @@ class BitacoraService:
         user: User | str | None = None,
         user_id: int | None = None,
         user_snapshot: str | None = None,
+        ip_address: str | None = None,
         db: Session | None = None,
     ) -> Bitacora:
         """Helper para registrar acciones cuando el servicio ya fue instanciado con db."""
@@ -61,13 +64,14 @@ class BitacoraService:
             raise ValueError("No database session provided to registrar_accion")
 
         if user is not None:
-            return self.registrar(db=target_db, user=user, action=action, module=module)
+            return self.registrar(db=target_db, user=user, action=action, module=module, ip_address=ip_address)
 
         log_entry = Bitacora(
             user_id=user_id,
             user_snapshot=user_snapshot or "Sistema",
             action=action,
             module=module,
+            ip_address=ip_address or "127.0.0.1",
         )
         target_db.add(log_entry)
         target_db.commit()
