@@ -269,7 +269,12 @@ async def confirm_cart(
 
         # Validar y descontar stock atómicamente
         for item in carrito.items:
-            stock = db.query(StockInventario).filter(StockInventario.id == item.stock_inventario_id).with_for_update().first()
+            stock = (
+                db.query(StockInventario)
+                .filter(StockInventario.id == item.stock_inventario_id)
+                .with_for_update(of=StockInventario)
+                .first()
+            )
             if not stock:
                 db.rollback()
                 raise NotFoundException(f"Inventario para el ítem #{item.id} no encontrado.")

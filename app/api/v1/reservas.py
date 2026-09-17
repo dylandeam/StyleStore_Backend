@@ -136,7 +136,12 @@ async def create_reserva(
 
     # Descuento atómico de stock por cada ítem
     for item in payload.items:
-        stock = db.query(StockInventario).filter(StockInventario.id == item.stock_inventario_id).with_for_update().first()
+        stock = (
+            db.query(StockInventario)
+            .filter(StockInventario.id == item.stock_inventario_id)
+            .with_for_update(of=StockInventario)
+            .first()
+        )
         if not stock:
             db.rollback()
             raise NotFoundException(f"Inventario con ID {item.stock_inventario_id} no encontrado.")
