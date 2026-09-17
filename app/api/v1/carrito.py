@@ -4,7 +4,7 @@ Incluye carrito activo del cliente, confirmación con transacción de stock y ge
 """
 from datetime import datetime
 from decimal import Decimal
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -318,6 +318,7 @@ async def confirm_cart(
                 sucursal_id = first_suc.id
 
         # Crear Orden de Venta
+        metodo = (payload.metodo_pago or "EFECTIVO").upper()
         orden = OrdenVenta(
             fecha=now.date(),
             estado="pendiente_pago",
@@ -326,7 +327,7 @@ async def confirm_cart(
             codigo_cliente=cliente.codigo,
             sucursal_id=sucursal_id,
             carrito_id=carrito.id,
-            metodo_pago="EFECTIVO",
+            metodo_pago=metodo,
         )
         db.add(orden)
         db.flush()

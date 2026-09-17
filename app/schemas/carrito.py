@@ -45,3 +45,6 @@ class CarritoResponse(BaseModel):
 
 class ConfirmarCarritoRequest(BaseModel):
     sucursal_id: int | None = None
+    metodo_pago: str | None = "EFECTIVO"
+    direccion_envio: str | None = None
+    despacho_yango: bool | None = False
