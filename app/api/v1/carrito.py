@@ -31,6 +31,9 @@ def _get_or_create_cliente(user: User, db: Session) -> Cliente:
     if not cli:
         clean_ci = user.ci or str(user.id).zfill(4)
         cod = f"CL-{user.name[:2].upper()}-{clean_ci[-4:]}"
+        existing_cod = db.query(Cliente).filter(Cliente.codigo == cod).first()
+        if existing_cod:
+            cod = f"CL-{user.name[:2].upper()}-{user.id}"
         cli = Cliente(
             codigo=cod,
             user_id=user.id,
@@ -38,7 +41,8 @@ def _get_or_create_cliente(user: User, db: Session) -> Cliente:
             direccion=user.direccion or "Sin dirección",
         )
         db.add(cli)
-        db.flush()
+        db.commit()
+        db.refresh(cli)
     return cli
 
 
@@ -248,101 +252,129 @@ async def confirm_cart(
     2. Cambia estado del carrito a 'confirmado'.
     3. Genera automáticamente la Orden de Venta y Detalle_Venta.
     """
-    cliente = _get_or_create_cliente(current_user, db)
-    carrito = (
-        db.query(Carrito)
-        .filter(Carrito.codigo_cliente == cliente.codigo, Carrito.estado == "activo")
-        .first()
-    )
-    if not carrito or not carrito.items:
-        raise BadRequestException("El carrito está vacío o ya fue confirmado.")
-
-    now = datetime.now()
-    total_venta = Decimal("0.00")
-    detalles_orden = []
-
-    # Validar y descontar stock atómicamente
-    for item in carrito.items:
-        stock = db.query(StockInventario).filter(StockInventario.id == item.stock_inventario_id).with_for_update().first()
-        if not stock:
-            db.rollback()
-            raise NotFoundException(f"Inventario para el ítem #{item.id} no encontrado.")
-
-        if stock.cantidad < item.cantidad:
-            db.rollback()
-            prod_name = stock.producto_color.producto.nombre if (stock.producto_color and stock.producto_color.producto) else "Producto"
-            raise BadRequestException(f"Stock insuficiente para '{prod_name}'. Disponible: {stock.cantidad}, requerido: {item.cantidad}.")
-
-        # Descuento
-        stock.cantidad -= item.cantidad
-
-        # Datos para detalle venta
-        subtotal = item.precio_unitario * item.cantidad
-        total_venta += subtotal
-
-        prod_nom = "Prenda"
-        col_nom = None
-        talla_nom = None
-        if stock.producto_color:
-            col_nom = stock.producto_color.color.nombre if stock.producto_color.color else None
-            if stock.producto_color.producto:
-                prod_nom = stock.producto_color.producto.nombre
-        if stock.talla:
-            talla_nom = stock.talla.nombre
-
-        detalles_orden.append({
-            "stock_inventario_id": stock.id,
-            "producto_nombre": prod_nom,
-            "color_nombre": col_nom,
-            "talla_nombre": talla_nom,
-            "cantidad": item.cantidad,
-            "precio_unitario": item.precio_unitario,
-            "subtotal": subtotal,
-        })
-
-    # Crear Orden de Venta
-    orden = OrdenVenta(
-        fecha=now.date(),
-        estado="pendiente_pago",
-        total=total_venta,
-        tipo_venta="en linea",
-        codigo_cliente=cliente.codigo,
-        sucursal_id=payload.sucursal_id,
-        carrito_id=carrito.id,
-    )
-    db.add(orden)
-    db.flush()
-
-    for d in detalles_orden:
-        dv = DetalleVenta(
-            orden_venta_id=orden.id,
-            stock_inventario_id=d["stock_inventario_id"],
-            producto_nombre=d["producto_nombre"],
-            color_nombre=d["color_nombre"],
-            talla_nombre=d["talla_nombre"],
-            cantidad=d["cantidad"],
-            precio_unitario=d["precio_unitario"],
-            subtotal=d["subtotal"],
+    try:
+        cliente = _get_or_create_cliente(current_user, db)
+        carrito = (
+            db.query(Carrito)
+            .filter(Carrito.codigo_cliente == cliente.codigo, Carrito.estado == "activo")
+            .first()
         )
-        db.add(dv)
+        if not carrito or not carrito.items:
+            raise BadRequestException("El carrito está vacío o ya fue confirmado.")
 
-    carrito.estado = "confirmado"
-    db.commit()
-    db.refresh(orden)
+        now = datetime.now()
+        total_venta = Decimal("0.00")
+        detalles_orden = []
+        sucursal_id = payload.sucursal_id
 
-    BitacoraService.registrar(
-        db=db,
-        user=current_user,
-        action=f"Confirmó carrito #{carrito.id} generando Orden de Venta #{orden.id} por Bs {orden.total}",
-        module="carrito",
-    )
+        # Validar y descontar stock atómicamente
+        for item in carrito.items:
+            stock = db.query(StockInventario).filter(StockInventario.id == item.stock_inventario_id).with_for_update().first()
+            if not stock:
+                db.rollback()
+                raise NotFoundException(f"Inventario para el ítem #{item.id} no encontrado.")
 
-    return {
-        "message": "Carrito confirmado exitosamente.",
-        "orden_venta_id": orden.id,
-        "total": orden.total,
-        "estado": orden.estado,
-    }
+            if stock.cantidad < item.cantidad:
+                db.rollback()
+                prod_name = stock.producto_color.producto.nombre if (stock.producto_color and stock.producto_color.producto) else "Producto"
+                raise BadRequestException(f"Stock insuficiente para '{prod_name}'. Disponible: {stock.cantidad}, requerido: {item.cantidad}.")
+
+            # Si no se pasó sucursal_id explícita, adoptar la sucursal de donde proviene el stock
+            if not sucursal_id and stock.sucursal_id:
+                sucursal_id = stock.sucursal_id
+
+            # Descuento atómico
+            stock.cantidad -= item.cantidad
+
+            # Datos para detalle venta
+            subtotal = item.precio_unitario * item.cantidad
+            total_venta += subtotal
+
+            prod_nom = "Prenda"
+            col_nom = None
+            talla_nom = None
+            if stock.producto_color:
+                col_nom = stock.producto_color.color.nombre if stock.producto_color.color else None
+                if stock.producto_color.producto:
+                    prod_nom = stock.producto_color.producto.nombre
+            if stock.talla:
+                talla_nom = stock.talla.nombre
+
+            detalles_orden.append({
+                "stock_inventario_id": stock.id,
+                "producto_nombre": prod_nom,
+                "color_nombre": col_nom,
+                "talla_nombre": talla_nom,
+                "cantidad": item.cantidad,
+                "precio_unitario": item.precio_unitario,
+                "subtotal": subtotal,
+            })
+
+        # Si aún no hay sucursal_id, buscar la primera sucursal activa como fallback seguro
+        if not sucursal_id:
+            from app.models.sucursal import Sucursal
+            first_suc = db.query(Sucursal).filter(Sucursal.active == True).first()
+            if first_suc:
+                sucursal_id = first_suc.id
+
+        # Crear Orden de Venta
+        orden = OrdenVenta(
+            fecha=now.date(),
+            estado="pendiente_pago",
+            total=total_venta,
+            tipo_venta="en linea",
+            codigo_cliente=cliente.codigo,
+            sucursal_id=sucursal_id,
+            carrito_id=carrito.id,
+            metodo_pago="EFECTIVO",
+        )
+        db.add(orden)
+        db.flush()
+
+        for d in detalles_orden:
+            dv = DetalleVenta(
+                orden_venta_id=orden.id,
+                stock_inventario_id=d["stock_inventario_id"],
+                producto_nombre=d["producto_nombre"],
+                color_nombre=d["color_nombre"],
+                talla_nombre=d["talla_nombre"],
+                cantidad=d["cantidad"],
+                precio_unitario=d["precio_unitario"],
+                subtotal=d["subtotal"],
+            )
+            db.add(dv)
+
+        carrito.estado = "confirmado"
+        db.commit()
+        db.refresh(orden)
+
+        try:
+            BitacoraService.registrar(
+                db=db,
+                user=current_user,
+                action=f"Confirmó carrito #{carrito.id} generando Orden de Venta #{orden.id} por Bs {orden.total}",
+                module="carrito",
+            )
+        except Exception as b_err:
+            print(f"Warning bitacora registro: {b_err}")
+
+        return {
+            "message": "Carrito confirmado exitosamente.",
+            "orden_venta_id": orden.id,
+            "total": orden.total,
+            "estado": orden.estado,
+        }
+    except (BadRequestException, NotFoundException, HTTPException):
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=400,
+            detail=f"Error al procesar la orden: {str(e)}",
+        )
 
 
 @router.get("", summary="Listado administrativo de carritos")

@@ -22,10 +22,20 @@ def _run_column_migrations(db: Session):
         # Bitacora
         "ALTER TABLE bitacora ADD COLUMN IF NOT EXISTS ip_address VARCHAR(50)",
         # OrdenVenta
+        "ALTER TABLE orden_venta ADD COLUMN IF NOT EXISTS carrito_id INTEGER",
         "ALTER TABLE orden_venta ADD COLUMN IF NOT EXISTS ticket_numero VARCHAR(50)",
         "ALTER TABLE orden_venta ADD COLUMN IF NOT EXISTS efectivo_recibido NUMERIC(10, 2)",
         "ALTER TABLE orden_venta ADD COLUMN IF NOT EXISTS cambio_devuelto NUMERIC(10, 2)",
         "ALTER TABLE orden_venta ADD COLUMN IF NOT EXISTS metodo_pago VARCHAR(50)",
+        "ALTER TABLE orden_venta ALTER COLUMN sucursal_id DROP NOT NULL",
+        # DetalleVenta
+        "ALTER TABLE detalle_venta ADD COLUMN IF NOT EXISTS stock_inventario_id INTEGER",
+        "ALTER TABLE detalle_venta ADD COLUMN IF NOT EXISTS producto_nombre VARCHAR(150)",
+        "ALTER TABLE detalle_venta ADD COLUMN IF NOT EXISTS color_nombre VARCHAR(50)",
+        "ALTER TABLE detalle_venta ADD COLUMN IF NOT EXISTS talla_nombre VARCHAR(20)",
+        "ALTER TABLE detalle_venta ADD COLUMN IF NOT EXISTS cantidad INTEGER",
+        "ALTER TABLE detalle_venta ADD COLUMN IF NOT EXISTS precio_unitario NUMERIC(10, 2)",
+        "ALTER TABLE detalle_venta ADD COLUMN IF NOT EXISTS subtotal NUMERIC(10, 2)",
         # Pagos
         "ALTER TABLE pagos ADD COLUMN IF NOT EXISTS paypal_capture_id VARCHAR(100)",
         # Envios

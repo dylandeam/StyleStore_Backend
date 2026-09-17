@@ -12,9 +12,14 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(SQLAlchemyError)
     async def sqlalchemy_error_handler(request: Request, exc: SQLAlchemyError):
         """Handle database errors gracefully."""
+        import traceback
+        traceback.print_exc()
+        detail = str(exc)
+        if hasattr(exc, "orig") and exc.orig:
+            detail = str(exc.orig)
         return JSONResponse(
             status_code=500,
-            content={"detail": "An internal database error occurred."},
+            content={"detail": f"Database error: {detail}"},
         )
 
     @app.exception_handler(Exception)
