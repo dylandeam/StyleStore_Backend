@@ -30,10 +30,28 @@ from app.models.cliente import Cliente
 from app.models.user import User
 
 
-def clean_sheet_title(title: str) -> str:
-    """Sanitiza títulos de hojas de Excel: max 31 chars, sin caracteres prohibidos."""
-    sanitized = re.sub(r'[\\/*?:\[\]]', '', title)
-    return sanitized[:31] if sanitized else "Reporte"
+def _get_cliente_nombre(cliente) -> str:
+    """Extrae el nombre completo del cliente o su código de forma segura."""
+    if not cliente:
+        return "Cliente General"
+    if hasattr(cliente, "user") and cliente.user:
+        full = f"{cliente.user.name} {cliente.user.apellido or ''}".strip()
+        if full:
+            return full
+    if hasattr(cliente, "nombre") and cliente.nombre:
+        return cliente.nombre
+    return getattr(cliente, "codigo", "Cliente General")
+
+
+def _get_sucursal_nombre(sucursal) -> str:
+    """Extrae el nombre o ciudad de la sucursal de forma segura."""
+    if not sucursal:
+        return "Central"
+    if hasattr(sucursal, "name") and sucursal.name:
+        return sucursal.name
+    if hasattr(sucursal, "city") and sucursal.city:
+        return sucursal.city
+    return getattr(sucursal, "nombre", "Central")
 
 
 class ReportService:
@@ -108,7 +126,7 @@ class ReportService:
         ws["A2"].font = Font(name="Arial", size=9, italic=True, color="666666")
 
         # Columnas
-        headers = ["N° Venta / Ticket", "Fecha", "Cliente", "Sucursal", "Método Pago", "Estado", "Total ($)"]
+        headers = ["N° Venta / Ticket", "Fecha", "Cliente", "Sucursal", "Método Pago", "Estado", "Total (Bs.)"]
         ws.row_dimensions[4].height = 24
 
         for col_idx, header in enumerate(headers, 1):
@@ -124,16 +142,19 @@ class ReportService:
         for v in ventas:
             total_num = float(v.total)
             gran_total += Decimal(str(v.total))
+            cli_nom = _get_cliente_nombre(v.cliente)
+            suc_nom = _get_sucursal_nombre(v.sucursal)
+
             ws.cell(row=row_idx, column=1, value=v.ticket_numero or f"ORD-{v.id:04d}").font = normal_font
             ws.cell(row=row_idx, column=2, value=v.fecha.strftime("%Y-%m-%d") if v.fecha else "").font = normal_font
-            ws.cell(row=row_idx, column=3, value=v.cliente.nombre if v.cliente else "Cliente General").font = normal_font
-            ws.cell(row=row_idx, column=4, value=v.sucursal.nombre if v.sucursal else "Central").font = normal_font
-            ws.cell(row=row_idx, column=5, value=(v.metodo_pago or "efectivo").upper()).font = normal_font
+            ws.cell(row=row_idx, column=3, value=cli_nom).font = normal_font
+            ws.cell(row=row_idx, column=4, value=suc_nom).font = normal_font
+            ws.cell(row=row_idx, column=5, value=(v.metodo_pago or "EFECTIVO").upper()).font = normal_font
             ws.cell(row=row_idx, column=6, value=v.estado.capitalize()).font = normal_font
             
             c_total = ws.cell(row=row_idx, column=7, value=total_num)
             c_total.font = normal_font
-            c_total.number_format = '$#,##0.00'
+            c_total.number_format = 'Bs. #,##0.00'
             c_total.alignment = Alignment(horizontal="right")
 
             for c in range(1, 8):
@@ -148,7 +169,7 @@ class ReportService:
         
         tot_val = ws.cell(row=row_idx, column=7, value=float(gran_total))
         tot_val.font = bold_font
-        tot_val.number_format = '$#,##0.00'
+        tot_val.number_format = 'Bs. #,##0.00'
         tot_val.alignment = Alignment(horizontal="right", vertical="center")
 
         # Auto-ajuste de anchos de columna
@@ -205,23 +226,26 @@ class ReportService:
         elements.append(Spacer(1, 15))
 
         # Tabla de ventas
-        table_data = [["N° Ticket", "Fecha", "Cliente", "Sucursal", "Método", "Total"]]
+        table_data = [["N° Ticket / Orden", "Fecha", "Cliente", "Sucursal", "Método", "Total (Bs.)"]]
         gran_total = Decimal("0.00")
 
         for v in ventas:
             gran_total += Decimal(str(v.total))
+            cli_nom = _get_cliente_nombre(v.cliente)
+            suc_nom = _get_sucursal_nombre(v.sucursal)
+
             table_data.append([
                 v.ticket_numero or f"ORD-{v.id:04d}",
                 v.fecha.strftime("%d/%m/%Y") if v.fecha else "",
-                (v.cliente.nombre if v.cliente else "Cliente General")[:20],
-                (v.sucursal.nombre if v.sucursal else "Central")[:16],
-                (v.metodo_pago or "efectivo")[:10].upper(),
-                f"${float(v.total):.2f}"
+                cli_nom[:22],
+                suc_nom[:18],
+                (v.metodo_pago or "EFECTIVO")[:10].upper(),
+                f"Bs. {float(v.total):.2f}"
             ])
 
-        table_data.append(["", "", "", "", "TOTAL:", f"${float(gran_total):.2f}"])
+        table_data.append(["", "", "", "", "TOTAL:", f"Bs. {float(gran_total):.2f}"])
 
-        col_widths = [80, 70, 140, 110, 70, 70]
+        col_widths = [90, 70, 140, 100, 65, 75]
         table = Table(table_data, colWidths=col_widths)
         table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#14263D')),
