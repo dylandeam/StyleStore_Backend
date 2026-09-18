@@ -30,6 +30,12 @@ from app.models.cliente import Cliente
 from app.models.user import User
 
 
+def clean_sheet_title(title: str) -> str:
+    """Remueve caracteres no permitidos en nombres de hojas de Excel y trunca a 31 caracteres."""
+    cleaned = re.sub(r'[\\/*?:\[\]]', '', str(title or "Reporte"))
+    return cleaned[:31]
+
+
 def _get_cliente_nombre(cliente) -> str:
     """Extrae el nombre completo del cliente o su código de forma segura."""
     if not cliente:
