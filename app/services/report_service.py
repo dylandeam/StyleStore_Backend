@@ -6,7 +6,7 @@ import io
 import re
 from datetime import datetime, date
 from decimal import Decimal
-from typing import List, Optional
+from typing import List, Optional, Any
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 
@@ -105,7 +105,8 @@ class ReportService:
         ventas = self.get_ventas_data(fecha_inicio, fecha_fin, sucursal_id, metodo_pago)
 
         wb = openpyxl.Workbook()
-        ws = wb.active
+        ws: Any = wb.active if wb.active is not None else wb.create_sheet()
+        assert ws is not None
         ws.title = clean_sheet_title("Ventas StyleStore")
 
         # Paleta de colores
@@ -225,7 +226,7 @@ class ReportService:
             textColor=colors.HexColor('#666666')
         )
 
-        elements = []
+        elements: List[Any] = []
         elements.append(Paragraph("StyleStore - Reporte de Ventas", title_style))
         gen_str = datetime.now().strftime("%d/%m/%Y %H:%M")
         elements.append(Paragraph(f"Emitido el: {gen_str} | Ventas listadas: {len(ventas)}", subtitle_style))
@@ -296,7 +297,8 @@ class ReportService:
         items = self.get_inventario_data(sucursal_id, solo_bajo_stock)
 
         wb = openpyxl.Workbook()
-        ws = wb.active
+        ws: Any = wb.active if wb.active is not None else wb.create_sheet()
+        assert ws is not None
         ws.title = clean_sheet_title("Inventario StyleStore")
 
         navy_fill = PatternFill(start_color="14263D", end_color="14263D", fill_type="solid")
@@ -367,7 +369,7 @@ class ReportService:
         styles = getSampleStyleSheet()
 
         title_style = ParagraphStyle('InvTitle', parent=styles['Heading1'], fontSize=18, textColor=colors.HexColor('#14263D'))
-        elements = [
+        elements: List[Any] = [
             Paragraph("StyleStore - Reporte de Inventario", title_style),
             Spacer(1, 15)
         ]

@@ -339,8 +339,8 @@ class BackupService:
         ]
 
         try:
-            # Desactivar temporalmente restricciones si el motor lo permite
-            is_sqlite = (getattr(self.db.bind.dialect, "name", "") == "sqlite")
+            bind = getattr(self.db, "bind", None)
+            is_sqlite = (getattr(getattr(bind, "dialect", None), "name", "") == "sqlite") if bind else False
             if is_sqlite:
                 self.db.execute(text("PRAGMA foreign_keys = OFF;"))
 

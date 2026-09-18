@@ -17,7 +17,7 @@ class ProductoCreate(BaseModel):
     nombre: str = Field(..., min_length=2, max_length=150)
     descripcion: str | None = None
     foto: str | None = None
-    precio: Decimal = Field(..., gt=0)
+    precio: Decimal = Field(..., gt=Decimal("0"))
     categoria_id: int
     temporada_id: int
     coleccion_id: int | None = Field(None, description="ID de colección de prendas")
@@ -32,7 +32,7 @@ class ProductoUpdate(BaseModel):
     nombre: str | None = None
     descripcion: str | None = None
     foto: str | None = None
-    precio: Decimal | None = Field(None, gt=0)
+    precio: Decimal | None = Field(None, gt=Decimal("0"))
     categoria_id: int | None = None
     temporada_id: int | None = None
     coleccion_id: int | None = None

@@ -172,7 +172,7 @@ async def upload_and_restore(
     if current_user.role != "administrador":
         raise ForbiddenException("Solo el administrador puede restaurar copias de seguridad.")
 
-    if not file.filename.endswith(".json"):
+    if not (file.filename and file.filename.endswith(".json")):
         raise BadRequestException("Solo se permiten archivos de respaldo en formato .json.")
 
     content = await file.read()

@@ -40,7 +40,7 @@ class PayPalCapturarOrdenRequest(BaseModel):
 
 class CobroCajaRequest(BaseModel):
     orden_venta_id: int
-    efectivo_recibido: Decimal = Field(..., ge=0)
+    efectivo_recibido: Decimal = Field(..., ge=Decimal("0"))
 
 
 class CobroCajaResponse(BaseModel):

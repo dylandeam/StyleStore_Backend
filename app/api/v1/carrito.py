@@ -212,6 +212,8 @@ async def update_cart_item(
 
     db.commit()
     carrito = db.query(Carrito).filter(Carrito.id == item.carrito_id).first()
+    if not carrito:
+        raise NotFoundException("Carrito no encontrado.")
     return _serialize_carrito(carrito)
 
 
@@ -237,6 +239,8 @@ async def remove_cart_item(
     db.commit()
 
     carrito = db.query(Carrito).filter(Carrito.id == carrito_id).first()
+    if not carrito:
+        raise NotFoundException("Carrito no encontrado.")
     return _serialize_carrito(carrito)
 
 
