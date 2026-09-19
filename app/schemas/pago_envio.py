@@ -60,9 +60,10 @@ class EnvioCotizacionRequest(BaseModel):
 
 class EnvioCreateRequest(BaseModel):
     orden_venta_id: int
-    direccion: str = Field(..., min_length=5, max_length=255)
+    direccion: str = Field(..., min_length=2, max_length=255)
     ciudad: str = Field(..., min_length=2, max_length=100)
     referencia: str | None = None
+    ubicacion_url: str | None = Field(None, max_length=500, description="Enlace de Google Maps o Mapas de iOS")
     distancia_km: float | None = Field(None, ge=0)
     costo: Decimal | None = None
 
@@ -71,6 +72,7 @@ class EnvioUpdateRequest(BaseModel):
     direccion: str | None = None
     ciudad: str | None = None
     referencia: str | None = None
+    ubicacion_url: str | None = None
     costo: Decimal | None = None
     estado: str | None = None
     yango_tracking_code: str | None = None
@@ -91,6 +93,7 @@ class EnvioResponse(BaseModel):
     direccion: str
     ciudad: str
     referencia: str | None = None
+    ubicacion_url: str | None = None
     costo: Decimal
     estado: str
     fecha: date

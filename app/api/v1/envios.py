@@ -54,6 +54,7 @@ def _serialize_envio(e: Envio) -> dict:
         "direccion": e.direccion,
         "ciudad": e.ciudad,
         "referencia": e.referencia,
+        "ubicacion_url": getattr(e, "ubicacion_url", None),
         "costo": e.costo,
         "estado": e.estado,
         "fecha": e.fecha,
@@ -95,11 +96,17 @@ async def create_envio(
     else:
         costo = Decimal("12.00")  # Valor intermedio de referencia
 
+    dir_val = payload.direccion.strip() if payload.direccion else ""
+    ub_url = payload.ubicacion_url.strip() if payload.ubicacion_url else None
+    if not dir_val and ub_url:
+        dir_val = "Ubicación GPS (Ver enlace)"
+
     envio = Envio(
         orden_venta_id=orden.id,
-        direccion=payload.direccion.strip(),
-        ciudad=payload.ciudad.strip(),
+        direccion=dir_val,
+        ciudad=payload.ciudad.strip() if payload.ciudad else "Santa Cruz",
         referencia=payload.referencia.strip() if payload.referencia else None,
+        ubicacion_url=ub_url,
         costo=costo,
         estado="pendiente",
         fecha=datetime.now().date(),
@@ -243,6 +250,8 @@ async def update_envio(
         envio.ciudad = payload.ciudad.strip()
     if payload.referencia is not None:
         envio.referencia = payload.referencia.strip() if payload.referencia else None
+    if payload.ubicacion_url is not None:
+        envio.ubicacion_url = payload.ubicacion_url.strip() if payload.ubicacion_url else None
     if payload.costo is not None:
         envio.costo = payload.costo
     if payload.estado is not None:

@@ -42,6 +42,7 @@ def _run_column_migrations(db: Session):
         "ALTER TABLE envios ADD COLUMN IF NOT EXISTS yango_tracking_code VARCHAR(100)",
         "ALTER TABLE envios ADD COLUMN IF NOT EXISTS yango_tracking_url VARCHAR(500)",
         "ALTER TABLE envios ADD COLUMN IF NOT EXISTS delivery_conductor VARCHAR(150)",
+        "ALTER TABLE envios ADD COLUMN IF NOT EXISTS ubicacion_url VARCHAR(500)",
         # Backup Logs
         "ALTER TABLE backup_logs ADD COLUMN IF NOT EXISTS contenido_json TEXT",
     ]

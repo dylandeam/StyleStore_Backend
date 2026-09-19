@@ -28,6 +28,7 @@ class Envio(Base):
     yango_tracking_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
     yango_tracking_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     delivery_conductor: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    ubicacion_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
