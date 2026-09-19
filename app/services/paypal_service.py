@@ -74,6 +74,9 @@ class PayPalService:
         """
         amount_val = f"{float(total):.2f}"
 
+        base_ret = return_url.rstrip("/") if return_url else f"{settings.FRONTEND_URL}/paypal-return"
+        sep = "&" if "?" in base_ret else "?"
+
         if self.is_mock_mode():
             mock_id = f"PAYPAL-MOCK-{orden_id}-{int(time.time())}"
             return {
@@ -81,7 +84,7 @@ class PayPalService:
                 "status": "CREATED",
                 "links": [
                     {
-                        "href": f"{settings.FRONTEND_URL}/paypal-return?token={mock_id}&orden_id={orden_id}",
+                        "href": f"{base_ret}{sep}token={mock_id}&orden_id={orden_id}",
                         "rel": "approve",
                         "method": "GET",
                     }
@@ -97,7 +100,7 @@ class PayPalService:
                 "status": "CREATED",
                 "links": [
                     {
-                        "href": f"{settings.FRONTEND_URL}/paypal-return?token={mock_id}&orden_id={orden_id}",
+                        "href": f"{base_ret}{sep}token={mock_id}&orden_id={orden_id}",
                         "rel": "approve",
                         "method": "GET",
                     }
@@ -144,7 +147,7 @@ class PayPalService:
                         "status": "CREATED",
                         "links": [
                             {
-                                "href": f"{settings.FRONTEND_URL}/paypal-return?token={mock_id}&orden_id={orden_id}",
+                                "href": f"{base_ret}{sep}token={mock_id}&orden_id={orden_id}",
                                 "rel": "approve",
                                 "method": "GET",
                             }
@@ -159,7 +162,7 @@ class PayPalService:
                 "status": "CREATED",
                 "links": [
                     {
-                        "href": f"{settings.FRONTEND_URL}/paypal-return?token={mock_id}&orden_id={orden_id}",
+                        "href": f"{base_ret}{sep}token={mock_id}&orden_id={orden_id}",
                         "rel": "approve",
                         "method": "GET",
                     }
