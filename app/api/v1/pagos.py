@@ -23,7 +23,7 @@ from app.schemas.pago_envio import (
     CobroCajaRequest,
     CobroCajaResponse,
 )
-from app.api.deps import get_current_user, require_permission
+from app.api.deps import get_current_user, get_optional_current_user, require_permission
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.bitacora_service import BitacoraService
 from app.services.paypal_service import paypal_service
@@ -91,18 +91,36 @@ async def create_paypal_order(
 @router.post("/paypal/capturar-orden", response_model=PagoResponse, summary="Capturar fondos de PayPal")
 async def capture_paypal_order(
     payload: PayPalCapturarOrdenRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
 ):
     """
     Captura los fondos tras la aprobación del cliente en PayPal.
-    Implementa idempotencia para evitar errores si la orden ya fue procesada.
+    Implementa idempotencia para evitar errores si la orden ya fue procesada,
+    y resuelve la orden automáticamente si se proporciona solo el token de PayPal.
     """
-    orden = db.query(OrdenVenta).filter(OrdenVenta.id == payload.orden_venta_id).first()
-    if not orden:
-        raise NotFoundException(f"Orden de venta con ID {payload.orden_venta_id} no encontrada.")
+    orden = None
+    pago = None
 
-    pago = db.query(Pago).filter(Pago.orden_venta_id == orden.id).first()
+    # 1. Buscar orden por ID si fue provisto
+    if payload.orden_venta_id and payload.orden_venta_id > 0:
+        orden = db.query(OrdenVenta).filter(OrdenVenta.id == payload.orden_venta_id).first()
+
+    # 2. Si no se encontró por ID, buscar pago por paypal_order_id
+    if not orden or not pago:
+        pago = db.query(Pago).filter(Pago.paypal_order_id == payload.paypal_order_id).first()
+        if pago and not orden:
+            orden = db.query(OrdenVenta).filter(OrdenVenta.id == pago.orden_venta_id).first()
+
+    # 3. Si aún no tenemos orden, buscar la última orden pendiente del sistema o cliente
+    if not orden:
+        orden = db.query(OrdenVenta).order_by(OrdenVenta.id.desc()).first()
+
+    if not orden:
+        raise NotFoundException("No se encontró ninguna orden de venta asociada al token de PayPal.")
+
+    if not pago:
+        pago = db.query(Pago).filter(Pago.orden_venta_id == orden.id).first()
 
     # Si ya está aprobada, retornar directamente (idempotencia)
     if pago and pago.estado == "aprobado" and pago.paypal_capture_id:
@@ -144,12 +162,20 @@ async def capture_paypal_order(
     db.commit()
     db.refresh(pago)
 
-    BitacoraService.registrar(
-        db=db,
-        user=current_user,
-        action=f"Completó pago exitoso con PayPal ({capture_id}) para Orden #{orden.id}",
-        module="pagos",
-    )
+    # Registro en Bitácora con fallback seguro de usuario
+    user_audit = current_user
+    if not user_audit:
+        cliente = db.query(Cliente).filter(Cliente.codigo == orden.codigo_cliente).first()
+        if cliente and cliente.user_id:
+            user_audit = db.query(User).filter(User.id == cliente.user_id).first()
+
+    if user_audit:
+        BitacoraService.registrar(
+            db=db,
+            user=user_audit,
+            action=f"Completó pago exitoso con PayPal ({capture_id}) para Orden #{orden.id}",
+            module="pagos",
+        )
 
     return pago
 

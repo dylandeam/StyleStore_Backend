@@ -36,7 +36,7 @@ class PayPalCrearOrdenRequest(BaseModel):
 
 class PayPalCapturarOrdenRequest(BaseModel):
     paypal_order_id: str
-    orden_venta_id: int
+    orden_venta_id: int | None = None
 
 
 class CobroCajaRequest(BaseModel):
