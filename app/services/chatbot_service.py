@@ -22,11 +22,23 @@ from app.models.user import User
 
 
 def _normalize(text: str) -> str:
-    """Normaliza texto eliminando tildes y pasando a minúsculas para comparaciones robustas."""
-    text = text.lower().strip()
+    """Normaliza texto eliminando signos de puntuación, tildes y pasando a minúsculas."""
+    text = re.sub(r"[^\w\s]", " ", text.lower().strip())
     return "".join(
         c for c in unicodedata.normalize("NFD", text) if unicodedata.category(c) != "Mn"
     )
+
+
+def _stem_palabra(palabra: str) -> str:
+    """Obtiene la raíz léxica en español para singularizar plurales comunes (pantalones -> pantalon, camisas -> camisa)."""
+    p = palabra.strip()
+    if p.endswith("ces") and len(p) > 4:
+        return p[:-3] + "z"
+    if p.endswith("es") and len(p) > 4:
+        return p[:-2]
+    if p.endswith("s") and len(p) > 3 and not p.endswith("is"):
+        return p[:-1]
+    return p
 
 
 class ChatbotService:
@@ -180,28 +192,69 @@ class ChatbotService:
                 ],
             }
 
-        # 9. Búsqueda inteligente de productos / ropa
-        # Palabras clave de categorías o tipos de prenda
-        terminos = [t for t in norm.split() if len(t) > 3 and t not in ["para", "como", "quiero", "donde", "tiene", "tienen", "venden", "precio", "cuanto"]]
-        if terminos:
-            filtro_or = [Producto.nombre.ilike(f"%{t}%") for t in terminos]
-            filtro_or.extend([Producto.descripcion.ilike(f"%{t}%") for t in terminos])
+        # 9. Consulta general de ropa / catálogo ("que ropa tienen", "que prendas hay", etc.)
+        if any(f in norm for f in ["que ropa", "que prendas", "que tienen", "que venden", "ver ropa", "mostrar ropa", "que hay"]):
+            prods = self.db.query(Producto).filter(Producto.active == True).limit(5).all()
+            if prods:
+                lineas = ["👗 **¡En StyleStore contamos con variadas prendas de moda y temporada!**\n\nAlgunas de nuestras prendas destacadas son:\n"]
+                for p in prods:
+                    lineas.append(f"• **{p.nombre}** (Ref: {p.codigo}) - Bs. {float(p.precio):.2f}")
+                lineas.append("\nPuedes explorar colores, tallas y stock en nuestro catálogo.")
+                return {
+                    "respuesta": "\n".join(lineas),
+                    "chips": [
+                        {"label": "👗 Ver Catálogo Completo", "action": "navigate", "route": "/catalogo"},
+                        {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/admin/sucursales"},
+                    ],
+                }
+
+        # 10. Búsqueda inteligente de prendas / productos específicos (pantalones, camisas, vestidos, etc.)
+        stopwords = {
+            "para", "como", "quiero", "donde", "tiene", "tienen", "venden", "precio", "cuanto",
+            "hay", "algun", "alguna", "algunos", "algunas", "ropa", "prenda", "prendas", "estilo",
+            "tienda", "disponible", "disponibles", "favor", "buenas", "hola", "saber", "si"
+        }
+        palabras = [w for w in norm.split() if len(w) >= 3 and w not in stopwords]
+
+        if palabras:
+            terminos_busqueda = set()
+            for w in palabras:
+                terminos_busqueda.add(w)
+                stem = _stem_palabra(w)
+                if len(stem) >= 3:
+                    terminos_busqueda.add(stem)
+
+            filtro_or = []
+            for t in terminos_busqueda:
+                filtro_or.append(Producto.nombre.ilike(f"%{t}%"))
+                filtro_or.append(Producto.descripcion.ilike(f"%{t}%"))
+
             productos = self.db.query(Producto).filter(or_(*filtro_or)).limit(4).all()
 
             if productos:
-                lineas = ["👗 **Encontré estas prendas relacionadas con tu búsqueda:**\n"]
+                lineas = ["👗 **¡Sí! Tenemos disponibles prendas que coinciden con tu búsqueda:**\n"]
                 for p in productos:
                     lineas.append(f"• **{p.nombre}** (Ref: {p.codigo}) - Bs. {float(p.precio):.2f}")
-                lineas.append("\nPuedes ver detalles, tallas y colores disponibles en el catálogo.")
+                lineas.append("\nPuedes consultar colores, tallas y existencias en vivo en nuestro catálogo interactivo.")
                 return {
                     "respuesta": "\n".join(lineas),
                     "chips": [
                         {"label": "👗 Ver en Catálogo", "action": "navigate", "route": "/catalogo"},
                         {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/admin/sucursales"},
+                        {"label": "🛍️ Ir al Carrito", "action": "navigate", "route": "/carrito"},
+                    ],
+                }
+            else:
+                prenda_buscada = palabras[0]
+                return {
+                    "respuesta": f"Por el momento no encontré prendas que coincidan exactamente con '{prenda_buscada}' en nuestro catálogo activo. Sin embargo, disponemos de camisas, pantalones, polos y novedades de temporada. ¡Te invitamos a ver todo el catálogo!",
+                    "chips": [
+                        {"label": "👗 Explorar Catálogo", "action": "navigate", "route": "/catalogo"},
+                        {"label": "📍 Consultar Sucursales", "action": "navigate", "route": "/admin/sucursales"},
                     ],
                 }
 
-        # 10. Respuesta por defecto
+        # 11. Respuesta por defecto
         return {
             "respuesta": "Entiendo tu consulta. Como asistente virtual de StyleStore puedo ayudarte a consultar sucursales, recomendaciones de ropa, pedidos, envíos con Yango, políticas de reserva o solicitar cambios. ¿Cuál de estas opciones te gustaría explorar?",
             "chips": [
