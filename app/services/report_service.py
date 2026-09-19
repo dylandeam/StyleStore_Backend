@@ -49,6 +49,17 @@ def _get_cliente_nombre(cliente) -> str:
     return getattr(cliente, "codigo", "Cliente General")
 
 
+def _get_cliente_email(cliente) -> str:
+    """Extrae el correo electrónico del cliente de forma segura."""
+    if not cliente:
+        return ""
+    if hasattr(cliente, "user") and cliente.user and getattr(cliente.user, "email", None):
+        return cliente.user.email
+    if hasattr(cliente, "email") and cliente.email:
+        return str(cliente.email)
+    return ""
+
+
 def _get_sucursal_nombre(sucursal) -> str:
     """Extrae el nombre o ciudad de la sucursal de forma segura."""
     if not sucursal:
@@ -123,7 +134,7 @@ class ReportService:
         )
 
         # Encabezado del reporte
-        ws.merge_cells("A1:G1")
+        ws.merge_cells("A1:H1")
         ws["A1"] = "StyleStore - Reporte Detallado de Ventas"
         ws["A1"].font = title_font
         ws["A1"].alignment = Alignment(horizontal="left", vertical="center")
@@ -133,7 +144,7 @@ class ReportService:
         ws["A2"].font = Font(name="Arial", size=9, italic=True, color="666666")
 
         # Columnas
-        headers = ["N° Venta / Ticket", "Fecha", "Cliente", "Sucursal", "Método Pago", "Estado", "Total (Bs.)"]
+        headers = ["N° Venta / Ticket", "Fecha", "Cliente", "Correo Electrónico", "Sucursal", "Método Pago", "Estado", "Total (Bs.)"]
         ws.row_dimensions[4].height = 24
 
         for col_idx, header in enumerate(headers, 1):
@@ -150,31 +161,33 @@ class ReportService:
             total_num = float(v.total)
             gran_total += Decimal(str(v.total))
             cli_nom = _get_cliente_nombre(v.cliente)
+            cli_email = _get_cliente_email(v.cliente)
             suc_nom = _get_sucursal_nombre(v.sucursal)
 
             ws.cell(row=row_idx, column=1, value=v.ticket_numero or f"ORD-{v.id:04d}").font = normal_font
             ws.cell(row=row_idx, column=2, value=v.fecha.strftime("%Y-%m-%d") if v.fecha else "").font = normal_font
             ws.cell(row=row_idx, column=3, value=cli_nom).font = normal_font
-            ws.cell(row=row_idx, column=4, value=suc_nom).font = normal_font
-            ws.cell(row=row_idx, column=5, value=(v.metodo_pago or "EFECTIVO").upper()).font = normal_font
-            ws.cell(row=row_idx, column=6, value=v.estado.capitalize()).font = normal_font
+            ws.cell(row=row_idx, column=4, value=cli_email or "-").font = normal_font
+            ws.cell(row=row_idx, column=5, value=suc_nom).font = normal_font
+            ws.cell(row=row_idx, column=6, value=(v.metodo_pago or "EFECTIVO").upper()).font = normal_font
+            ws.cell(row=row_idx, column=7, value=v.estado.capitalize()).font = normal_font
             
-            c_total = ws.cell(row=row_idx, column=7, value=total_num)
+            c_total = ws.cell(row=row_idx, column=8, value=total_num)
             c_total.font = normal_font
             c_total.number_format = 'Bs. #,##0.00'
             c_total.alignment = Alignment(horizontal="right")
 
-            for c in range(1, 8):
+            for c in range(1, 9):
                 ws.cell(row=row_idx, column=c).border = thin_border
             row_idx += 1
 
         # Fila de Total
-        ws.merge_cells(start_row=row_idx, start_column=1, end_row=row_idx, end_column=6)
+        ws.merge_cells(start_row=row_idx, start_column=1, end_row=row_idx, end_column=7)
         tot_label = ws.cell(row=row_idx, column=1, value="TOTAL GENERAL:")
         tot_label.font = bold_font
         tot_label.alignment = Alignment(horizontal="right", vertical="center")
         
-        tot_val = ws.cell(row=row_idx, column=7, value=float(gran_total))
+        tot_val = ws.cell(row=row_idx, column=8, value=float(gran_total))
         tot_val.font = bold_font
         tot_val.number_format = 'Bs. #,##0.00'
         tot_val.alignment = Alignment(horizontal="right", vertical="center")
@@ -233,18 +246,20 @@ class ReportService:
         elements.append(Spacer(1, 15))
 
         # Tabla de ventas
-        table_data = [["N° Ticket / Orden", "Fecha", "Cliente", "Sucursal", "Método", "Total (Bs.)"]]
+        table_data = [["N° Ticket / Orden", "Fecha", "Cliente / Correo", "Sucursal", "Método", "Total (Bs.)"]]
         gran_total = Decimal("0.00")
 
         for v in ventas:
             gran_total += Decimal(str(v.total))
             cli_nom = _get_cliente_nombre(v.cliente)
+            cli_email = _get_cliente_email(v.cliente)
             suc_nom = _get_sucursal_nombre(v.sucursal)
+            cliente_cell = f"{cli_nom}\n{cli_email}" if cli_email else cli_nom
 
             table_data.append([
                 v.ticket_numero or f"ORD-{v.id:04d}",
                 v.fecha.strftime("%d/%m/%Y") if v.fecha else "",
-                cli_nom[:22],
+                cliente_cell,
                 suc_nom[:18],
                 (v.metodo_pago or "EFECTIVO")[:10].upper(),
                 f"Bs. {float(v.total):.2f}"
@@ -252,13 +267,14 @@ class ReportService:
 
         table_data.append(["", "", "", "", "TOTAL:", f"Bs. {float(gran_total):.2f}"])
 
-        col_widths = [90, 70, 140, 100, 65, 75]
+        col_widths = [90, 65, 145, 95, 65, 80]
         table = Table(table_data, colWidths=col_widths)
         table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#14263D')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
             ('ALIGN', (-1, 0), (-1, -1), 'RIGHT'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, -1), 8),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 4),

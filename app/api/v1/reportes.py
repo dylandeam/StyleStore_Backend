@@ -137,7 +137,7 @@ async def preview_ventas(
     service = ReportService(db)
     ventas = service.get_ventas_data(fecha_inicio, fecha_fin, sucursal_id, metodo_pago)
     total_monto = sum(float(v.total) for v in ventas)
-    from app.services.report_service import _get_cliente_nombre, _get_sucursal_nombre
+    from app.services.report_service import _get_cliente_nombre, _get_cliente_email, _get_sucursal_nombre
     items = []
     for v in ventas:
         items.append({
@@ -145,6 +145,7 @@ async def preview_ventas(
             "ticket_numero": v.ticket_numero or f"ORD-{v.id:04d}",
             "fecha": v.fecha.strftime("%d/%m/%Y") if v.fecha else "",
             "cliente_nombre": _get_cliente_nombre(v.cliente),
+            "cliente_email": _get_cliente_email(v.cliente),
             "codigo_cliente": v.codigo_cliente,
             "sucursal_nombre": _get_sucursal_nombre(v.sucursal),
             "metodo_pago": (v.metodo_pago or "EFECTIVO").upper(),

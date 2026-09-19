@@ -36,5 +36,11 @@ class Cliente(Base):
             return f"{self.user.name} {self.user.apellido or ''}".strip() or self.codigo
         return self.codigo
 
+    @property
+    def email(self) -> str:
+        if self.user and self.user.email:
+            return self.user.email
+        return ""
+
     def __repr__(self) -> str:
         return f"<Cliente(codigo='{self.codigo}', user_id={self.user_id}, telefono='{self.telefono}')>"
