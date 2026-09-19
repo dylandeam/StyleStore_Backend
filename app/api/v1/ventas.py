@@ -168,9 +168,21 @@ async def create_venta_presencial(
     - Genera la OrdenVenta y DetalleVenta.
     - Registra el Pago en caja inmediatamente.
     """
-    cliente = db.query(Cliente).filter(Cliente.codigo == payload.codigo_cliente).first()
+    # Buscar cliente o asignar/crear Cliente General por defecto
+    codigo_cli = payload.codigo_cliente or "CLI-GENERAL"
+    cliente = db.query(Cliente).filter(Cliente.codigo == codigo_cli).first()
     if not cliente:
-        raise NotFoundException(f"Cliente con código '{payload.codigo_cliente}' no encontrado.")
+        # Intentar buscar por id o crear un cliente genérico para ventas rápidas de mostrador
+        cliente = db.query(Cliente).first()
+        if not cliente:
+            cliente = Cliente(
+                codigo="CLI-GENERAL",
+                user_id=current_user.id,
+                telefono="00000000",
+                direccion="Venta Mostrador",
+            )
+            db.add(cliente)
+            db.flush()
 
     now = datetime.now()
     total_venta = Decimal("0.00")
@@ -218,11 +230,24 @@ async def create_venta_presencial(
             "subtotal": subtotal,
         })
 
+    # Cálculo de vuelto y validación de efectivo si aplica
+    metodo = (payload.metodo_pago or "efectivo").lower()
+    recibido = payload.efectivo_recibido or total_venta
+    cambio = Decimal("0.00")
+    if metodo == "efectivo" and recibido >= total_venta:
+        cambio = recibido - total_venta
+
+    ticket_num = f"TCK-{now.strftime('%Y%m%d%H%M%S')}"
+
     orden = OrdenVenta(
         fecha=now.date(),
         estado="pagada",
         total=total_venta,
         tipo_venta="presencial",
+        metodo_pago=metodo,
+        ticket_numero=ticket_num,
+        efectivo_recibido=recibido if metodo == "efectivo" else total_venta,
+        cambio_devuelto=cambio if metodo == "efectivo" else Decimal("0.00"),
         codigo_cliente=cliente.codigo,
         sucursal_id=payload.sucursal_id,
     )
@@ -246,6 +271,7 @@ async def create_venta_presencial(
         orden_venta_id=orden.id,
         monto=total_venta,
         tipo_pago="en caja",
+        metodo_pago=metodo,
         estado="aprobado",
     )
     db.add(pago)
@@ -256,7 +282,7 @@ async def create_venta_presencial(
     BitacoraService.registrar(
         db=db,
         user=current_user,
-        action=f"Registró venta presencial #{orden.id} en caja por Bs {orden.total} para cliente '{cliente.codigo}'",
+        action=f"Registró venta presencial #{orden.id} ({ticket_num}) en caja por Bs {orden.total} [{metodo.upper()}] para cliente '{cliente.codigo}'",
         module="ventas",
     )
 

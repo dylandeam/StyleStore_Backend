@@ -6,7 +6,7 @@ import io
 import re
 from datetime import datetime, date
 from decimal import Decimal
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Dict
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 
@@ -28,6 +28,10 @@ from app.models.stock_inventario import StockInventario
 from app.models.sucursal import Sucursal
 from app.models.cliente import Cliente
 from app.models.user import User
+from app.models.empleado import Empleado
+from app.models.envio import Envio
+from app.models.cambio_devolucion import CambioDevolucion
+from app.models.categoria import Categoria
 
 
 def clean_sheet_title(title: str) -> str:
@@ -418,3 +422,286 @@ class ReportService:
         doc.build(elements)
         buffer.seek(0)
         return buffer
+
+    # ==========================================
+    # 3. GENERADORES GENÉRICOS (EXCEL & PDF)
+    # ==========================================
+
+    def build_generic_excel(self, sheet_title: str, report_title: str, headers: List[str], rows: List[List[Any]]) -> io.BytesIO:
+        wb = openpyxl.Workbook()
+        ws: Any = wb.active if wb.active is not None else wb.create_sheet()
+        assert ws is not None
+        ws.title = clean_sheet_title(sheet_title)
+
+        navy_fill = PatternFill(start_color="14263D", end_color="14263D", fill_type="solid")
+        header_font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
+        title_font = Font(name="Arial", size=15, bold=True, color="14263D")
+        normal_font = Font(name="Arial", size=10)
+        thin_border = Border(
+            left=Side(style='thin', color='E0E0E0'),
+            right=Side(style='thin', color='E0E0E0'),
+            top=Side(style='thin', color='E0E0E0'),
+            bottom=Side(style='thin', color='E0E0E0')
+        )
+
+        num_cols = len(headers)
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=num_cols)
+        ws.cell(row=1, column=1, value=f"StyleStore - {report_title}").font = title_font
+
+        ws.cell(row=2, column=1, value=f"Generado: {datetime.now().strftime('%Y-%m-%d %H:%M')} | Total: {len(rows)}").font = Font(name="Arial", size=9, italic=True, color="666666")
+
+        for c_idx, h in enumerate(headers, 1):
+            cell = ws.cell(row=4, column=c_idx, value=h)
+            cell.fill = navy_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        curr_row = 5
+        for row in rows:
+            for c_idx, val in enumerate(row, 1):
+                cell = ws.cell(row=curr_row, column=c_idx, value=val)
+                cell.font = normal_font
+                cell.border = thin_border
+                if isinstance(val, (int, float, Decimal)):
+                    cell.alignment = Alignment(horizontal="right")
+                else:
+                    cell.alignment = Alignment(horizontal="left")
+            curr_row += 1
+
+        for col in ws.columns:
+            max_len = max(len(str(c.value or '')) for c in col)
+            col_letter = get_column_letter(col[0].column)
+            ws.column_dimensions[col_letter].width = max(max_len + 4, 13)
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return buf
+
+    def build_generic_pdf(self, report_title: str, headers: List[str], rows: List[List[Any]], col_widths: Optional[List[int]] = None) -> io.BytesIO:
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+        styles = getSampleStyleSheet()
+
+        title_style = ParagraphStyle('RepTitle', parent=styles['Heading1'], fontSize=16, leading=20, textColor=colors.HexColor('#14263D'))
+        sub_style = ParagraphStyle('RepSub', parent=styles['Normal'], fontSize=8, textColor=colors.HexColor('#666666'))
+
+        elements: List[Any] = [
+            Paragraph(f"StyleStore - {report_title}", title_style),
+            Paragraph(f"Generado el: {datetime.now().strftime('%d/%m/%Y %H:%M')} | Registros: {len(rows)}", sub_style),
+            Spacer(1, 12),
+        ]
+
+        table_data = [headers]
+        for r in rows:
+            table_data.append([str(c) if c is not None else "-" for c in r])
+
+        table = Table(table_data, colWidths=col_widths)
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#14263D')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.HexColor('#F8F9FA'), colors.white]),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(table)
+        doc.build(elements)
+        buffer.seek(0)
+        return buffer
+
+    # ==========================================
+    # 4. LOS 8 NUEVOS REPORTES ESPECÍFICOS (PUNTO 11)
+    # ==========================================
+
+    # Reporte 1: Productos más vendidos
+    def get_mas_vendidos_data(self, limit: int = 20) -> List[Dict[str, Any]]:
+        q = (
+            self.db.query(
+                DetalleVenta.producto_nombre,
+                func.sum(DetalleVenta.cantidad).label("unidades"),
+                func.sum(DetalleVenta.subtotal).label("monto"),
+            )
+            .group_by(DetalleVenta.producto_nombre)
+            .order_by(func.sum(DetalleVenta.cantidad).desc())
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "producto": r[0] or "Sin nombre",
+                "unidades_vendidas": int(r[1] or 0),
+                "total_recaudado": float(r[2] or 0.0),
+            }
+            for r in q
+        ]
+
+    # Reporte 2: Ventas por producto
+    def get_ventas_por_producto_data(self) -> List[Dict[str, Any]]:
+        q = (
+            self.db.query(
+                DetalleVenta.producto_nombre,
+                DetalleVenta.color_nombre,
+                DetalleVenta.talla_nombre,
+                func.sum(DetalleVenta.cantidad).label("unidades"),
+                func.sum(DetalleVenta.subtotal).label("monto"),
+            )
+            .group_by(DetalleVenta.producto_nombre, DetalleVenta.color_nombre, DetalleVenta.talla_nombre)
+            .order_by(DetalleVenta.producto_nombre.asc())
+            .all()
+        )
+        return [
+            {
+                "producto": r[0] or "-",
+                "color": r[1] or "-",
+                "talla": r[2] or "-",
+                "unidades": int(r[3] or 0),
+                "subtotal": float(r[4] or 0.0),
+            }
+            for r in q
+        ]
+
+    # Reporte 3: Ventas por tipo (en línea vs presencial)
+    def get_ventas_por_tipo_data(self) -> List[Dict[str, Any]]:
+        q = (
+            self.db.query(
+                OrdenVenta.tipo_venta,
+                func.count(OrdenVenta.id).label("total_ordenes"),
+                func.sum(OrdenVenta.total).label("total_monto"),
+            )
+            .filter(OrdenVenta.estado != "anulado")
+            .group_by(OrdenVenta.tipo_venta)
+            .all()
+        )
+        return [
+            {
+                "tipo_venta": (r[0] or "presencial").capitalize(),
+                "total_ordenes": int(r[1] or 0),
+                "total_monto": float(r[2] or 0.0),
+            }
+            for r in q
+        ]
+
+    # Reporte 4: Clientes registrados con total de compras
+    def get_clientes_registrados_data(self) -> List[Dict[str, Any]]:
+        clientes = self.db.query(Cliente).options(joinedload(Cliente.user)).all()
+        resultado = []
+        for c in clientes:
+            nom = f"{c.user.name} {c.user.apellido or ''}".strip() if (c.user and c.user.name) else (c.nombre or "-")
+            email = c.user.email if (c.user and c.user.email) else "-"
+            # Compras del cliente
+            compras_q = self.db.query(OrdenVenta).filter(OrdenVenta.codigo_cliente == c.codigo, OrdenVenta.estado != "anulado").all()
+            total_compras = len(compras_q)
+            monto_gastado = sum(float(x.total) for x in compras_q)
+            resultado.append({
+                "codigo": c.codigo,
+                "nombre": nom,
+                "email": email,
+                "telefono": c.telefono or "-",
+                "total_compras": total_compras,
+                "monto_gastado": round(monto_gastado, 2),
+            })
+        resultado.sort(key=lambda x: x["monto_gastado"], reverse=True)
+        return resultado
+
+    # Reporte 5: Empleados por sucursal
+    def get_empleados_por_sucursal_data(self, sucursal_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        q = self.db.query(Empleado).options(joinedload(Empleado.user), joinedload(Empleado.sucursal))
+        if sucursal_id:
+            q = q.filter(Empleado.sucursal_id == sucursal_id)
+        empleados = q.all()
+        return [
+            {
+                "codigo": e.codigo,
+                "nombre": f"{e.user.name} {e.user.apellido or ''}".strip() if e.user else "-",
+                "email": e.user.email if e.user else "-",
+                "sucursal": e.sucursal.nombre if e.sucursal else "-",
+                "telefono": e.telefono or "-",
+                "sueldo": float(e.sueldo),
+            }
+            for e in empleados
+        ]
+
+    # Reporte 6: Rotación de prendas (Top 5 más y Top 5 menos vendidas)
+    def get_rotacion_prendas_data(self) -> Dict[str, Any]:
+        mas = self.get_mas_vendidos_data(limit=5)
+        # Menos vendidas
+        q_menos = (
+            self.db.query(
+                DetalleVenta.producto_nombre,
+                func.sum(DetalleVenta.cantidad).label("unidades"),
+                func.sum(DetalleVenta.subtotal).label("monto"),
+            )
+            .group_by(DetalleVenta.producto_nombre)
+            .order_by(func.sum(DetalleVenta.cantidad).asc())
+            .limit(5)
+            .all()
+        )
+        menos = [
+            {
+                "producto": r[0] or "Sin nombre",
+                "unidades_vendidas": int(r[1] or 0),
+                "total_recaudado": float(r[2] or 0.0),
+            }
+            for r in q_menos
+        ]
+        return {"mas_vendidas": mas, "menos_vendidas": menos}
+
+    # Reporte 7: Reporte de envíos (Yango / Delivery)
+    def get_envios_report_data(self) -> List[Dict[str, Any]]:
+        envios = self.db.query(Envio).options(
+            joinedload(Envio.orden_venta).joinedload(OrdenVenta.cliente).joinedload(Cliente.user)
+        ).order_by(Envio.id.desc()).all()
+        res = []
+        for e in envios:
+            cli_nom = "Cliente General"
+            if e.orden_venta and e.orden_venta.cliente and e.orden_venta.cliente.user:
+                u = e.orden_venta.cliente.user
+                cli_nom = f"{u.name} {u.apellido or ''}".strip()
+            ticket = e.orden_venta.ticket_numero if e.orden_venta else f"ORD-{e.orden_venta_id}"
+
+            res.append({
+                "id": e.id,
+                "ticket": ticket,
+                "cliente": cli_nom,
+                "ciudad": e.ciudad,
+                "direccion": e.direccion,
+                "conductor": getattr(e, "delivery_conductor", None) or "Por asignar",
+                "tracking": getattr(e, "yango_tracking_code", None) or "-",
+                "estado": e.estado.upper(),
+                "costo": float(e.costo),
+                "fecha": e.fecha.strftime("%d/%m/%Y") if e.fecha else "-",
+            })
+        return res
+
+    # Reporte 8: Devoluciones y Cambios
+    def get_cambios_devoluciones_report_data(self, sucursal_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        q = self.db.query(CambioDevolucion).options(
+            joinedload(CambioDevolucion.orden_venta),
+            joinedload(CambioDevolucion.detalle_venta),
+            joinedload(CambioDevolucion.sucursal),
+        )
+        if sucursal_id:
+            q = q.filter(CambioDevolucion.sucursal_id == sucursal_id)
+
+        items = q.order_by(CambioDevolucion.id.desc()).all()
+        res = []
+        for c in items:
+            ticket = c.orden_venta.ticket_numero if c.orden_venta else f"ORD-{c.orden_venta_id}"
+            prod_nom = c.detalle_venta.producto_nombre if c.detalle_venta else "-"
+            suc_nom = c.sucursal.nombre if c.sucursal else "-"
+
+            res.append({
+                "id": c.id,
+                "ticket": ticket,
+                "tipo": c.tipo.upper(),
+                "motivo": c.motivo,
+                "producto": prod_nom,
+                "sucursal": suc_nom,
+                "estado": c.estado.upper(),
+                "fecha_programada": c.fecha_programada.strftime("%d/%m/%Y") if c.fecha_programada else "-",
+            })
+        return res

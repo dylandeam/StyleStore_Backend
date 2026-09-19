@@ -196,3 +196,241 @@ async def preview_inventario(
         "total_criticos": criticos_count,
         "items": items,
     }
+
+
+# ==========================================
+# DASHBOARD STATS (PUNTO 1)
+# ==========================================
+
+@router.get("/dashboard-stats", summary="Métricas estadísticas operativas del Dashboard")
+async def get_dashboard_stats(
+    sucursal_id: Optional[int] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.dashboard_service import DashboardService
+    from app.models.empleado import Empleado
+
+    if current_user.role in ["encargado", "vendedor"] and sucursal_id is None:
+        emp = db.query(Empleado).filter(Empleado.user_id == current_user.id).first()
+        if emp:
+            sucursal_id = emp.sucursal_id
+
+    if sucursal_id == 0:
+        sucursal_id = None
+
+    service = DashboardService(db)
+    return service.get_dashboard_stats(sucursal_id=sucursal_id)
+
+
+# ==========================================
+# 8 NUEVOS REPORTES DINÁMICOS (PUNTO 11)
+# ==========================================
+
+# 1. Más vendidos
+@router.get("/mas-vendidos/preview")
+async def preview_mas_vendidos(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_mas_vendidos_data()
+    return {"total_registros": len(data), "items": data}
+
+@router.get("/mas-vendidos/excel")
+async def excel_mas_vendidos(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_mas_vendidos_data()
+    headers = ["Producto", "Unidades Vendidas", "Total Recaudado (Bs.)"]
+    rows = [[d["producto"], d["unidades_vendidas"], d["total_recaudado"]] for d in data]
+    buf = srv.build_generic_excel("Mas Vendidos", "Reporte de Productos Más Vendidos", headers, rows)
+    return Response(content=buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": 'attachment; filename="productos_mas_vendidos.xlsx"'})
+
+@router.get("/mas-vendidos/pdf")
+async def pdf_mas_vendidos(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_mas_vendidos_data()
+    headers = ["Producto", "Unidades", "Total (Bs.)"]
+    rows = [[d["producto"], d["unidades_vendidas"], f"Bs. {d['total_recaudado']:.2f}"] for d in data]
+    buf = srv.build_generic_pdf("Productos Más Vendidos", headers, rows, [280, 100, 120])
+    return Response(content=buf.getvalue(), media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="productos_mas_vendidos.pdf"'})
+
+# 2. Ventas por producto
+@router.get("/ventas-producto/preview")
+async def preview_ventas_producto(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_ventas_por_producto_data()
+    return {"total_registros": len(data), "items": data}
+
+@router.get("/ventas-producto/excel")
+async def excel_ventas_producto(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_ventas_por_producto_data()
+    headers = ["Producto", "Color", "Talla", "Unidades", "Subtotal (Bs.)"]
+    rows = [[d["producto"], d["color"], d["talla"], d["unidades"], d["subtotal"]] for d in data]
+    buf = srv.build_generic_excel("Ventas Producto", "Ventas Agrupadas por Producto", headers, rows)
+    return Response(content=buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": 'attachment; filename="ventas_por_producto.xlsx"'})
+
+@router.get("/ventas-producto/pdf")
+async def pdf_ventas_producto(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_ventas_por_producto_data()
+    headers = ["Producto", "Color", "Talla", "Unidades", "Subtotal (Bs.)"]
+    rows = [[d["producto"][:22], d["color"][:10], d["talla"], d["unidades"], f"Bs. {d['subtotal']:.2f}"] for d in data]
+    buf = srv.build_generic_pdf("Ventas Agrupadas por Producto", headers, rows, [190, 80, 50, 60, 100])
+    return Response(content=buf.getvalue(), media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="ventas_por_producto.pdf"'})
+
+# 3. Ventas por tipo
+@router.get("/ventas-tipo/preview")
+async def preview_ventas_tipo(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_ventas_por_tipo_data()
+    return {"total_registros": len(data), "items": data}
+
+@router.get("/ventas-tipo/excel")
+async def excel_ventas_tipo(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_ventas_por_tipo_data()
+    headers = ["Canal / Tipo de Venta", "Cantidad de Órdenes", "Monto Total (Bs.)"]
+    rows = [[d["tipo_venta"], d["total_ordenes"], d["total_monto"]] for d in data]
+    buf = srv.build_generic_excel("Ventas Tipo", "Ventas por Canal / Tipo", headers, rows)
+    return Response(content=buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": 'attachment; filename="ventas_por_tipo.xlsx"'})
+
+@router.get("/ventas-tipo/pdf")
+async def pdf_ventas_tipo(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_ventas_por_tipo_data()
+    headers = ["Canal de Venta", "Total Órdenes", "Recaudación (Bs.)"]
+    rows = [[d["tipo_venta"], d["total_ordenes"], f"Bs. {d['total_monto']:.2f}"] for d in data]
+    buf = srv.build_generic_pdf("Ventas por Canal / Tipo", headers, rows, [200, 120, 160])
+    return Response(content=buf.getvalue(), media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="ventas_por_tipo.pdf"'})
+
+# 4. Clientes registrados
+@router.get("/clientes/preview")
+async def preview_clientes(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_clientes_registrados_data()
+    return {"total_registros": len(data), "items": data}
+
+@router.get("/clientes/excel")
+async def excel_clientes(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_clientes_registrados_data()
+    headers = ["Código", "Nombre", "Correo Electrónico", "Teléfono", "Total Compras", "Gasto Total (Bs.)"]
+    rows = [[d["codigo"], d["nombre"], d["email"], d["telefono"], d["total_compras"], d["monto_gastado"]] for d in data]
+    buf = srv.build_generic_excel("Clientes", "Clientes Registrados con Actividad", headers, rows)
+    return Response(content=buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": 'attachment; filename="clientes_registrados.xlsx"'})
+
+@router.get("/clientes/pdf")
+async def pdf_clientes(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_clientes_registrados_data()
+    headers = ["Código", "Nombre / Correo", "Teléfono", "Compras", "Total (Bs.)"]
+    rows = [[d["codigo"], f"{d['nombre']}\n{d['email']}", d["telefono"], d["total_compras"], f"Bs. {d['monto_gastado']:.2f}"] for d in data]
+    buf = srv.build_generic_pdf("Clientes Registrados", headers, rows, [75, 175, 80, 60, 90])
+    return Response(content=buf.getvalue(), media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="clientes_registrados.pdf"'})
+
+# 5. Empleados por sucursal
+@router.get("/empleados/preview")
+async def preview_empleados(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_empleados_por_sucursal_data(sucursal_id)
+    return {"total_registros": len(data), "items": data}
+
+@router.get("/empleados/excel")
+async def excel_empleados(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_empleados_por_sucursal_data(sucursal_id)
+    headers = ["Código", "Nombre", "Correo", "Sucursal", "Teléfono", "Sueldo (Bs.)"]
+    rows = [[d["codigo"], d["nombre"], d["email"], d["sucursal"], d["telefono"], d["sueldo"]] for d in data]
+    buf = srv.build_generic_excel("Empleados", "Personal y Empleados por Sucursal", headers, rows)
+    return Response(content=buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": 'attachment; filename="empleados_sucursal.xlsx"'})
+
+@router.get("/empleados/pdf")
+async def pdf_empleados(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_empleados_por_sucursal_data(sucursal_id)
+    headers = ["Código", "Nombre", "Sucursal", "Teléfono", "Sueldo (Bs.)"]
+    rows = [[d["codigo"], d["nombre"][:20], d["sucursal"], d["telefono"], f"Bs. {d['sueldo']:.2f}"] for d in data]
+    buf = srv.build_generic_pdf("Personal y Empleados por Sucursal", headers, rows, [80, 150, 110, 80, 80])
+    return Response(content=buf.getvalue(), media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="empleados_sucursal.pdf"'})
+
+# 6. Rotación de prendas
+@router.get("/rotacion/preview")
+async def preview_rotacion(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_rotacion_prendas_data()
+    return data
+
+@router.get("/rotacion/excel")
+async def excel_rotacion(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_rotacion_prendas_data()
+    headers = ["Categoría", "Prenda", "Unidades Vendidas", "Total (Bs.)"]
+    rows = []
+    for m in data["mas_vendidas"]:
+        rows.append(["MÁS VENDIDA", m["producto"], m["unidades_vendidas"], m["total_recaudado"]])
+    for me in data["menos_vendidas"]:
+        rows.append(["MENOS VENDIDA", me["producto"], me["unidades_vendidas"], me["total_recaudado"]])
+    buf = srv.build_generic_excel("Rotacion", "Rotación de Prendas (Top y Menor Venta)", headers, rows)
+    return Response(content=buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": 'attachment; filename="rotacion_prendas.xlsx"'})
+
+@router.get("/rotacion/pdf")
+async def pdf_rotacion(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_rotacion_prendas_data()
+    headers = ["Categoría", "Prenda", "Unidades", "Total (Bs.)"]
+    rows = []
+    for m in data["mas_vendidas"]:
+        rows.append(["TOP VENTA", m["producto"][:25], m["unidades_vendidas"], f"Bs. {m['total_recaudado']:.2f}"])
+    for me in data["menos_vendidas"]:
+        rows.append(["BAJA VENTA", me["producto"][:25], me["unidades_vendidas"], f"Bs. {me['total_recaudado']:.2f}"])
+    buf = srv.build_generic_pdf("Rotación de Prendas (Top y Menor Venta)", headers, rows, [100, 200, 80, 100])
+    return Response(content=buf.getvalue(), media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="rotacion_prendas.pdf"'})
+
+# 7. Envíos Yango
+@router.get("/envios/preview")
+async def preview_envios(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_envios_report_data()
+    return {"total_registros": len(data), "items": data}
+
+@router.get("/envios/excel")
+async def excel_envios(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_envios_report_data()
+    headers = ["Ticket", "Cliente", "Ciudad", "Dirección", "Conductor", "Tracking Yango", "Estado", "Costo (Bs.)", "Fecha"]
+    rows = [[d["ticket"], d["cliente"], d["ciudad"], d["direccion"], d["conductor"], d["tracking"], d["estado"], d["costo"], d["fecha"]] for d in data]
+    buf = srv.build_generic_excel("Envios", "Reporte de Despachos y Envíos Delivery", headers, rows)
+    return Response(content=buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": 'attachment; filename="envios_delivery.xlsx"'})
+
+@router.get("/envios/pdf")
+async def pdf_envios(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_envios_report_data()
+    headers = ["Ticket", "Cliente", "Destino", "Tracking / Conductor", "Estado", "Costo"]
+    rows = [[d["ticket"], d["cliente"][:15], f"{d['ciudad']} - {d['direccion'][:18]}", f"{d['tracking']}\n{d['conductor']}", d["estado"], f"Bs. {d['costo']:.2f}"] for d in data]
+    buf = srv.build_generic_pdf("Reporte de Despachos y Envíos Yango", headers, rows, [80, 85, 140, 95, 55, 45])
+    return Response(content=buf.getvalue(), media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="envios_delivery.pdf"'})
+
+# 8. Devoluciones y Cambios
+@router.get("/devoluciones/preview")
+async def preview_devoluciones(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_cambios_devoluciones_report_data(sucursal_id)
+    return {"total_registros": len(data), "items": data}
+
+@router.get("/devoluciones/excel")
+async def excel_devoluciones(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_cambios_devoluciones_report_data(sucursal_id)
+    headers = ["ID", "Ticket", "Tipo", "Motivo", "Producto", "Sucursal", "Estado", "Fecha Programada"]
+    rows = [[d["id"], d["ticket"], d["tipo"], d["motivo"], d["producto"], d["sucursal"], d["estado"], d["fecha_programada"]] for d in data]
+    buf = srv.build_generic_excel("Devoluciones", "Reporte de Cambios y Devoluciones de Clientes", headers, rows)
+    return Response(content=buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": 'attachment; filename="cambios_devoluciones.xlsx"'})
+
+@router.get("/devoluciones/pdf")
+async def pdf_devoluciones(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_cambios_devoluciones_report_data(sucursal_id)
+    headers = ["Ticket", "Tipo", "Motivo", "Producto", "Sucursal", "Estado", "Fecha"]
+    rows = [[d["ticket"], d["tipo"], d["motivo"], d["producto"][:18], d["sucursal"], d["estado"], d["fecha_programada"]] for d in data]
+    buf = srv.build_generic_pdf("Reporte de Cambios y Devoluciones", headers, rows, [75, 55, 75, 110, 80, 60, 65])
+    return Response(content=buf.getvalue(), media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="cambios_devoluciones.pdf"'})

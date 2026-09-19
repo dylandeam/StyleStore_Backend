@@ -38,6 +38,7 @@ def _run_column_migrations(db: Session):
         "ALTER TABLE detalle_venta ADD COLUMN IF NOT EXISTS subtotal NUMERIC(10, 2)",
         # Pagos
         "ALTER TABLE pagos ADD COLUMN IF NOT EXISTS paypal_capture_id VARCHAR(100)",
+        "ALTER TABLE pagos ADD COLUMN IF NOT EXISTS metodo_pago VARCHAR(50)",
         # Envios
         "ALTER TABLE envios ADD COLUMN IF NOT EXISTS yango_tracking_code VARCHAR(100)",
         "ALTER TABLE envios ADD COLUMN IF NOT EXISTS yango_tracking_url VARCHAR(500)",

@@ -66,6 +66,37 @@ async def get_current_user(
     return user
 
 
+optional_security = HTTPBearer(auto_error=False)
+
+
+async def get_optional_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(optional_security),
+    db: Session = Depends(get_db),
+) -> User | None:
+    """Extrae el usuario autenticado si el token JWT es provisto y válido; retorna None si es anónimo."""
+    if not credentials:
+        return None
+    try:
+        token = credentials.credentials
+        auth_service = AuthService(db)
+        if auth_service.is_token_blacklisted(token):
+            return None
+        payload = decode_token(token)
+        if not payload or payload.get("type") != "access":
+            return None
+        user_id_str = payload.get("sub")
+        if not user_id_str:
+            return None
+        user_id = int(user_id_str)
+        user_service = UserService(db)
+        user = user_service.get_user_by_id(user_id)
+        if user and user.is_active:
+            return user
+    except Exception:
+        return None
+    return None
+
+
 def require_role(*roles: str):
     """Dependency that checks if the authenticated user has one of the allowed roles."""
     async def role_checker(current_user: User = Depends(get_current_user)) -> User:

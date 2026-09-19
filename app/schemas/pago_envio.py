@@ -19,6 +19,7 @@ class PagoResponse(BaseModel):
     orden_venta_id: int
     monto: Decimal
     tipo_pago: str
+    metodo_pago: str | None = None
     estado: str
     paypal_order_id: str | None = None
     paypal_capture_id: str | None = None
@@ -113,9 +114,11 @@ class VentaItemCreate(BaseModel):
 
 
 class VentaPresencialCreate(BaseModel):
-    codigo_cliente: str
+    codigo_cliente: str = "CLI-GENERAL"
     sucursal_id: int
     items: list[VentaItemCreate] = Field(..., min_length=1)
+    metodo_pago: str = Field("efectivo", description="'efectivo' o 'qr'")
+    efectivo_recibido: Decimal | None = None
 
 
 class DetalleVentaResponse(BaseModel):

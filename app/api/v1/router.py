@@ -31,6 +31,9 @@ from app.api.v1.inventario import router as inventario_router
 from app.api.v1.uploads import router as uploads_router
 from app.api.v1.backups import router as backups_router
 from app.api.v1.reportes import router as reportes_router
+from app.api.v1.notificaciones import router as notificaciones_router
+from app.api.v1.cambios import router as cambios_router
+from app.api.v1.chatbot import router as chatbot_router
 
 api_v1_router = APIRouter()
 
@@ -62,3 +65,6 @@ api_v1_router.include_router(inventario_router)
 api_v1_router.include_router(uploads_router)
 api_v1_router.include_router(backups_router)
 api_v1_router.include_router(reportes_router)
+api_v1_router.include_router(notificaciones_router)
+api_v1_router.include_router(cambios_router)
+api_v1_router.include_router(chatbot_router)

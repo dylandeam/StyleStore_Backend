@@ -31,6 +31,8 @@ from app.models.envio import Envio
 from app.models.uploaded_file import UploadedFile
 from app.models.backup_log import BackupLog
 from app.models.backup_config import BackupConfig
+from app.models.notificacion import Notificacion, SuscripcionProximamente, SuscripcionStock
+from app.models.cambio_devolucion import CambioDevolucion
 
 __all__ = [
     "Role",
@@ -67,4 +69,8 @@ __all__ = [
     "UploadedFile",
     "BackupLog",
     "BackupConfig",
+    "Notificacion",
+    "SuscripcionProximamente",
+    "SuscripcionStock",
+    "CambioDevolucion",
 ]

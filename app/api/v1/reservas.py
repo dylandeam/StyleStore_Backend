@@ -101,17 +101,58 @@ async def list_my_reservas(
     return [_serialize_reserva(r) for r in reservas]
 
 
+@router.get("/elegibilidad", summary="Verificar si el cliente actual puede realizar reservas")
+async def verificar_elegibilidad_reserva(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Verifica si el cliente tiene al menos 1 compra pagada para poder reservar prendas."""
+    from app.models.orden_venta import OrdenVenta
+    cliente = db.query(Cliente).filter(Cliente.user_id == current_user.id).first()
+    if not cliente:
+        return {
+            "puede_reservar": False,
+            "compras_previas": 0,
+            "mensaje": "Aún no tienes compras registradas en StyleStore. Debes realizar al menos 1 compra pagada para habilitar reservas.",
+        }
+
+    compras_count = (
+        db.query(OrdenVenta)
+        .filter(
+            OrdenVenta.codigo_cliente == cliente.codigo,
+            OrdenVenta.estado.in_(["pagado", "pagada", "completado", "completada", "entregado", "entregada"]),
+        )
+        .count()
+    )
+
+    puede = compras_count > 0
+    mensaje = (
+        "¡Excelente! Tu cuenta está habilitada para reservar prendas sin costo previo."
+        if puede
+        else "Para habilitar la reserva de prendas en tienda, necesitas al menos 1 compra previa pagada."
+    )
+
+    return {
+        "puede_reservar": puede,
+        "compras_previas": compras_count,
+        "mensaje": mensaje,
+    }
+
+
 @router.post("", response_model=ReservaResponse, status_code=status.HTTP_201_CREATED, summary="Crear reserva")
 async def create_reserva(
     payload: ReservaCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Crea una reserva desde el catálogo descontando stock atómicamente."""
+    """Crea una reserva desde el catálogo descontando stock atómicamente (requiere ≥ 1 compra previa)."""
+    from datetime import date, timedelta
+    from app.models.orden_venta import OrdenVenta
+    from app.services.notificacion_service import NotificacionService
+
     # Obtener o registrar cliente si no existe
     cliente = db.query(Cliente).filter(Cliente.user_id == current_user.id).first()
     if not cliente:
-        # Autocrea cliente si es usuario registrado
         clean_ci = current_user.ci or str(current_user.id).zfill(4)
         cod = f"CL-{current_user.name[:2].upper()}-{clean_ci[-4:]}"
         cliente = Cliente(
@@ -123,9 +164,33 @@ async def create_reserva(
         db.add(cliente)
         db.flush()
 
+    # Validar regla de reserva: al menos 1 compra previa pagada (a excepción de rol administrador para pruebas)
+    if current_user.role != "administrador":
+        compras_previas = (
+            db.query(OrdenVenta)
+            .filter(
+                OrdenVenta.codigo_cliente == cliente.codigo,
+                OrdenVenta.estado.in_(["pagado", "pagada", "completado", "completada", "entregado", "entregada"]),
+            )
+            .count()
+        )
+        if compras_previas < 1:
+            raise BadRequestException(
+                "Solo los clientes con al menos 1 compra previa pagada pueden reservar prendas. ¡Realiza tu primera compra para desbloquear reservas exclusivas!"
+            )
+
+    # Validar duración máxima de 7 días
+    hoy = date.today()
+    max_fecha = hoy + timedelta(days=7)
+    fecha_reserva = payload.fecha_limite or max_fecha
+    if fecha_reserva < hoy or fecha_reserva > max_fecha:
+        raise BadRequestException(
+            f"La fecha de reserva no puede ser anterior a hoy ni superar el plazo máximo de 7 días ({max_fecha.strftime('%d/%m/%Y')})."
+        )
+
     now = datetime.now()
     reserva = Reserva(
-        fecha=now.date(),
+        fecha=fecha_reserva,
         hora=now.time(),
         estado="pendiente",
         codigo_cliente=cliente.codigo,
@@ -160,6 +225,19 @@ async def create_reserva(
 
     db.commit()
     db.refresh(reserva)
+
+    try:
+        notif_srv = NotificacionService(db)
+        notif_srv.crear_notificacion(
+            user_id=current_user.id,
+            tipo="recordatorio_reserva",
+            titulo="Reserva Registrada en StyleStore",
+            mensaje=f"Tu reserva #{reserva.id} ha sido registrada. Vigencia hasta el {reserva.fecha.strftime('%d/%m/%Y')} para retirar en sucursal.",
+            url_accion="/reservas",
+            enviar_email=True,
+        )
+    except Exception:
+        pass
 
     BitacoraService.registrar(
         db=db,

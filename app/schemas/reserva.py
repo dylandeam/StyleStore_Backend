@@ -25,6 +25,7 @@ class DetalleReservaResponse(BaseModel):
 
 class ReservaCreate(BaseModel):
     sucursal_id: int
+    fecha_limite: date | None = None
     items: list[DetalleReservaCreate] = Field(..., min_length=1)
 
 

@@ -21,6 +21,7 @@ class Pago(Base):
     )
     monto: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     tipo_pago: Mapped[str] = mapped_column(String(30), nullable=False, default="en linea")  # 'en linea' | 'en caja'
+    metodo_pago: Mapped[str | None] = mapped_column(String(30), nullable=True, default=None)  # 'paypal', 'efectivo', 'qr'
     estado: Mapped[str] = mapped_column(String(30), nullable=False, default="pendiente")  # 'pendiente', 'aprobado', 'fallido'
     paypal_order_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     paypal_capture_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
