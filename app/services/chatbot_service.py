@@ -138,8 +138,8 @@ class ChatbotService:
 
         # 7. Temporadas y Colecciones
         if any(w in norm for w in ["temporada", "coleccion", "colecciones", "verano", "invierno", "otono", "primavera"]):
-            colecciones = self.db.query(Coleccion).filter(Coleccion.is_active == True).limit(5).all()
-            temporadas = self.db.query(Temporada).filter(Temporada.is_active == True).limit(5).all()
+            colecciones = self.db.query(Coleccion).filter(Coleccion.active == True).limit(5).all()
+            temporadas = self.db.query(Temporada).limit(5).all()
 
             col_names = ", ".join([c.nombre for c in colecciones]) if colecciones else "Colección Actual"
             temp_names = ", ".join([t.nombre for t in temporadas]) if temporadas else "Temporada Actual"
@@ -170,7 +170,7 @@ class ChatbotService:
                 }
 
             ultimas_ventas = self.db.query(OrdenVenta).filter(
-                OrdenVenta.cliente_id == cliente.id
+                OrdenVenta.codigo_cliente == cliente.codigo
             ).order_by(OrdenVenta.id.desc()).limit(3).all()
 
             if not ultimas_ventas:
