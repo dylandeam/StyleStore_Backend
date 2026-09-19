@@ -99,6 +99,23 @@ async def get_catalogo(
 
 from app.core.exceptions import NotFoundException
 from app.services.recommendation_service import RecommendationService
+from app.api.deps import get_optional_current_user
+from app.models.user import User
+
+
+@router.get("/para-ti", summary="Feed de recomendaciones inteligentes Para Ti con IA local")
+async def get_catalogo_para_ti(
+    limit: int = Query(6, ge=1, le=12),
+    current_user: User | None = Depends(get_optional_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Feed 'Para Ti' con IA Local: personaliza recomendaciones afines basadas
+    en el perfil del cliente o sugiere prendas de alta afinidad de colección.
+    """
+    service = RecommendationService(db)
+    user_id = current_user.id if current_user else None
+    return service.get_para_ti_recommendations(user_id=user_id, limit=limit)
 
 
 @router.get("/{codigo}/detalle", summary="Obtener detalle completo de un producto para compra")

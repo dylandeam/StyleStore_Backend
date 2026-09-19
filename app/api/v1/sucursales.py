@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User
-from app.api.deps import require_permission
+from app.api.deps import require_permission, get_optional_current_user
 from app.schemas.sucursal import SucursalCreate, SucursalUpdate, SucursalResponse
 from app.schemas.common import MessageResponse
 from app.services.sucursal_service import SucursalService
@@ -18,11 +18,11 @@ router = APIRouter(prefix="/sucursales", tags=["Sucursales"])
     "",
     response_model=list[SucursalResponse],
     summary="Listar sucursales",
-    description="Obtiene todas las sucursales de la tienda.",
+    description="Obtiene todas las sucursales de la tienda para clientes y personal.",
 )
 async def list_sucursales(
     active_only: bool = False,
-    current_user: User = Depends(require_permission("sucursales.ver")),
+    current_user: User | None = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
 ):
     """Listar todas las sucursales."""
@@ -38,7 +38,7 @@ async def list_sucursales(
 )
 async def get_sucursal(
     sucursal_id: int,
-    current_user: User = Depends(require_permission("sucursales.ver")),
+    current_user: User | None = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
 ):
     """Obtener detalle de sucursal."""

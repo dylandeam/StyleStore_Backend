@@ -400,3 +400,20 @@ def test_nuevos_reportes_previews(client: TestClient, auth_tokens):
     for ep in endpoints:
         res = client.get(ep, headers=headers)
         assert res.status_code == 200, f"Error en endpoint {ep}: {res.text}"
+
+
+def test_catalogo_para_ti_y_sucursales_publicas(client: TestClient, auth_tokens):
+    """Verifica que el feed 'Para Ti' con IA y el listado de sucursales funcionen para clientes."""
+    headers_cli = {"Authorization": f"Bearer {auth_tokens['client_token']}"}
+
+    # 1. Endpoint /api/v1/catalogo/para-ti
+    res_para_ti = client.get("/api/v1/catalogo/para-ti?limit=4", headers=headers_cli)
+    assert res_para_ti.status_code == 200
+    data_para_ti = res_para_ti.json()
+    assert isinstance(data_para_ti, list)
+
+    # 2. Endpoint /api/v1/sucursales accesible para cliente
+    res_suc = client.get("/api/v1/sucursales", headers=headers_cli)
+    assert res_suc.status_code == 200
+    assert isinstance(res_suc.json(), list)
+
