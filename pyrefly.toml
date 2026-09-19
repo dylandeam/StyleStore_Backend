@@ -1,0 +1,8 @@
+project-includes = ["."]
+search-path = ["."]
+python-interpreter-path = ".venv/Scripts/python.exe"
+infer-with-first-use = false
+
+[errors]
+untyped-import = "ignore"
+missing-source-for-stubs = "ignore"

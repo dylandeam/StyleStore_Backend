@@ -10,14 +10,14 @@ from typing import List, Optional, Any
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 
-import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
+import openpyxl  # pyrefly: ignore[untyped-import]  # type: ignore[import-untyped]
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side  # pyrefly: ignore[untyped-import]  # type: ignore[import-untyped]
+from openpyxl.utils import get_column_letter  # pyrefly: ignore[untyped-import]  # type: ignore[import-untyped]
 
-from reportlab.lib.pagesizes import letter
-from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.pagesizes import letter  # pyrefly: ignore[untyped-import]  # type: ignore[import-untyped]
+from reportlab.lib import colors  # pyrefly: ignore[untyped-import]  # type: ignore[import-untyped]
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle  # pyrefly: ignore[untyped-import]  # type: ignore[import-untyped]
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle  # pyrefly: ignore[untyped-import]  # type: ignore[import-untyped]
 
 from app.models.orden_venta import OrdenVenta, DetalleVenta
 from app.models.producto import Producto
