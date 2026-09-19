@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session, joinedload
 from app.models.producto import Producto
 from app.models.producto_color import ProductoColor
 from app.models.stock_inventario import StockInventario
+from app.models.cliente import Cliente
+from app.models.orden_venta import OrdenVenta
 
 
 def _tokenize(text: str | None) -> set[str]:
@@ -155,10 +157,6 @@ class RecommendationService:
 
         if user_id:
             try:
-                from app.models.cliente import Cliente
-                from app.models.venta import OrdenVenta
-                from app.models.detalle_orden_venta import DetalleOrdenVenta
-
                 cliente = self.db.query(Cliente).filter(Cliente.user_id == user_id).first()
                 if cliente:
                     ultima_orden = (
