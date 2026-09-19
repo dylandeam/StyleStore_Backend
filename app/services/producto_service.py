@@ -34,22 +34,23 @@ class ProductoService:
             candidate = f"PROD-{count + 1:04d}"
         return candidate
 
-    def _to_response(self, prod: Producto) -> ProductoResponse:
+    def _to_response(self, prod: Producto, sucursal_id: int | None = None) -> ProductoResponse:
         # Extraer colores asociados
         colores_resp = []
         for pc in prod.colores_rel:
             if pc.color:
                 colores_resp.append(ColorResponse.model_validate(pc.color))
 
-        # Calcular stock total sumando inventarios
+        # Calcular stock total sumando inventarios (opcionalmente filtrado por sucursal)
         pc_ids = [pc.id for pc in prod.colores_rel]
         total_stock = 0
         if pc_ids:
-            sum_res = (
-                self.db.query(func.sum(StockInventario.cantidad))
-                .filter(StockInventario.producto_color_id.in_(pc_ids))
-                .scalar()
+            stock_q = self.db.query(func.sum(StockInventario.cantidad)).filter(
+                StockInventario.producto_color_id.in_(pc_ids)
             )
+            if sucursal_id is not None:
+                stock_q = stock_q.filter(StockInventario.sucursal_id == sucursal_id)
+            sum_res = stock_q.scalar()
             total_stock = int(sum_res or 0)
 
         return ProductoResponse(
@@ -78,6 +79,8 @@ class ProductoService:
         categoria_id: int | None = None,
         temporada_id: int | None = None,
         coleccion_id: int | None = None,
+        sucursal_id: int | None = None,
+        search: str | None = None,
     ) -> list[ProductoResponse]:
         query = self.db.query(Producto)
         if active_only:
@@ -88,9 +91,15 @@ class ProductoService:
             query = query.filter(Producto.temporada_id == temporada_id)
         if coleccion_id:
             query = query.filter(Producto.coleccion_id == coleccion_id)
+        if search:
+            query = query.filter(
+                (Producto.nombre.ilike(f"%{search}%"))
+                | (Producto.descripcion.ilike(f"%{search}%"))
+                | (Producto.codigo.ilike(f"%{search}%"))
+            )
 
         prods = query.order_by(Producto.nombre.asc()).all()
-        return [self._to_response(p) for p in prods]
+        return [self._to_response(p, sucursal_id=sucursal_id) for p in prods]
 
     def get_producto_by_codigo(self, codigo: str) -> ProductoResponse:
         prod = self.db.query(Producto).filter(Producto.codigo == codigo).first()

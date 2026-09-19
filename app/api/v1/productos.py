@@ -28,6 +28,8 @@ async def list_productos(
     active_only: bool = False,
     categoria_id: int | None = None,
     temporada_id: int | None = None,
+    sucursal_id: int | None = None,
+    search: str | None = None,
     current_user: User = Depends(require_permission("productos.ver")),
     db: Session = Depends(get_db),
 ):
@@ -36,6 +38,8 @@ async def list_productos(
         active_only=active_only,
         categoria_id=categoria_id,
         temporada_id=temporada_id,
+        sucursal_id=sucursal_id,
+        search=search,
     )
 
 
