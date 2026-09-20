@@ -121,6 +121,8 @@ async def get_inventario_sucursal(
         p_cod = None
         p_precio = None
         p_foto = None
+        p_cat_nom = None
+        p_cat_id = None
         color_nom = None
         talla_nom = None
         suc_nom = None
@@ -132,6 +134,9 @@ async def get_inventario_sucursal(
                 p_nom = s.producto_color.producto.nombre
                 p_precio = float(s.producto_color.producto.precio)
                 p_foto = s.producto_color.producto.foto
+                if s.producto_color.producto.categoria:
+                    p_cat_nom = s.producto_color.producto.categoria.nombre
+                    p_cat_id = s.producto_color.producto.categoria_id
 
         if s.talla:
             talla_nom = s.talla.nombre
@@ -156,6 +161,9 @@ async def get_inventario_sucursal(
             "talla_id": s.talla_id,
             "talla": talla_nom,
             "talla_nombre": talla_nom,
+            "categoria": p_cat_nom,
+            "categoria_nombre": p_cat_nom,
+            "categoria_id": p_cat_id,
             "sucursal_id": s.sucursal_id,
             "sucursal": suc_nom,
             "cantidad": s.cantidad,
