@@ -253,7 +253,7 @@ KPIS: [{{"label": "Vendido Hoy", "valor": "Bs. 0.00"}}, {{"label": "Prendas Vend
                         "temperature": 0.2,
                         "max_tokens": 600,
                     },
-                    timeout=7.0,
+                    timeout=12.0,
                 )
 
                 if response.status_code == 200:
@@ -301,8 +301,10 @@ KPIS: [{{"label": "Vendido Hoy", "valor": "Bs. 0.00"}}, {{"label": "Prendas Vend
                         "kpis": kpis,
                         "ia_powered": True,
                     }
+                else:
+                    print(f"[ReportAIService] Groq API returned status {response.status_code}: {response.text}")
             except Exception as e:
-                # Continuar al fallback local
+                print(f"[ReportAIService] Exception contacting Groq LLM: {e}")
                 pass
 
         # Fallback Local en caso de que Groq esté inactivo
@@ -312,8 +314,112 @@ KPIS: [{{"label": "Vendido Hoy", "valor": "Bs. 0.00"}}, {{"label": "Prendas Vend
         """Genera respuesta determinística local si el LLM no responde."""
         p_lower = pregunta.lower()
 
-        # Caso: Ventas hoy / Prendas vendidas hoy
-        if any(w in p_lower for w in ["hoy", "vendieron", "vendido"]):
+        # Prioridad 1: Delivery y Envíos
+        if any(w in p_lower for w in ["delivery", "envio", "envíos", "envios", "repartidor", "moto", "despacho"]):
+            d = ctx["delivery"]
+            lineas = [
+                f"🚚 **Reporte de Envíos y Delivery:**",
+                f"• **Pedidos por Delivery Hoy:** {d['total_hoy']}",
+                f"• **Entregados con Éxito:** {d['entregados_hoy']}",
+                f"• **En Camino (Rastreo en Vivo):** {d['en_camino_hoy']}",
+                f"• **Pendientes de Asignación:** {d['pendientes_hoy']}",
+                f"• **Tarifas Recaudadas Hoy:** Bs. {d['recaudado_tarifas_hoy']:.2f}",
+                f"• **Total Envíos en el Mes:** {d['total_mes']}",
+            ]
+            return {
+                "pregunta": pregunta,
+                "respuesta": "\n".join(lineas),
+                "kpis": [
+                    {"label": "Delivery Hoy", "valor": str(d["total_hoy"])},
+                    {"label": "Entregados", "valor": str(d["entregados_hoy"])},
+                    {"label": "En Camino", "valor": str(d["en_camino_hoy"])},
+                ],
+                "ia_powered": False,
+            }
+
+        # Prioridad 2: Sucursales específicas o listado de sucursales
+        for s in ctx["sucursales"]:
+            if s["nombre"].lower() in p_lower or (len(s["ciudad"]) > 3 and s["ciudad"].lower() in p_lower):
+                return {
+                    "pregunta": pregunta,
+                    "respuesta": f"🏢 **Reporte Financiero de {s['nombre']} ({s['ciudad']}):**\n"
+                                 f"• **Dirección:** {s['direccion']}\n"
+                                 f"• **Recaudación Hoy:** Bs. {s['recaudado_hoy']:.2f}\n"
+                                 f"• **Recaudación Acumulada del Mes:** Bs. {s['recaudado_mes']:.2f}",
+                    "kpis": [
+                        {"label": f"Hoy {s['nombre']}", "valor": f"Bs. {s['recaudado_hoy']:.2f}"},
+                        {"label": f"Mes {s['nombre']}", "valor": f"Bs. {s['recaudado_mes']:.2f}"},
+                    ],
+                    "ia_powered": False,
+                }
+
+        if any(w in p_lower for w in ["sucursal", "sucursales", "tienda", "tiendas"]):
+            lineas = ["🏢 **Desglose de Recaudación por Sucursales:**\n"]
+            for s in ctx["sucursales"]:
+                lineas.append(f"• **{s['nombre']} ({s['ciudad']}):** Hoy Bs. {s['recaudado_hoy']:.2f} | Mes Bs. {s['recaudado_mes']:.2f}")
+            return {
+                "pregunta": pregunta,
+                "respuesta": "\n".join(lineas),
+                "kpis": [{"label": "Sucursales Activas", "valor": str(len(ctx["sucursales"]))}],
+                "ia_powered": False,
+            }
+
+        # Prioridad 3: Stock e Inventario Crítico
+        if any(w in p_lower for w in ["stock", "inventario", "agotado", "agotados", "quedan", "faltante", "crítico", "critico"]):
+            crit = ctx["inventario_critico"]
+            if crit:
+                lineas = ["⚠️ **Prendas con Stock Crítico (5 unidades o menos):**\n"]
+                for c in crit[:12]:
+                    lineas.append(f"• {c}")
+                return {
+                    "pregunta": pregunta,
+                    "respuesta": "\n".join(lineas),
+                    "kpis": [{"label": "Prendas Críticas", "valor": str(len(crit))}],
+                    "ia_powered": False,
+                }
+            else:
+                return {
+                    "pregunta": pregunta,
+                    "respuesta": "✅ **Estado Óptimo de Inventario:**\nTodas las prendas registradas en las sucursales cuentan con stock suficiente (más de 5 unidades disponibles).",
+                    "kpis": [{"label": "Estado Stock", "valor": "Óptimo"}],
+                    "ia_powered": False,
+                }
+
+        # Prioridad 4: Métodos de Pago y Finanzas
+        if any(w in p_lower for w in ["pago", "pagos", "metodo", "método", "qr", "efectivo", "tarjeta", "paypal", "cobro", "cobrado"]):
+            pagos = ctx["pagos_hoy"]
+            lineas = ["💳 **Distribución de Métodos de Pago de Hoy:**\n"]
+            if pagos:
+                for met, monto in pagos.items():
+                    lineas.append(f"• **{met.upper()}:** Bs. {monto:.2f}")
+            else:
+                lineas.append("No se registran transacciones cobradas en el día de hoy hasta el momento.")
+            return {
+                "pregunta": pregunta,
+                "respuesta": "\n".join(lineas),
+                "kpis": [
+                    {"label": "Canales Activos", "valor": str(len(pagos))},
+                    {"label": "Total Hoy", "valor": f"Bs. {ctx['ventas_hoy']['total_bs']:.2f}"},
+                ],
+                "ia_powered": False,
+            }
+
+        # Prioridad 5: Recaudación del Mes / Acumulado
+        if any(w in p_lower for w in ["mes", "mensual", "acumulado"]):
+            return {
+                "pregunta": pregunta,
+                "respuesta": f"📈 **Recaudación Acumulada del Mes:**\n"
+                             f"• **Total Facturado en el Mes:** Bs. {ctx['recaudacion_mes_total']:.2f}\n"
+                             f"• **Ventas Registradas Hoy:** Bs. {ctx['ventas_hoy']['total_bs']:.2f} ({ctx['ventas_hoy']['total_prendas']} prendas)",
+                "kpis": [
+                    {"label": "Total Mes", "valor": f"Bs. {ctx['recaudacion_mes_total']:.2f}"},
+                    {"label": "Total Hoy", "valor": f"Bs. {ctx['ventas_hoy']['total_bs']:.2f}"},
+                ],
+                "ia_powered": False,
+            }
+
+        # Prioridad 6: Ventas de Hoy / Prendas Vendidas Hoy
+        if any(w in p_lower for w in ["prenda", "prendas", "ropa", "ropas", "vendieron", "vendido", "orden", "ordenes", "órdenes", "recaudo", "recaudó", "recaudación", "recaudacion", "ventas", "venta", "hoy"]):
             total_bs = ctx["ventas_hoy"]["total_bs"]
             total_prendas = ctx["ventas_hoy"]["total_prendas"]
             prendas = ctx["ventas_hoy"]["prendas_detalle"]
@@ -341,69 +447,255 @@ KPIS: [{{"label": "Vendido Hoy", "valor": "Bs. 0.00"}}, {{"label": "Prendas Vend
                 "ia_powered": False,
             }
 
-        # Caso: Delivery
-        if any(w in p_lower for w in ["delivery", "envio", "envíos", "repartidor"]):
-            d = ctx["delivery"]
-            lineas = [
-                f"🚚 **Reporte de Envíos y Delivery:**",
-                f"• **Pedidos por Delivery Hoy:** {d['total_hoy']}",
-                f"• **Entregados con Éxito:** {d['entregados_hoy']}",
-                f"• **En Camino (Rastreo en Vivo):** {d['en_camino_hoy']}",
-                f"• **Pendientes de Asignación:** {d['pendientes_hoy']}",
-                f"• **Tarifas Recaudadas Hoy:** Bs. {d['recaudado_tarifas_hoy']:.2f}",
-                f"• **Total Envíos en el Mes:** {d['total_mes']}",
-            ]
-            return {
-                "pregunta": pregunta,
-                "respuesta": "\n".join(lineas),
-                "kpis": [
-                    {"label": "Delivery Hoy", "valor": str(d["total_hoy"])},
-                    {"label": "Entregados", "valor": str(d["entregados_hoy"])},
-                ],
-                "ia_powered": False,
-            }
-
-        # Caso: Sucursal
-        for s in ctx["sucursales"]:
-            if s["nombre"].lower() in p_lower or s["ciudad"].lower() in p_lower:
-                return {
-                    "pregunta": pregunta,
-                    "respuesta": f"🏢 **Reporte Financiero de {s['nombre']} ({s['ciudad']}):**\n"
-                                 f"• **Dirección:** {s['direccion']}\n"
-                                 f"• **Recaudación Hoy:** Bs. {s['recaudado_hoy']:.2f}\n"
-                                 f"• **Recaudación Acumulada del Mes:** Bs. {s['recaudado_mes']:.2f}",
-                    "kpis": [
-                        {"label": f"Hoy {s['nombre']}", "valor": f"Bs. {s['recaudado_hoy']:.2f}"},
-                        {"label": f"Mes {s['nombre']}", "valor": f"Bs. {s['recaudado_mes']:.2f}"},
-                    ],
-                    "ia_powered": False,
-                }
-
-        # Caso: Stock Crítico
-        if any(w in p_lower for w in ["stock", "inventario", "agotado", "quedan"]):
-            crit = ctx["inventario_critico"]
-            if crit:
-                lineas = ["⚠️ **Prendas con Stock Crítico (5 unidades o menos):**\n"]
-                for c in crit[:10]:
-                    lineas.append(f"• {c}")
-                return {
-                    "pregunta": pregunta,
-                    "respuesta": "\n".join(lineas),
-                    "kpis": [{"label": "Alertas Stock", "valor": str(len(crit))}],
-                    "ia_powered": False,
-                }
-
-        # Respuesta general consolidada
+        # Prioridad 7: Respuesta general consolidada
         return {
             "pregunta": pregunta,
             "respuesta": f"📈 **Resumen Ejecutivo StyleStore:**\n"
                          f"• Recaudación Hoy: Bs. {ctx['ventas_hoy']['total_bs']:.2f} ({ctx['ventas_hoy']['total_prendas']} prendas)\n"
                          f"• Recaudación Acumulada Mes: Bs. {ctx['recaudacion_mes_total']:.2f}\n"
-                         f"• Pedidos Delivery Hoy: {ctx['delivery']['total_hoy']}\n"
-                         f"Puedes consultar específicamente por prendas vendidas hoy, recaudación por sucursal, pedidos delivery o stock crítico.",
+                         f"• Pedidos Delivery Hoy: {ctx['delivery']['total_hoy']}\n\n"
+                         f"Puedes consultar por prendas vendidas hoy, recaudación por sucursal, pedidos delivery, formas de pago o stock crítico.",
             "kpis": [
                 {"label": "Ventas Hoy", "valor": f"Bs. {ctx['ventas_hoy']['total_bs']:.2f}"},
                 {"label": "Mes Total", "valor": f"Bs. {ctx['recaudacion_mes_total']:.2f}"},
             ],
             "ia_powered": False,
         }
+
+    def exportar_excel(self, pregunta: str, respuesta: str, kpis: List[Dict[str, Any]]) -> Any:
+        """Genera un archivo Excel (.xlsx) con la consulta ejecutiva formulada a la IA."""
+        import io
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Consulta Ejecutiva IA"
+
+        navy_fill = PatternFill(start_color="14263D", end_color="14263D", fill_type="solid")
+        gold_fill = PatternFill(start_color="C6A87D", end_color="C6A87D", fill_type="solid")
+        light_fill = PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid")
+
+        title_font = Font(name="Arial", size=14, bold=True, color="14263D")
+        sub_font = Font(name="Arial", size=9, italic=True, color="64748B")
+        section_font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
+        header_font = Font(name="Arial", size=10, bold=True, color="FFFFFF")
+        normal_font = Font(name="Arial", size=10)
+        bold_font = Font(name="Arial", size=10, bold=True)
+        thin_border = Border(
+            left=Side(style='thin', color='E2E8F0'),
+            right=Side(style='thin', color='E2E8F0'),
+            top=Side(style='thin', color='E2E8F0'),
+            bottom=Side(style='thin', color='E2E8F0'),
+        )
+
+        ws.merge_cells("A1:D1")
+        ws["A1"] = "StyleStore - Reporte Ejecutivo Asistente IA"
+        ws["A1"].font = title_font
+
+        ws.merge_cells("A2:D2")
+        ws["A2"] = f"Generado el: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} | Módulo de Inteligencia Artificial & BI"
+        ws["A2"].font = sub_font
+
+        # Pregunta
+        ws.merge_cells("A4:D4")
+        ws["A4"] = "CONSULTA FORMULADA:"
+        ws["A4"].fill = navy_fill
+        ws["A4"].font = section_font
+        ws["A4"].alignment = Alignment(vertical="center", indent=1)
+
+        ws.merge_cells("A5:D5")
+        ws["A5"] = f'"{pregunta}"'
+        ws["A5"].font = bold_font
+        ws["A5"].alignment = Alignment(vertical="center", indent=1)
+        ws["A5"].fill = light_fill
+
+        curr_row = 7
+        # KPIs
+        if kpis:
+            ws.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=2)
+            ws.cell(row=curr_row, column=1, value="MÉTRICAS CLAVE (KPIS)").fill = gold_fill
+            ws.cell(row=curr_row, column=1).font = Font(name="Arial", size=10, bold=True, color="14263D")
+            curr_row += 1
+
+            ws.cell(row=curr_row, column=1, value="Indicador").fill = navy_fill
+            ws.cell(row=curr_row, column=1).font = header_font
+            ws.cell(row=curr_row, column=2, value="Valor").fill = navy_fill
+            ws.cell(row=curr_row, column=2).font = header_font
+            curr_row += 1
+
+            for k in kpis:
+                c1 = ws.cell(row=curr_row, column=1, value=k.get("label", ""))
+                c2 = ws.cell(row=curr_row, column=2, value=k.get("valor", ""))
+                c1.font = normal_font
+                c2.font = bold_font
+                c1.border = thin_border
+                c2.border = thin_border
+                curr_row += 1
+            curr_row += 1
+
+        # Respuesta Analítica
+        ws.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=4)
+        ws.cell(row=curr_row, column=1, value="INFORME ANALÍTICO DE LA CONSULTA").fill = navy_fill
+        ws.cell(row=curr_row, column=1).font = section_font
+        ws.cell(row=curr_row, column=1).alignment = Alignment(vertical="center", indent=1)
+        curr_row += 1
+
+        for line in respuesta.splitlines():
+            line_clean = line.strip()
+            if not line_clean:
+                curr_row += 1
+                continue
+            ws.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=4)
+            c = ws.cell(row=curr_row, column=1, value=line_clean)
+            c.font = bold_font if line_clean.startswith("•") or line_clean.startswith("📊") or line_clean.startswith("🚚") or line_clean.startswith("🏢") or line_clean.startswith("⚠️") or line_clean.startswith("💳") else normal_font
+            c.alignment = Alignment(vertical="center", wrap_text=True)
+            curr_row += 1
+
+        ws.column_dimensions["A"].width = 28
+        ws.column_dimensions["B"].width = 28
+        ws.column_dimensions["C"].width = 25
+        ws.column_dimensions["D"].width = 25
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return buf
+
+    def exportar_pdf(self, pregunta: str, respuesta: str, kpis: List[Dict[str, Any]]) -> Any:
+        """Genera un archivo PDF (.pdf) estilizado con el reporte analítico de la IA."""
+        import io
+        import re
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib import colors
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
+        styles = getSampleStyleSheet()
+
+        title_style = ParagraphStyle(
+            'RepAITitle',
+            parent=styles['Heading1'],
+            fontSize=16,
+            leading=20,
+            textColor=colors.HexColor('#14263D'),
+            fontName="Helvetica-Bold",
+        )
+        subtitle_style = ParagraphStyle(
+            'RepAISub',
+            parent=styles['Normal'],
+            fontSize=9,
+            leading=12,
+            textColor=colors.HexColor('#64748B'),
+        )
+        query_label_style = ParagraphStyle(
+            'RepAIQueryLbl',
+            parent=styles['Normal'],
+            fontSize=9,
+            leading=12,
+            textColor=colors.HexColor('#94A3B8'),
+            fontName="Helvetica-Bold",
+        )
+        query_text_style = ParagraphStyle(
+            'RepAIQueryText',
+            parent=styles['Normal'],
+            fontSize=11,
+            leading=14,
+            textColor=colors.HexColor('#14263D'),
+            fontName="Helvetica-Bold",
+        )
+        heading2_style = ParagraphStyle(
+            'RepAIHead2',
+            parent=styles['Heading2'],
+            fontSize=12,
+            leading=15,
+            textColor=colors.HexColor('#14263D'),
+            fontName="Helvetica-Bold",
+        )
+        body_style = ParagraphStyle(
+            'RepAIBody',
+            parent=styles['Normal'],
+            fontSize=9.5,
+            leading=13,
+            textColor=colors.HexColor('#1E293B'),
+        )
+        bullet_style = ParagraphStyle(
+            'RepAIBullet',
+            parent=styles['Normal'],
+            fontSize=9.5,
+            leading=13,
+            textColor=colors.HexColor('#0F172A'),
+            leftIndent=12,
+        )
+
+        elements: List[Any] = [
+            Paragraph("StyleStore - Reporte Ejecutivo Asistente IA", title_style),
+            Paragraph(f"Emitido el: {datetime.now().strftime('%d/%m/%Y %H:%M')} | Sistema StyleStore BI", subtitle_style),
+            Spacer(1, 14),
+        ]
+
+        # Caja de la pregunta
+        query_table = Table(
+            [
+                [Paragraph("CONSULTA EJECUTIVA FORMULADA:", query_label_style)],
+                [Paragraph(f'"{pregunta}"', query_text_style)]
+            ],
+            colWidths=[540],
+        )
+        query_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F8FAFC')),
+            ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#E2E8F0')),
+            ('LINELEFT', (0, 0), (0, -1), 4, colors.HexColor('#14263D')),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('LEFTPADDING', (0, 0), (-1, -1), 12),
+        ]))
+        elements.append(query_table)
+        elements.append(Spacer(1, 14))
+
+        # KPIs si existen
+        if kpis:
+            elements.append(Paragraph("MÉTRICAS CLAVE (KPIS)", heading2_style))
+            elements.append(Spacer(1, 6))
+
+            kpi_table_data = [["Indicador / Métrica", "Valor Reportado"]]
+            for k in kpis:
+                kpi_table_data.append([k.get("label", "-"), k.get("valor", "-")])
+
+            kpi_table = Table(kpi_table_data, colWidths=[270, 270])
+            kpi_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#14263D')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.HexColor('#F8F9FA'), colors.white]),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E2E8F0')),
+                ('TOPPADDING', (0, 0), (-1, -1), 5),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+            ]))
+            elements.append(kpi_table)
+            elements.append(Spacer(1, 14))
+
+        # Respuesta Analítica
+        elements.append(Paragraph("INFORME ANALÍTICO DETALLADO", heading2_style))
+        elements.append(Spacer(1, 6))
+
+        for line in respuesta.splitlines():
+            line_str = line.strip()
+            if not line_str:
+                elements.append(Spacer(1, 4))
+                continue
+            clean_str = line_str.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            clean_str = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', clean_str)
+
+            if clean_str.startswith("•") or clean_str.startswith("-"):
+                elements.append(Paragraph(clean_str, bullet_style))
+            else:
+                elements.append(Paragraph(clean_str, body_style))
+            elements.append(Spacer(1, 3))
+
+        doc.build(elements)
+        buffer.seek(0)
+        return buffer

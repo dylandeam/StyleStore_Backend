@@ -581,6 +581,12 @@ class ConsultaReporteIARequest(BaseModel):
     pregunta: str
 
 
+class ExportarReporteIARequest(BaseModel):
+    pregunta: str
+    respuesta: str
+    kpis: Optional[list] = None
+
+
 @router.post("/asistente-ia", summary="Consulta ejecutiva analítica con IA para administradores y encargados")
 async def consultar_asistente_ia(
     req: ConsultaReporteIARequest,
@@ -610,5 +616,53 @@ async def consultar_asistente_ia(
             "kpis": [],
             "ia_powered": False,
         }
+
+
+@router.post("/asistente-ia/excel", summary="Exportar consulta analítica de IA a archivo Excel (.xlsx)")
+async def exportar_asistente_ia_excel(
+    req: ExportarReporteIARequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Genera y descarga un Excel con la consulta y la respuesta analítica del Asistente IA."""
+    service = ReportAIService(db)
+    buf = service.exportar_excel(req.pregunta, req.respuesta, req.kpis or [])
+
+    BitacoraService.registrar(
+        db=db,
+        user=current_user,
+        action=f"Exportó reporte IA a Excel: '{req.pregunta[:50]}'",
+        module="reportes",
+    )
+
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="reporte_ejecutivo_ia.xlsx"'},
+    )
+
+
+@router.post("/asistente-ia/pdf", summary="Exportar consulta analítica de IA a archivo PDF (.pdf)")
+async def exportar_asistente_ia_pdf(
+    req: ExportarReporteIARequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Genera y descarga un PDF estilizado con la consulta y respuesta del Asistente IA."""
+    service = ReportAIService(db)
+    buf = service.exportar_pdf(req.pregunta, req.respuesta, req.kpis or [])
+
+    BitacoraService.registrar(
+        db=db,
+        user=current_user,
+        action=f"Exportó reporte IA a PDF: '{req.pregunta[:50]}'",
+        module="reportes",
+    )
+
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="reporte_ejecutivo_ia.pdf"'},
+    )
 
 
