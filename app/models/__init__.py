@@ -33,6 +33,8 @@ from app.models.backup_log import BackupLog
 from app.models.backup_config import BackupConfig
 from app.models.notificacion import Notificacion, SuscripcionProximamente, SuscripcionStock
 from app.models.cambio_devolucion import CambioDevolucion
+from app.models.compra import Compra, DetalleCompra
+from app.models.outfit import Outfit, OutfitItem
 
 __all__ = [
     "Role",
@@ -73,4 +75,8 @@ __all__ = [
     "SuscripcionProximamente",
     "SuscripcionStock",
     "CambioDevolucion",
+    "Compra",
+    "DetalleCompra",
+    "Outfit",
+    "OutfitItem",
 ]

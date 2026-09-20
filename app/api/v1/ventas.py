@@ -28,8 +28,13 @@ router = APIRouter(prefix="/ventas", tags=["Ventas"])
 def _serialize_orden(o: OrdenVenta) -> dict:
     detalles = []
     for d in o.detalles:
+        prod_cod = None
+        if d.stock_inventario and d.stock_inventario.producto_color:
+            prod_cod = d.stock_inventario.producto_color.producto_codigo
         detalles.append({
             "id": d.id,
+            "stock_inventario_id": d.stock_inventario_id,
+            "producto_codigo": prod_cod,
             "producto_nombre": d.producto_nombre,
             "color_nombre": d.color_nombre,
             "talla_nombre": d.talla_nombre,

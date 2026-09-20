@@ -34,6 +34,8 @@ from app.api.v1.reportes import router as reportes_router
 from app.api.v1.notificaciones import router as notificaciones_router
 from app.api.v1.cambios import router as cambios_router
 from app.api.v1.chatbot import router as chatbot_router
+from app.api.v1.compras import router as compras_router
+from app.api.v1.outfits import router as outfits_router
 
 api_v1_router = APIRouter()
 
@@ -68,3 +70,5 @@ api_v1_router.include_router(reportes_router)
 api_v1_router.include_router(notificaciones_router)
 api_v1_router.include_router(cambios_router)
 api_v1_router.include_router(chatbot_router)
+api_v1_router.include_router(compras_router)
+api_v1_router.include_router(outfits_router)

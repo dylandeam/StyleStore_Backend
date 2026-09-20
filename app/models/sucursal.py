@@ -2,7 +2,8 @@
 Sucursal model for Store Branches.
 """
 from datetime import datetime
-from sqlalchemy import String, Boolean, DateTime, func
+from decimal import Decimal
+from sqlalchemy import String, Boolean, DateTime, Numeric, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -18,6 +19,8 @@ class Sucursal(Base):
     city: Mapped[str] = mapped_column(String(100), nullable=False)
     address: Mapped[str] = mapped_column(String(255), nullable=False)
     phone: Mapped[str] = mapped_column(String(20), nullable=False)
+    latitud: Mapped[Decimal | None] = mapped_column(Numeric(10, 6), nullable=True)
+    longitud: Mapped[Decimal | None] = mapped_column(Numeric(10, 6), nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

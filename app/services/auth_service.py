@@ -33,19 +33,37 @@ class AuthService:
         """
         Register a new client user.
         """
-        # Check if user already exists
+        # Check if user already exists by email
         existing_user = (
             self.db.query(User).filter(User.email == request.email).first()
         )
         if existing_user:
             raise UserAlreadyExistsException("Ya existe un usuario registrado con este correo electrónico.")
 
-        # Create new user with default client role
+        # Check CI uniqueness if provided
+        ci_val = request.ci.strip() if request.ci and request.ci.strip() else None
+        if ci_val:
+            existing_ci = self.db.query(User).filter(User.ci == ci_val).first()
+            if existing_ci:
+                raise UserAlreadyExistsException("Ya existe un usuario registrado con este carnet de identidad (CI).")
+
+        # Resolve role_id for 'cliente'
+        from app.models.role import Role
+        role_cliente = self.db.query(Role).filter(Role.nombre.ilike("cliente")).first()
+        role_id_val = role_cliente.id if role_cliente else None
+
+        # Create new user with default client role (CU9 / v7 Punto 1)
         user = User(
             email=request.email,
-            name=request.name,
+            name=request.name.strip(),
+            apellido=request.apellido.strip() if request.apellido else None,
+            ci=ci_val,
+            telefono=request.telefono.strip() if request.telefono else None,
+            direccion=request.direccion.strip() if request.direccion else None,
+            foto=request.foto.strip() if request.foto else None,
             hashed_password=hash_password(request.password),
             role="cliente",
+            role_id=role_id_val,
         )
         self.db.add(user)
         self.db.commit()
@@ -62,11 +80,14 @@ class AuthService:
             codigo = f"{base_codigo}-{c}"
             c += 1
 
+        cliente_telefono = request.telefono.strip() if request.telefono and request.telefono.strip() else "70000000"
+        cliente_direccion = request.direccion.strip() if request.direccion and request.direccion.strip() else "Sin dirección registrada"
+
         cliente = Cliente(
             codigo=codigo,
             user_id=user.id,
-            telefono="70000000",
-            direccion="Sin dirección registrada",
+            telefono=cliente_telefono,
+            direccion=cliente_direccion,
         )
         self.db.add(cliente)
         self.db.commit()

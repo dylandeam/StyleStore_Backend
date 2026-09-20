@@ -65,6 +65,7 @@ async def get_catalogo(
                     "talla_id": s.talla_id,
                     "talla_nombre": s.talla.nombre if s.talla else None,
                     "sucursal_id": s.sucursal_id,
+                    "sucursal_nombre": s.sucursal.nombre if s.sucursal else None,
                     "sucursal_ciudad": s.sucursal.ciudad if s.sucursal else None,
                     "cantidad": s.cantidad,
                 })
@@ -121,11 +122,13 @@ async def get_catalogo_para_ti(
 @router.get("/{codigo}/detalle", summary="Obtener detalle completo de un producto para compra")
 async def get_producto_detalle(
     codigo: str,
+    sucursal_id: int | None = Query(None),
     db: Session = Depends(get_db),
 ):
     """
     Obtiene la ficha técnica y comercial del producto con todas sus variantes de color,
     tallas asociadas y existencias de stock disponibles para venta directa o carrito.
+    Permite filtrar existencias por sucursal específica.
     """
     # Búsqueda insensible a mayúsculas/minúsculas y espacios
     clean_cod = codigo.strip().lower()
@@ -138,7 +141,10 @@ async def get_producto_detalle(
 
     if p.colores_rel:
         for pc in p.colores_rel:
-            stocks = db.query(StockInventario).filter(StockInventario.producto_color_id == pc.id).all()
+            stock_query = db.query(StockInventario).filter(StockInventario.producto_color_id == pc.id)
+            if sucursal_id:
+                stock_query = stock_query.filter(StockInventario.sucursal_id == sucursal_id)
+            stocks = stock_query.all()
             tallas_stock = []
             for s in stocks:
                 stock_total += s.cantidad
@@ -147,6 +153,7 @@ async def get_producto_detalle(
                     "talla_id": s.talla_id,
                     "talla_nombre": s.talla.nombre if s.talla else None,
                     "sucursal_id": s.sucursal_id,
+                    "sucursal_nombre": s.sucursal.nombre if s.sucursal else None,
                     "sucursal_ciudad": s.sucursal.ciudad if s.sucursal else None,
                     "cantidad": s.cantidad,
                 })

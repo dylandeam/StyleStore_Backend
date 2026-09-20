@@ -83,7 +83,7 @@ class CambioService:
         self.db.commit()
         self.db.refresh(solicitud)
 
-        # Notificar in-app al cliente de su solicitud recibida
+        # Notificar in-app al cliente de su solicitud recibida (sin bloquear la petición HTTP)
         notif_srv = NotificacionService(self.db)
         notif_srv.crear_notificacion(
             user_id=user.id,
@@ -91,7 +91,7 @@ class CambioService:
             titulo="Solicitud de Cambio/Devolución Recibida",
             mensaje=f"Hemos recibido tu solicitud de {tipo} para el producto de tu orden {orden.ticket_numero or orden.id}. Un encargado revisará tu caso.",
             url_accion="/cuenta/mis-compras",
-            enviar_email=True,
+            enviar_email=False,
         )
 
         return solicitud

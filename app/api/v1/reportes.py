@@ -434,3 +434,138 @@ async def pdf_devoluciones(sucursal_id: Optional[int] = None, current_user: User
     rows = [[d["ticket"], d["tipo"], d["motivo"], d["producto"][:18], d["sucursal"], d["estado"], d["fecha_programada"]] for d in data]
     buf = srv.build_generic_pdf("Reporte de Cambios y Devoluciones", headers, rows, [75, 55, 75, 110, 80, 60, 65])
     return Response(content=buf.getvalue(), media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="cambios_devoluciones.pdf"'})
+
+
+# ==========================================
+# REPORTES ESPECIALIZADOS FALTANTES (PUNTO 6)
+# ==========================================
+
+# 9. Flujo Financiero y Pagos
+@router.get("/financiero/preview")
+async def preview_financiero(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_financiero_report_data(sucursal_id)
+    return {"total_registros": len(data), "items": data}
+
+@router.get("/financiero/excel")
+async def excel_financiero(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_financiero_report_data(sucursal_id)
+    headers = ["Método de Pago", "N° Transacciones", "Total Recaudado (Bs.)"]
+    rows = [[d["metodo"], d["cantidad_transacciones"], d["total_recaudado"]] for d in data]
+    buf = srv.build_generic_excel("Financiero", "Reporte Financiero y Flujo de Pagos", headers, rows)
+    return Response(content=buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": 'attachment; filename="reporte_financiero.xlsx"'})
+
+@router.get("/financiero/pdf")
+async def pdf_financiero(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_financiero_report_data(sucursal_id)
+    headers = ["Método de Pago", "Transacciones", "Total Recaudado (Bs.)"]
+    rows = [[d["metodo"], d["cantidad_transacciones"], f"Bs. {d['total_recaudado']:.2f}"] for d in data]
+    buf = srv.build_generic_pdf("Reporte Financiero y Flujo de Pagos", headers, rows, [180, 140, 160])
+    return Response(content=buf.getvalue(), media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="reporte_financiero.pdf"'})
+
+
+# 10. Caducidad y Obsolescencia de Temporadas
+@router.get("/caducidad/preview")
+async def preview_caducidad(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_caducidad_report_data(sucursal_id)
+    return {"total_registros": len(data), "items": data}
+
+@router.get("/caducidad/excel")
+async def excel_caducidad(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_caducidad_report_data(sucursal_id)
+    headers = ["Código", "Producto", "Temporada", "Sucursal", "Talla", "Stock", "Precio (Bs.)", "Sugerencia"]
+    rows = [[d["codigo"], d["producto"], d["temporada"], d["sucursal"], d["talla"], d["unidades_stock"], d["precio_actual"], d["descuento_sugerido"]] for d in data]
+    buf = srv.build_generic_excel("Caducidad", "Prendas de Temporadas Pasadas / Liquidación", headers, rows)
+    return Response(content=buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": 'attachment; filename="reporte_caducidad.xlsx"'})
+
+@router.get("/caducidad/pdf")
+async def pdf_caducidad(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_caducidad_report_data(sucursal_id)
+    headers = ["Código", "Prenda", "Temporada", "Sucursal", "Stock", "Precio"]
+    rows = [[d["codigo"], d["producto"][:20], d["temporada"][:12], d["sucursal"][:12], d["unidades_stock"], f"Bs. {d['precio_actual']:.2f}"] for d in data]
+    buf = srv.build_generic_pdf("Prendas en Liquidación / Temporadas Pasadas", headers, rows, [70, 140, 80, 80, 50, 60])
+    return Response(content=buf.getvalue(), media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="reporte_caducidad.pdf"'})
+
+
+# 11. Auditoría y Bitácora
+@router.get("/auditoria/preview")
+async def preview_auditoria(limit: int = 150, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_auditoria_report_data(limit)
+    return {"total_registros": len(data), "items": data}
+
+@router.get("/auditoria/excel")
+async def excel_auditoria(limit: int = 200, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_auditoria_report_data(limit)
+    headers = ["ID", "Usuario / Rol", "Módulo", "Acción Realizada", "IP", "Fecha"]
+    rows = [[d["id"], d["usuario"], d["modulo"], d["accion"], d["ip"], d["fecha"]] for d in data]
+    buf = srv.build_generic_excel("Auditoria", "Registro de Bitácora de Auditoría", headers, rows)
+    return Response(content=buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": 'attachment; filename="bitacora_auditoria.xlsx"'})
+
+@router.get("/auditoria/pdf")
+async def pdf_auditoria(limit: int = 150, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_auditoria_report_data(limit)
+    headers = ["Usuario", "Módulo", "Acción Realizada", "Fecha"]
+    rows = [[d["usuario"][:18], d["modulo"][:10], d["accion"][:35], d["fecha"]] for d in data]
+    buf = srv.build_generic_pdf("Bitácora de Auditoría", headers, rows, [110, 70, 200, 100])
+    return Response(content=buf.getvalue(), media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="bitacora_auditoria.pdf"'})
+
+
+# 12. Compras a Proveedores (Abastecimiento)
+@router.get("/compras/preview")
+async def preview_compras(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_compras_report_data(sucursal_id)
+    return {"total_registros": len(data), "items": data}
+
+@router.get("/compras/excel")
+async def excel_compras(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_compras_report_data(sucursal_id)
+    headers = ["ID Compra", "Fecha", "Proveedor", "Sucursal Destino", "Monto Total (Bs.)"]
+    rows = [[d["id"], d["fecha"], d["proveedor"], d["sucursal"], d["total"]] for d in data]
+    buf = srv.build_generic_excel("Compras", "Compras y Abastecimiento de Proveedores", headers, rows)
+    return Response(content=buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": 'attachment; filename="compras_proveedores.xlsx"'})
+
+@router.get("/compras/pdf")
+async def pdf_compras(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    srv = ReportService(db)
+    data = srv.get_compras_report_data(sucursal_id)
+    headers = ["ID", "Fecha", "Proveedor", "Sucursal", "Total (Bs.)"]
+    rows = [[d["id"], d["fecha"], d["proveedor"][:20], d["sucursal"], f"Bs. {d['total']:.2f}"] for d in data]
+    buf = srv.build_generic_pdf("Compras y Abastecimiento a Proveedores", headers, rows, [40, 80, 180, 100, 80])
+    return Response(content=buf.getvalue(), media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="compras_proveedores.pdf"'})
+
+
+# Aliases defensivos para garantizar compatibilidad con frontend y no dar jamás 404
+@router.get("/vendedores/preview")
+async def alias_preview_vendedores(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return await preview_empleados(sucursal_id=sucursal_id, current_user=current_user, db=db)
+
+@router.get("/vendedores/excel")
+async def alias_excel_vendedores(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return await excel_empleados(sucursal_id=sucursal_id, current_user=current_user, db=db)
+
+@router.get("/vendedores/pdf")
+async def alias_pdf_vendedores(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return await pdf_empleados(sucursal_id=sucursal_id, current_user=current_user, db=db)
+
+@router.get("/garantias/preview")
+async def alias_preview_garantias(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return await preview_devoluciones(sucursal_id=sucursal_id, current_user=current_user, db=db)
+
+@router.get("/garantias/excel")
+async def alias_excel_garantias(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return await excel_devoluciones(sucursal_id=sucursal_id, current_user=current_user, db=db)
+
+@router.get("/garantias/pdf")
+async def alias_pdf_garantias(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return await pdf_devoluciones(sucursal_id=sucursal_id, current_user=current_user, db=db)
+

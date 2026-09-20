@@ -199,3 +199,64 @@ async def completar_en_caja(
         nuevo_stock_inventario_id=payload.nuevo_stock_inventario_id,
     )
     return {"status": "ok", "estado": solicitud.estado, "mensaje": "Cambio/Devolución completado en caja con ajuste de stock."}
+
+
+@router.get("/opciones-disponibles", summary="Obtener tallas con stock y colores de la prenda para cambio (Punto 5)")
+async def get_opciones_disponibles(
+    producto_codigo: str,
+    sucursal_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Retorna los colores existentes para la prenda y únicamente las tallas que tienen stock
+    disponible en la sucursal donde se realizó la compra original.
+    """
+    from app.models.producto import Producto
+    from app.models.stock_inventario import StockInventario
+    from app.models.producto_color import ProductoColor
+    from sqlalchemy import func
+
+    p = db.query(Producto).filter(func.lower(Producto.codigo) == producto_codigo.strip().lower()).first()
+    if not p:
+        return {"colores": [], "tallas": []}
+
+    # Colores existentes para esa prenda (Producto_Color)
+    colores = []
+    seen_colores = set()
+    for pc in p.colores_rel:
+        if pc.color and pc.color.id not in seen_colores:
+            seen_colores.add(pc.color.id)
+            colores.append({
+                "id": pc.color.id,
+                "nombre": pc.color.nombre,
+                "codigo_hex": getattr(pc.color, "codigo_hex", None) or getattr(pc.color, "hex", None),
+            })
+
+    # Tallas con stock disponible en la sucursal de la compra original
+    stocks = (
+        db.query(StockInventario)
+        .join(ProductoColor, StockInventario.producto_color_id == ProductoColor.id)
+        .filter(
+            ProductoColor.producto_codigo == p.codigo,
+            StockInventario.sucursal_id == sucursal_id,
+            StockInventario.cantidad > 0,
+        )
+        .all()
+    )
+
+    tallas_map = {}
+    for s in stocks:
+        if s.talla and s.talla.id not in tallas_map:
+            tallas_map[s.talla.id] = {
+                "id": s.talla.id,
+                "nombre": s.talla.nombre,
+                "cantidad": s.cantidad,
+                "stock_inventario_id": s.id,
+                "color_id": s.producto_color.color_id if s.producto_color else None,
+            }
+
+    return {
+        "colores": colores,
+        "tallas": list(tallas_map.values()),
+    }
+

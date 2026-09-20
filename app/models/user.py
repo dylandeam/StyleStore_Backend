@@ -41,5 +41,17 @@ class User(Base):
 
     role_rel = relationship("Role", back_populates="users", lazy="joined")
 
+    @property
+    def sucursal_id(self) -> int | None:
+        try:
+            from app.models.empleado import Empleado
+            # Chequear relación si fue cargada
+            if hasattr(self, "empleado_rel") and self.empleado_rel:
+                emp = self.empleado_rel[0] if isinstance(self.empleado_rel, list) else self.empleado_rel
+                return getattr(emp, "sucursal_id", None)
+        except Exception:
+            pass
+        return None
+
     def __repr__(self) -> str:
         return f"<User(id={self.id}, email='{self.email}', name='{self.name}', role='{self.role}')>"

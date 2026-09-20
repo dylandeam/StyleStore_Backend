@@ -53,7 +53,7 @@ class ChatbotService:
         if any(w in norm for w in ["hola", "buen dia", "buenas tardes", "buenas noches", "hey", "saludos"]):
             nombre = f", {user.name}" if user else ""
             return {
-                "respuesta": f"¡Hola{nombre}! 👋 Bienvenido a StyleStore. ¿En qué puedo colaborarte hoy? Puedes consultarme sobre nuestras sucursales, prendas disponibles, temporadas, estado de tus pedidos o realizar reservas.",
+                "respuesta": f"¡Hola{nombre}! 👋 Bienvenido a StyleStore. ¿En qué puedo colaborarte hoy? Puedes consultarme sobre nuestras sucursales, prendas disponibles, temporadas, estado de tus pedidos o decirme 'agrega el vestido rojo al carrito' para comprar directamente.",
                 "chips": [
                     {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/admin/sucursales"},
                     {"label": "👗 Catálogo de Ropa", "action": "navigate", "route": "/catalogo"},
@@ -61,6 +61,57 @@ class ChatbotService:
                     {"label": "💳 Métodos de Pago", "action": "navigate", "route": "/cuenta/mis-pagos"},
                 ],
             }
+
+        # 1.1 Acción Ejecutable: Agregar prenda al carrito (Punto 8 / v7)
+        if any(f in norm for f in ["agrega", "agregar", "anade", "anadir", "pon en mi bolsa", "pon al carrito", "comprar", "metelo"]):
+            cant_match = re.search(r"\b(\d+)\b", norm)
+            cantidad = int(cant_match.group(1)) if cant_match else 1
+            if cantidad < 1:
+                cantidad = 1
+
+            prods = self.db.query(Producto).filter(Producto.active == True).all()
+            matched_prod = None
+            for p in prods:
+                p_norm = _normalize(p.nombre)
+                # Coincidencia directa o parcial
+                if p_norm in norm or any(w in norm for w in p_norm.split() if len(w) >= 4):
+                    matched_prod = p
+                    break
+
+            if matched_prod:
+                from app.models.producto_color import ProductoColor
+                from app.models.stock_inventario import StockInventario
+                pc = self.db.query(ProductoColor).filter(ProductoColor.producto_codigo == matched_prod.codigo).first()
+                color_id = pc.color_id if pc else 1
+                color_nom = pc.color.nombre if (pc and pc.color) else "Estándar"
+
+                stk = None
+                if pc:
+                    stk = self.db.query(StockInventario).filter(
+                        StockInventario.producto_color_id == pc.id,
+                        StockInventario.cantidad > 0
+                    ).first()
+                talla_id = stk.talla_id if stk else 1
+                talla_nom = stk.talla.nombre if (stk and stk.talla) else "Única"
+
+                return {
+                    "respuesta": f"🛒 ¡Excelente elección! He añadido **{cantidad}x {matched_prod.nombre}** ({color_nom}, Talla {talla_nom}) directamente a tu bolsa de compras.",
+                    "accion_ejecutable": {
+                        "tipo": "add_to_cart",
+                        "producto_codigo": matched_prod.codigo,
+                        "producto_nombre": matched_prod.nombre,
+                        "precio": float(matched_prod.precio),
+                        "color_id": color_id,
+                        "color_nombre": color_nom,
+                        "talla_id": talla_id,
+                        "talla_nombre": talla_nom,
+                        "cantidad": cantidad,
+                    },
+                    "chips": [
+                        {"label": "🛍️ Ir al Carrito a Pagar", "action": "navigate", "route": "/carrito"},
+                        {"label": "👗 Ver Catálogo", "action": "navigate", "route": "/catalogo"},
+                    ],
+                }
 
         # 2. Sucursales / Ubicaciones / Horarios
         if any(w in norm for w in ["sucursal", "sucursales", "donde estan", "ubicacion", "direccion", "tienda fisica", "horario"]):

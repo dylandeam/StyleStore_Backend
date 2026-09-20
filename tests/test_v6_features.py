@@ -258,7 +258,29 @@ def test_regla_reserva_elegibilidad(client: TestClient, auth_tokens, sample_inve
         headers=headers,
     )
     assert res_crear.status_code == 201
+    reserva_id = res_crear.json()["id"]
     assert res_crear.json()["estado"] == "pendiente"
+
+    # Verificar que el cliente ve sus reservas en /reservas/mias
+    res_mias = client.get("/api/v1/reservas/mias", headers=headers)
+    assert res_mias.status_code == 200
+    assert any(r["id"] == reserva_id for r in res_mias.json())
+
+    # Verificar que el staff puede listar con filtro por sucursal
+    admin_headers = {"Authorization": f"Bearer {auth_tokens['admin_token']}"}
+    res_admin = client.get(f"/api/v1/reservas?sucursal_id={sample_inventory['sucursal'].id}", headers=admin_headers)
+    assert res_admin.status_code == 200
+    assert any(r["id"] == reserva_id for r in res_admin.json())
+
+    # Cancelar la reserva como cliente y verificar restitución de stock
+    res_cancelar = client.post(f"/api/v1/reservas/{reserva_id}/cancelar", headers=headers)
+    assert res_cancelar.status_code == 200
+    assert res_cancelar.json()["estado"] == "cancelada"
+
+    # Intentar cancelar nuevamente debe fallar
+    res_re_cancelar = client.post(f"/api/v1/reservas/{reserva_id}/cancelar", headers=headers)
+    assert res_re_cancelar.status_code == 400
+
 
 
 def test_venta_presencial_efectivo_y_qr(client: TestClient, auth_tokens, sample_inventory):

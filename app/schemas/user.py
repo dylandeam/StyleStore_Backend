@@ -69,6 +69,7 @@ class UserResponse(BaseModel):
     foto: str | None = Field(None, description="Profile photo URL")
     role_id: int | None = Field(None, description="Role ID")
     role: str = Field(..., description="User role")
+    sucursal_id: int | None = Field(None, description="ID de sucursal si es empleado")
     is_active: bool = Field(..., description="Whether the user is active")
     created_at: datetime = Field(..., description="Account creation timestamp")
 

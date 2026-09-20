@@ -3,7 +3,8 @@ Reservas endpoints (v5 sección 16).
 Incluye transacción atómica con descuento automático de inventario.
 """
 from datetime import datetime
-from fastapi import APIRouter, Depends, status
+from typing import Optional
+from fastapi import APIRouter, Depends, status, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -73,18 +74,30 @@ def _serialize_reserva(res: Reserva) -> dict:
 
 @router.get("", response_model=list[ReservaResponse], summary="Listar reservas (Administración y Clientes)")
 async def list_reservas(
+    sucursal_id: Optional[int] = Query(None, description="Filtrar por ID de sucursal"),
+    estado: Optional[str] = Query(None, description="Filtrar por estado"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Listado de reservas. Si es cliente retorna sus reservas, si es staff retorna todas."""
+    """Listado de reservas con filtros para administración y clientes."""
     if current_user.role == "cliente":
         cliente = db.query(Cliente).filter(Cliente.user_id == current_user.id).first()
         if not cliente:
             return []
-        reservas = db.query(Reserva).filter(Reserva.codigo_cliente == cliente.codigo).order_by(Reserva.created_at.desc()).all()
+        q = db.query(Reserva).filter(Reserva.codigo_cliente == cliente.codigo)
+        if estado:
+            q = q.filter(Reserva.estado == estado)
+        if sucursal_id:
+            q = q.filter(Reserva.sucursal_id == sucursal_id)
+        reservas = q.order_by(Reserva.created_at.desc()).all()
         return [_serialize_reserva(r) for r in reservas]
 
-    reservas = db.query(Reserva).order_by(Reserva.created_at.desc()).all()
+    q = db.query(Reserva)
+    if sucursal_id:
+        q = q.filter(Reserva.sucursal_id == sucursal_id)
+    if estado:
+        q = q.filter(Reserva.estado == estado)
+    reservas = q.order_by(Reserva.created_at.desc()).all()
     return [_serialize_reserva(r) for r in reservas]
 
 
@@ -94,11 +107,41 @@ async def list_my_reservas(
     db: Session = Depends(get_db),
 ):
     """Obtiene el historial de reservas personales del cliente autenticado."""
+    codigos = set()
     cliente = db.query(Cliente).filter(Cliente.user_id == current_user.id).first()
+    if not cliente and current_user.ci:
+        cliente = db.query(Cliente).filter(Cliente.ci == current_user.ci).first()
+        if cliente:
+            cliente.user_id = current_user.id
+            db.commit()
+
     if not cliente:
-        return []
-    reservas = db.query(Reserva).filter(Reserva.codigo_cliente == cliente.codigo).order_by(Reserva.created_at.desc()).all()
+        clean_ci = current_user.ci or str(current_user.id).zfill(4)
+        cod = f"CL-{current_user.name[:2].upper()}-{clean_ci[-4:]}"
+        cliente = Cliente(
+            codigo=cod,
+            user_id=current_user.id,
+            ci=current_user.ci,
+            telefono=current_user.telefono or "00000000",
+            direccion=current_user.direccion or "Sin dirección",
+        )
+        db.add(cliente)
+        db.commit()
+        db.refresh(cliente)
+
+    codigos.add(cliente.codigo)
+    if current_user.ci:
+        for c in db.query(Cliente).filter(Cliente.ci == current_user.ci).all():
+            codigos.add(c.codigo)
+
+    reservas = (
+        db.query(Reserva)
+        .filter(Reserva.codigo_cliente.in_(list(codigos)))
+        .order_by(Reserva.created_at.desc())
+        .all()
+    )
     return [_serialize_reserva(r) for r in reservas]
+
 
 
 @router.get("/elegibilidad", summary="Verificar si el cliente actual puede realizar reservas")
@@ -108,6 +151,16 @@ async def verificar_elegibilidad_reserva(
 ):
     """Verifica si el cliente tiene al menos 1 compra pagada para poder reservar prendas."""
     from app.models.orden_venta import OrdenVenta
+    from app.models.carrito import Carrito
+    from sqlalchemy import or_, func
+
+    if current_user.role in ["administrador", "encargado"]:
+        return {
+            "puede_reservar": True,
+            "compras_previas": 99,
+            "mensaje": "Cuenta de administración/gestión habilitada para reservas.",
+        }
+
     cliente = db.query(Cliente).filter(Cliente.user_id == current_user.id).first()
     if not cliente:
         return {
@@ -120,7 +173,7 @@ async def verificar_elegibilidad_reserva(
         db.query(OrdenVenta)
         .filter(
             OrdenVenta.codigo_cliente == cliente.codigo,
-            OrdenVenta.estado.in_(["pagado", "pagada", "completado", "completada", "entregado", "entregada"]),
+            func.lower(OrdenVenta.estado).in_(["pagado", "pagada", "completado", "completada", "entregado", "entregada"]),
         )
         .count()
     )
@@ -148,6 +201,8 @@ async def create_reserva(
     """Crea una reserva desde el catálogo descontando stock atómicamente (requiere ≥ 1 compra previa)."""
     from datetime import date, timedelta
     from app.models.orden_venta import OrdenVenta
+    from app.models.carrito import Carrito
+    from sqlalchemy import or_, func
     from app.services.notificacion_service import NotificacionService
 
     # Obtener o registrar cliente si no existe
@@ -164,13 +219,13 @@ async def create_reserva(
         db.add(cliente)
         db.flush()
 
-    # Validar regla de reserva: al menos 1 compra previa pagada (a excepción de rol administrador para pruebas)
-    if current_user.role != "administrador":
+    # Validar regla de reserva: al menos 1 compra previa pagada (a excepción de staff para pruebas)
+    if current_user.role not in ["administrador", "encargado"]:
         compras_previas = (
             db.query(OrdenVenta)
             .filter(
                 OrdenVenta.codigo_cliente == cliente.codigo,
-                OrdenVenta.estado.in_(["pagado", "pagada", "completado", "completada", "entregado", "entregada"]),
+                func.lower(OrdenVenta.estado).in_(["pagado", "pagada", "completado", "completada", "entregado", "entregada"]),
             )
             .count()
         )
@@ -249,6 +304,69 @@ async def create_reserva(
     return _serialize_reserva(reserva)
 
 
+@router.post("/{reserva_id}/cancelar", response_model=ReservaResponse, summary="Cancelar reserva y restituir stock")
+async def cancelar_reserva(
+    reserva_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Cancela una reserva y devuelve automáticamente el stock reservado a inventario."""
+    reserva = db.query(Reserva).filter(Reserva.id == reserva_id).first()
+    if not reserva:
+        raise NotFoundException(f"Reserva con ID {reserva_id} no encontrada.")
+
+    # Si es cliente, validar que sea el dueño de la reserva
+    if current_user.role == "cliente":
+        cliente = db.query(Cliente).filter(Cliente.user_id == current_user.id).first()
+        if not cliente or reserva.codigo_cliente != cliente.codigo:
+            raise BadRequestException("No tienes permiso para cancelar esta reserva.")
+
+    if reserva.estado == "cancelada":
+        raise BadRequestException("Esta reserva ya ha sido cancelada previamente.")
+
+    if reserva.estado in ["completada", "entregada"]:
+        raise BadRequestException("No se puede cancelar una reserva que ya ha sido completada o retirada.")
+
+    # Restituir stock atómicamente si estaba pendiente
+    if reserva.estado == "pendiente":
+        for d in reserva.detalles:
+            stock = (
+                db.query(StockInventario)
+                .filter(StockInventario.id == d.stock_inventario_id)
+                .with_for_update(of=StockInventario)
+                .first()
+            )
+            if stock:
+                stock.cantidad += d.cantidad
+
+    reserva.estado = "cancelada"
+    db.commit()
+    db.refresh(reserva)
+
+    BitacoraService.registrar(
+        db=db,
+        user=current_user,
+        action=f"Canceló la reserva #{reserva.id} y restituyó el stock de {len(reserva.detalles)} prenda(s)",
+        module="reservas",
+    )
+
+    try:
+        from app.services.notificacion_service import NotificacionService
+        notif_srv = NotificacionService(db)
+        notif_srv.crear_notificacion(
+            user_id=current_user.id,
+            tipo="cancelacion_reserva",
+            titulo="Reserva Cancelada",
+            mensaje=f"Tu reserva #{reserva.id} ha sido cancelada exitosamente y el stock ha sido liberado.",
+            url_accion="/cuenta/mis-reservas",
+            enviar_email=False,
+        )
+    except Exception:
+        pass
+
+    return _serialize_reserva(reserva)
+
+
 @router.patch("/{reserva_id}/estado", response_model=ReservaResponse, summary="Actualizar estado de reserva")
 async def update_reserva_estado(
     reserva_id: int,
@@ -285,13 +403,21 @@ async def update_reserva_estado(
 @router.delete("/{reserva_id}", summary="Eliminar o cancelar reserva")
 async def delete_reserva(
     reserva_id: int,
-    current_user: User = Depends(require_permission("reservas.eliminar")),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Elimina una reserva y restituye el stock si estaba pendiente."""
+    """Elimina o cancela una reserva y restituye el stock si estaba pendiente."""
     reserva = db.query(Reserva).filter(Reserva.id == reserva_id).first()
     if not reserva:
         raise NotFoundException(f"Reserva con ID {reserva_id} no encontrada.")
+
+    # Validar permisos: permiso administrativo o propietario de la reserva
+    if current_user.role == "cliente":
+        cliente = db.query(Cliente).filter(Cliente.user_id == current_user.id).first()
+        if not cliente or reserva.codigo_cliente != cliente.codigo:
+            raise BadRequestException("No tienes permiso para eliminar esta reserva.")
+    elif current_user.role not in ["administrador", "encargado"]:
+        raise BadRequestException("Permisos insuficientes.")
 
     if reserva.estado == "pendiente":
         for d in reserva.detalles:
@@ -310,3 +436,4 @@ async def delete_reserva(
     )
 
     return {"message": f"Reserva #{reserva_id} eliminada exitosamente."}
+

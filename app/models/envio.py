@@ -30,6 +30,20 @@ class Envio(Base):
     delivery_conductor: Mapped[str | None] = mapped_column(String(150), nullable=True)
     ubicacion_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
+    # Seguimiento GPS en tiempo real y repartidor (v7 Punto 7)
+    token_seguimiento: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    repartidor_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    repartidor_lat: Mapped[Decimal | None] = mapped_column(Numeric(10, 6), nullable=True)
+    repartidor_lon: Mapped[Decimal | None] = mapped_column(Numeric(10, 6), nullable=True)
+    repartidor_actualizado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    latitud_destino: Mapped[Decimal | None] = mapped_column(Numeric(10, 6), nullable=True)
+    longitud_destino: Mapped[Decimal | None] = mapped_column(Numeric(10, 6), nullable=True)
+    distancia_km: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
+    minutos_estimados: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -39,6 +53,7 @@ class Envio(Base):
 
     # Relaciones
     orden_venta = relationship("OrdenVenta", back_populates="envios")
+    repartidor = relationship("User", foreign_keys=[repartidor_id], lazy="joined")
 
     def __repr__(self) -> str:
         return f"<Envio(id={self.id}, orden={self.orden_venta_id}, ciudad='{self.ciudad}', estado='{self.estado}')>"

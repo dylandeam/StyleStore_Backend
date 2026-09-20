@@ -3,9 +3,9 @@ Database initialization and default admin / permissions seeder.
 """
 import logging
 from sqlalchemy.orm import Session
-
 from sqlalchemy import text
 from app.database import SessionLocal, Base, engine
+import app.models  # Registra todos los modelos en Base.metadata
 from app.models.user import User
 from app.core.security import hash_password
 from app.services.role_service import RoleService
@@ -39,7 +39,21 @@ def _run_column_migrations(db: Session):
         # Pagos
         "ALTER TABLE pagos ADD COLUMN IF NOT EXISTS paypal_capture_id VARCHAR(100)",
         "ALTER TABLE pagos ADD COLUMN IF NOT EXISTS metodo_pago VARCHAR(50)",
-        # Envios
+        # Clientes
+        "ALTER TABLE clientes ADD COLUMN IF NOT EXISTS foto VARCHAR(255)",
+        # Sucursales
+        "ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS latitud NUMERIC(10, 6)",
+        "ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS longitud NUMERIC(10, 6)",
+        # Envios v7 (distancia real y repartidor)
+        "ALTER TABLE envios ADD COLUMN IF NOT EXISTS token_seguimiento VARCHAR(100)",
+        "ALTER TABLE envios ADD COLUMN IF NOT EXISTS repartidor_id INTEGER",
+        "ALTER TABLE envios ADD COLUMN IF NOT EXISTS repartidor_lat NUMERIC(10, 6)",
+        "ALTER TABLE envios ADD COLUMN IF NOT EXISTS repartidor_lon NUMERIC(10, 6)",
+        "ALTER TABLE envios ADD COLUMN IF NOT EXISTS repartidor_actualizado_en TIMESTAMP WITH TIME ZONE",
+        "ALTER TABLE envios ADD COLUMN IF NOT EXISTS latitud_destino NUMERIC(10, 6)",
+        "ALTER TABLE envios ADD COLUMN IF NOT EXISTS longitud_destino NUMERIC(10, 6)",
+        "ALTER TABLE envios ADD COLUMN IF NOT EXISTS distancia_km NUMERIC(8, 2)",
+        "ALTER TABLE envios ADD COLUMN IF NOT EXISTS minutos_estimados INTEGER",
         "ALTER TABLE envios ADD COLUMN IF NOT EXISTS yango_tracking_code VARCHAR(100)",
         "ALTER TABLE envios ADD COLUMN IF NOT EXISTS yango_tracking_url VARCHAR(500)",
         "ALTER TABLE envios ADD COLUMN IF NOT EXISTS delivery_conductor VARCHAR(150)",

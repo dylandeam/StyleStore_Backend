@@ -352,3 +352,117 @@ async def get_payment_receipt(
         "items": items,
         "total": orden.total if orden else pago.monto,
     }
+
+
+@router.get("", summary="Listar todos los pagos para Gestionar Pagos (Staff/Admin)")
+async def list_all_payments(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Retorna el listado completo de pagos con datos de la orden y ticket asociado."""
+    pagos = db.query(Pago).order_by(Pago.created_at.desc()).all()
+    resultado = []
+    for p in pagos:
+        orden = p.orden_venta
+        resultado.append({
+            "id": p.id,
+            "orden_venta_id": p.orden_venta_id,
+            "monto": float(p.monto) if p.monto else 0.0,
+            "tipo_pago": p.tipo_pago,
+            "estado": p.estado,
+            "paypal_order_id": p.paypal_order_id,
+            "ticket_numero": orden.ticket_numero if orden else None,
+            "cliente_codigo": orden.codigo_cliente if orden else None,
+            "total_orden": float(orden.total) if orden and orden.total else float(p.monto),
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        })
+    return resultado
+
+
+@router.post("/confirmar-online/{orden_id}", response_model=CobroCajaResponse, summary="Confirmar cobro de orden online y emitir ticket (sin vuelto)")
+async def confirmar_cobro_online(
+    orden_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Confirma el cobro de una orden de compra en línea directamente en Gestionar Pagos.
+    No requiere cálculo de vuelto; emite ticket inmediatamente y actualiza estado a pagada.
+    """
+    orden = db.query(OrdenVenta).filter(OrdenVenta.id == orden_id).first()
+    if not orden:
+        raise NotFoundException(f"Orden de venta #{orden_id} no encontrada.")
+
+    if orden.estado == "pagada":
+        raise BadRequestException(f"La orden #{orden_id} ya se encuentra pagada.")
+
+    ticket_num = f"TKT-ONL-{datetime.now().strftime('%Y%m%d')}-{orden.id:04d}"
+
+    orden.estado = "pagada"
+    orden.metodo_pago = orden.metodo_pago or "en linea"
+    orden.ticket_numero = ticket_num
+    orden.efectivo_recibido = orden.total
+    orden.cambio_devuelto = Decimal("0.00")
+
+    pago = db.query(Pago).filter(Pago.orden_venta_id == orden.id).first()
+    if not pago:
+        pago = Pago(
+            orden_venta_id=orden.id,
+            monto=orden.total,
+            tipo_pago="en linea",
+            estado="aprobado",
+            paypal_order_id=f"ONLINE-CONFIRMED-{orden.id}",
+        )
+        db.add(pago)
+    else:
+        pago.estado = "aprobado"
+        pago.tipo_pago = orden.metodo_pago or "en linea"
+
+    db.commit()
+    db.refresh(pago)
+
+    BitacoraService.registrar(
+        db=db,
+        user=current_user,
+        action=f"Confirmó cobro de compra en línea y emitió ticket {ticket_num} para Orden #{orden.id}",
+        module="pagos",
+    )
+
+    return CobroCajaResponse(
+        pago_id=pago.id,
+        orden_venta_id=orden.id,
+        total=orden.total,
+        efectivo_recibido=orden.total,
+        cambio_devuelto=Decimal("0.00"),
+        ticket_numero=ticket_num,
+        fecha=datetime.now(),
+    )
+
+
+@router.delete("/{pago_id}", status_code=status.HTTP_200_OK, summary="Eliminar o anular pago")
+async def delete_payment(
+    pago_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Elimina o revierte un registro de pago y bitacora la acción (para administradores)."""
+    pago = db.query(Pago).filter(Pago.id == pago_id).first()
+    if not pago:
+        raise NotFoundException(f"Pago #{pago_id} no encontrado.")
+
+    orden = pago.orden_venta
+    if orden:
+        orden.estado = "pendiente_pago"
+        orden.ticket_numero = None
+
+    db.delete(pago)
+    db.commit()
+
+    BitacoraService.registrar(
+        db=db,
+        user=current_user,
+        action=f"Eliminó/anuló el pago #{pago_id} asociado a la orden #{orden.id if orden else 'N/A'}",
+        module="pagos",
+    )
+    return {"message": f"Pago #{pago_id} eliminado exitosamente."}
+

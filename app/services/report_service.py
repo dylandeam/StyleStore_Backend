@@ -32,6 +32,9 @@ from app.models.empleado import Empleado
 from app.models.envio import Envio
 from app.models.cambio_devolucion import CambioDevolucion
 from app.models.categoria import Categoria
+from app.models.pago import Pago
+from app.models.temporada import Temporada
+from app.models.bitacora import Bitacora
 
 
 def clean_sheet_title(title: str) -> str:
@@ -705,3 +708,107 @@ class ReportService:
                 "fecha_programada": c.fecha_programada.strftime("%d/%m/%Y") if c.fecha_programada else "-",
             })
         return res
+
+    # Reporte Financiero: Flujo de caja y pagos por método
+    def get_financiero_report_data(self, sucursal_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        q = self.db.query(Pago).join(OrdenVenta, Pago.orden_venta_id == OrdenVenta.id)
+        if sucursal_id:
+            q = q.filter(OrdenVenta.sucursal_id == sucursal_id)
+        pagos = q.all()
+
+        agrupado: Dict[str, Dict[str, Any]] = {}
+        for p in pagos:
+            metodo = (getattr(p, "metodo_pago", None) or getattr(p, "tipo_pago", None) or "EFECTIVO").upper()
+            if metodo not in agrupado:
+                agrupado[metodo] = {
+                    "metodo": metodo,
+                    "cantidad_transacciones": 0,
+                    "total_recaudado": 0.0,
+                }
+            agrupado[metodo]["cantidad_transacciones"] += 1
+            agrupado[metodo]["total_recaudado"] += float(p.monto)
+
+        return list(agrupado.values())
+
+    # Reporte de Caducidad / Obsolescencia y Temporadas
+    def get_caducidad_report_data(self, sucursal_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        # Temporadas activas
+        temporadas_activas = {t.id for t in self.db.query(Temporada).filter(Temporada.activa == True).all()}
+        
+        q = (
+            self.db.query(StockInventario)
+            .join(ProductoColor, StockInventario.producto_color_id == ProductoColor.id)
+            .join(Producto, ProductoColor.producto_codigo == Producto.codigo)
+            .options(
+                joinedload(StockInventario.talla),
+                joinedload(StockInventario.sucursal),
+            )
+            .filter(StockInventario.cantidad > 0)
+        )
+        if sucursal_id:
+            q = q.filter(StockInventario.sucursal_id == sucursal_id)
+
+        items = q.all()
+        res = []
+        for s in items:
+            prod = s.producto_color.producto if s.producto_color else None
+            if not prod:
+                continue
+            # Prenda de temporada pasada o inactiva
+            if prod.temporada_id and prod.temporada_id not in temporadas_activas:
+                temp_nom = prod.temporada.nombre if prod.temporada else "Pasada"
+                suc_nom = s.sucursal.nombre if s.sucursal else "General"
+                res.append({
+                    "producto": prod.nombre,
+                    "codigo": prod.codigo,
+                    "temporada": temp_nom,
+                    "sucursal": suc_nom,
+                    "talla": s.talla.nombre if s.talla else "-",
+                    "unidades_stock": s.cantidad,
+                    "precio_actual": float(prod.precio),
+                    "descuento_sugerido": "30% - 50% (Liquidación)",
+                })
+        return res
+
+    # Reporte de Auditoría y Bitácora
+    def get_auditoria_report_data(self, limit: int = 150) -> List[Dict[str, Any]]:
+        logs = (
+            self.db.query(Bitacora)
+            .options(joinedload(Bitacora.user))
+            .order_by(Bitacora.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+        res = []
+        for b in logs:
+            res.append({
+                "id": b.id,
+                "usuario": f"{b.user.name} ({b.user.role})" if b.user else "Sistema",
+                "modulo": b.module.upper() if b.module else "SISTEMA",
+                "accion": b.action,
+                "ip": getattr(b, "ip_address", None) or "127.0.0.1",
+                "fecha": b.created_at.strftime("%d/%m/%Y %H:%M:%S") if b.created_at else "-",
+            })
+        return res
+
+    # Reporte de Compras a Proveedores
+    def get_compras_report_data(self, sucursal_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        try:
+            from app.models.compra import Compra
+            q = self.db.query(Compra).options(joinedload(Compra.proveedor), joinedload(Compra.sucursal))
+            if sucursal_id:
+                q = q.filter(Compra.sucursal_id == sucursal_id)
+            compras = q.order_by(Compra.fecha.desc()).all()
+            res = []
+            for c in compras:
+                res.append({
+                    "id": c.id,
+                    "fecha": c.fecha.strftime("%d/%m/%Y") if c.fecha else "-",
+                    "proveedor": c.proveedor.nombre if c.proveedor else "Proveedor General",
+                    "sucursal": c.sucursal.nombre if c.sucursal else "General",
+                    "total": float(c.total),
+                })
+            return res
+        except Exception:
+            return []
+

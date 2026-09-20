@@ -15,8 +15,13 @@ class RegisterRequest(BaseModel):
     )
     name: str = Field(
         ..., min_length=2, max_length=100,
-        description="User full name"
+        description="User full name or first name"
     )
+    apellido: str | None = Field(None, max_length=100, description="User last name")
+    ci: str | None = Field(None, max_length=20, description="Carnet de Identidad")
+    telefono: str | None = Field(None, max_length=20, description="Número de teléfono o celular")
+    direccion: str | None = Field(None, max_length=255, description="Dirección de domicilio")
+    foto: str | None = Field(None, max_length=255, description="URL o path de la foto de perfil")
 
     @field_validator("password")
     @classmethod
