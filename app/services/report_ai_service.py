@@ -465,11 +465,12 @@ KPIS: [{{"label": "Vendido Hoy", "valor": "Bs. 0.00"}}, {{"label": "Prendas Vend
     def exportar_excel(self, pregunta: str, respuesta: str, kpis: List[Dict[str, Any]]) -> Any:
         """Genera un archivo Excel (.xlsx) con la consulta ejecutiva formulada a la IA."""
         import io
-        import openpyxl
-        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        import openpyxl  # pyrefly: ignore[untyped-import]  # type: ignore[import-untyped]
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side  # pyrefly: ignore[untyped-import]  # type: ignore[import-untyped]
 
         wb = openpyxl.Workbook()
-        ws = wb.active
+        ws: Any = wb.active if wb.active is not None else wb.create_sheet()
+        assert ws is not None
         ws.title = "Consulta Ejecutiva IA"
 
         navy_fill = PatternFill(start_color="14263D", end_color="14263D", fill_type="solid")
@@ -566,10 +567,10 @@ KPIS: [{{"label": "Vendido Hoy", "valor": "Bs. 0.00"}}, {{"label": "Prendas Vend
         """Genera un archivo PDF (.pdf) estilizado con el reporte analítico de la IA."""
         import io
         import re
-        from reportlab.lib.pagesizes import letter
-        from reportlab.lib import colors
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.pagesizes import letter  # pyrefly: ignore[untyped-import]  # type: ignore[import-untyped]
+        from reportlab.lib import colors  # pyrefly: ignore[untyped-import]  # type: ignore[import-untyped]
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle  # pyrefly: ignore[untyped-import]  # type: ignore[import-untyped]
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle  # pyrefly: ignore[untyped-import]  # type: ignore[import-untyped]
 
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
