@@ -78,14 +78,23 @@ class EnvioUpdateRequest(BaseModel):
     estado: str | None = None
     yango_tracking_code: str | None = None
     yango_tracking_url: str | None = None
+    tracking_code: str | None = None
+    tracking_url: str | None = None
     delivery_conductor: str | None = None
+    tracking_activo: bool | None = None
 
 
-class EnvioYangoUpdateRequest(BaseModel):
+class EnvioDeliveryUpdateRequest(BaseModel):
+    tracking_code: str | None = None
+    tracking_url: str | None = None
     yango_tracking_code: str | None = None
     yango_tracking_url: str | None = None
     delivery_conductor: str | None = None
     estado: str | None = None
+
+
+# Alias de compatibilidad hacia atrás
+EnvioYangoUpdateRequest = EnvioDeliveryUpdateRequest
 
 
 class EnvioResponse(BaseModel):
@@ -100,7 +109,20 @@ class EnvioResponse(BaseModel):
     fecha: date
     yango_tracking_code: str | None = None
     yango_tracking_url: str | None = None
+    tracking_code: str | None = None
+    tracking_url: str | None = None
     delivery_conductor: str | None = None
+    token_seguimiento: str | None = None
+    tracking_activo: bool = True
+    distancia_km: float | None = None
+    minutos_estimados: int | None = None
+    latitud_destino: float | None = None
+    longitud_destino: float | None = None
+    repartidor_id: int | None = None
+    repartidor_nombre: str | None = None
+    repartidor_lat: float | None = None
+    repartidor_lon: float | None = None
+    repartidor_actualizado_en: str | None = None
     created_at: datetime
     cliente_nombre: str | None = None
 

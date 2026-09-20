@@ -64,6 +64,9 @@ def _serialize_envio(e: Envio) -> dict:
         "fecha": e.fecha,
         "yango_tracking_code": e.yango_tracking_code,
         "yango_tracking_url": e.yango_tracking_url,
+        "tracking_code": e.yango_tracking_code or e.token_seguimiento,
+        "tracking_url": e.yango_tracking_url,
+        "tracking_activo": getattr(e, "tracking_activo", True),
         "delivery_conductor": e.delivery_conductor,
         "created_at": e.created_at,
         "cliente_nombre": cli_name,
@@ -99,6 +102,7 @@ async def create_envio(
     db: Session = Depends(get_db),
 ):
     """Crea el registro de envío asociado a una orden de venta."""
+    import uuid
     orden = db.query(OrdenVenta).filter(OrdenVenta.id == payload.orden_venta_id).first()
     if not orden:
         raise NotFoundException(f"Orden de venta con ID {payload.orden_venta_id} no encontrada.")
@@ -116,6 +120,8 @@ async def create_envio(
     if not dir_val and ub_url:
         dir_val = "Ubicación GPS (Ver enlace)"
 
+    token_seg = f"TRK-{uuid.uuid4().hex[:10].upper()}"
+
     envio = Envio(
         orden_venta_id=orden.id,
         direccion=dir_val,
@@ -125,6 +131,8 @@ async def create_envio(
         costo=costo,
         estado="pendiente",
         fecha=datetime.now().date(),
+        token_seguimiento=token_seg,
+        tracking_activo=True,
     )
     db.add(envio)
     db.commit()
@@ -167,28 +175,34 @@ async def complete_envio(
     return _serialize_envio(envio)
 
 
-from app.schemas.pago_envio import EnvioYangoUpdateRequest
+from app.schemas.pago_envio import EnvioDeliveryUpdateRequest, EnvioYangoUpdateRequest
 
 
-@router.patch("/{envio_id}/yango", response_model=EnvioResponse, summary="Asignar o actualizar tracking de Yango Delivery")
-async def update_yango_tracking(
+@router.patch("/{envio_id}/delivery", response_model=EnvioResponse, summary="Asignar o actualizar tracking de Delivery StyleStore")
+@router.patch("/{envio_id}/yango", response_model=EnvioResponse, include_in_schema=False)
+async def update_delivery_tracking(
     envio_id: int,
-    payload: EnvioYangoUpdateRequest,
+    payload: EnvioDeliveryUpdateRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    El encargado ingresa a mano el código de Yango Delivery, URL de seguimiento y conductor.
-    Actualiza el estado a 'en camino' si no se especifica otro.
+    Asigna repartidor, código de rastreo o actualiza estado del despacho Delivery StyleStore.
     """
+    import uuid
     envio = db.query(Envio).filter(Envio.id == envio_id).first()
     if not envio:
         raise NotFoundException(f"Envío con ID {envio_id} no encontrado.")
 
-    if payload.yango_tracking_code is not None:
-        envio.yango_tracking_code = payload.yango_tracking_code.strip()
-    if payload.yango_tracking_url is not None:
-        envio.yango_tracking_url = payload.yango_tracking_url.strip()
+    if not envio.token_seguimiento:
+        envio.token_seguimiento = f"TRK-{uuid.uuid4().hex[:10].upper()}"
+
+    code = payload.tracking_code or payload.yango_tracking_code
+    if code is not None:
+        envio.yango_tracking_code = code.strip()
+    url = payload.tracking_url or payload.yango_tracking_url
+    if url is not None:
+        envio.yango_tracking_url = url.strip()
     if payload.delivery_conductor is not None:
         envio.delivery_conductor = payload.delivery_conductor.strip()
     if payload.estado is not None:
@@ -196,7 +210,12 @@ async def update_yango_tracking(
     else:
         envio.estado = "en camino"
 
-    if envio.orden_venta and envio.estado == "en camino":
+    if envio.estado in ["entregado", "completado"]:
+        envio.tracking_activo = False
+        if envio.orden_venta:
+            envio.orden_venta.estado = "entregada"
+    elif envio.orden_venta and envio.estado == "en camino":
+        envio.tracking_activo = True
         envio.orden_venta.estado = "en camino"
 
     db.commit()
@@ -205,10 +224,143 @@ async def update_yango_tracking(
     BitacoraService.registrar(
         db=db,
         user=current_user,
-        action=f"Actualizó despacho Yango para Envío #{envio.id} (Código: {envio.yango_tracking_code}, Repartidor: {envio.delivery_conductor})",
+        action=f"Actualizó despacho Delivery para Envío #{envio.id} (Repartidor: {envio.delivery_conductor}, Estado: {envio.estado})",
         module="envios",
     )
     return _serialize_envio(envio)
+
+
+# --- ENDPOINTS PÚBLICOS DE TRACKER (CONDUCTOR Y CLIENTE) ---
+
+
+@router.get("/public/conductor/{token}", summary="Datos del pedido para el conductor")
+async def get_pedido_conductor(token: str, db: Session = Depends(get_db)):
+    """Permite al repartidor ver la dirección de entrega del cliente sin requerir autenticación."""
+    envio = db.query(Envio).filter(Envio.token_seguimiento == token).first()
+    if not envio:
+        raise NotFoundException("Enlace de delivery no válido o expirado.")
+
+    cli_name = "Cliente StyleStore"
+    cli_tel = "No registrado"
+    if envio.orden_venta and envio.orden_venta.cliente:
+        cli = envio.orden_venta.cliente
+        if cli.user:
+            cli_name = f"{cli.user.name} {cli.user.apellido or ''}".strip()
+        cli_tel = cli.telefono or cli_tel
+
+    return {
+        "envio_id": envio.id,
+        "orden_venta_id": envio.orden_venta_id,
+        "cliente_nombre": cli_name,
+        "cliente_telefono": cli_tel,
+        "direccion": envio.direccion,
+        "ciudad": envio.ciudad,
+        "referencia": envio.referencia,
+        "ubicacion_url": envio.ubicacion_url,
+        "estado": envio.estado,
+        "tracking_activo": getattr(envio, "tracking_activo", True),
+        "delivery_conductor": envio.delivery_conductor or "Conductor Asignado",
+        "repartidor_lat": float(envio.repartidor_lat) if envio.repartidor_lat else None,
+        "repartidor_lon": float(envio.repartidor_lon) if envio.repartidor_lon else None,
+    }
+
+
+@router.post("/public/conductor/{token}/posicion", summary="Transmitir ubicación GPS del conductor en tiempo real")
+async def report_posicion_conductor(token: str, payload: dict, db: Session = Depends(get_db)):
+    """El navegador móvil del conductor envía su latitud y longitud periódicamente."""
+    envio = db.query(Envio).filter(Envio.token_seguimiento == token).first()
+    if not envio:
+        raise NotFoundException("Enlace de delivery no válido.")
+
+    if not getattr(envio, "tracking_activo", True) or envio.estado in ["entregado", "completado"]:
+        return {"activo": False, "message": "La entrega ya fue completada. Transmisión finalizada."}
+
+    lat = payload.get("lat")
+    lon = payload.get("lon")
+    if lat is None or lon is None:
+        raise BadRequestException("Se requieren lat y lon.")
+
+    envio.repartidor_lat = Decimal(str(lat))
+    envio.repartidor_lon = Decimal(str(lon))
+    envio.repartidor_actualizado_en = datetime.now()
+
+    if envio.estado == "pendiente":
+        envio.estado = "en camino"
+        if envio.orden_venta:
+            envio.orden_venta.estado = "en camino"
+
+    db.commit()
+    return {"activo": True, "message": "Ubicación actualizada.", "lat": lat, "lon": lon}
+
+
+@router.post("/public/conductor/{token}/entregar", summary="Marcar pedido entregado por el conductor")
+async def marcar_entregado_conductor(token: str, db: Session = Depends(get_db)):
+    """El repartidor confirma la entrega al cliente, cancelando la transmisión de GPS."""
+    envio = db.query(Envio).filter(Envio.token_seguimiento == token).first()
+    if not envio:
+        raise NotFoundException("Enlace de delivery no válido.")
+
+    envio.estado = "entregado"
+    envio.tracking_activo = False
+    if envio.orden_venta:
+        envio.orden_venta.estado = "entregada"
+
+    db.commit()
+    return {"success": True, "message": "¡Pedido entregado con éxito! Transmisión de ubicación finalizada."}
+
+
+@router.get("/public/rastreo/{token}", summary="Rastreo en vivo para el cliente con mapa OpenStreetMap")
+async def get_rastreo_cliente(token: str, db: Session = Depends(get_db)):
+    """Retorna coordenadas en tiempo real del conductor, origen y destino para el mapa del cliente."""
+    from app.core.geo import geocodificar_aproximado
+    envio = db.query(Envio).filter(Envio.token_seguimiento == token).first()
+    if not envio:
+        raise NotFoundException("Código o enlace de rastreo no encontrado.")
+
+    orden = envio.orden_venta
+    sucursal = orden.sucursal if orden else None
+
+    if sucursal and sucursal.latitud and sucursal.longitud:
+        orig_lat = float(sucursal.latitud)
+        orig_lon = float(sucursal.longitud)
+    else:
+        orig_lat, orig_lon = geocodificar_aproximado(sucursal.ciudad if sucursal else envio.ciudad)
+
+    dest_lat = float(envio.latitud_destino) if envio.latitud_destino else orig_lat + 0.015
+    dest_lon = float(envio.longitud_destino) if envio.longitud_destino else orig_lon + 0.015
+
+    rep_pos = None
+    if envio.repartidor_lat and envio.repartidor_lon:
+        rep_pos = {
+            "lat": float(envio.repartidor_lat),
+            "lon": float(envio.repartidor_lon),
+            "actualizado_en": envio.repartidor_actualizado_en.isoformat() if envio.repartidor_actualizado_en else None,
+        }
+
+    return {
+        "envio_id": envio.id,
+        "orden_venta_id": envio.orden_venta_id,
+        "estado": envio.estado,
+        "tracking_activo": getattr(envio, "tracking_activo", True),
+        "delivery_conductor": envio.delivery_conductor or "Repartidor Asignado",
+        "distancia_km": float(envio.distancia_km) if envio.distancia_km else 3.5,
+        "minutos_estimados": envio.minutos_estimados or 20,
+        "origen": {
+            "nombre": sucursal.nombre if sucursal else "Sucursal StyleStore",
+            "ciudad": sucursal.ciudad if sucursal else envio.ciudad,
+            "lat": orig_lat,
+            "lon": orig_lon,
+        },
+        "destino": {
+            "direccion": envio.direccion,
+            "ciudad": envio.ciudad,
+            "referencia": envio.referencia,
+            "ubicacion_url": envio.ubicacion_url,
+            "lat": dest_lat,
+            "lon": dest_lon,
+        },
+        "repartidor": rep_pos,
+    }
 
 
 @router.get("/orden/{orden_id}", response_model=EnvioResponse, summary="Consultar envío por Orden de Venta")
