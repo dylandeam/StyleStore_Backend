@@ -85,6 +85,8 @@ def _serialize_orden(o: OrdenVenta) -> dict:
         "cliente_email": cli_email,
         "cliente_telefono": cli_tel,
         "sucursal_ciudad": o.sucursal.ciudad if o.sucursal else None,
+        "sucursal_nombre": o.sucursal.nombre if o.sucursal else None,
+        "sucursal_direccion": o.sucursal.direccion if o.sucursal else None,
         "sucursal_id": o.sucursal_id,
         "detalles": detalles,
         "envio": envio_dict,

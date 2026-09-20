@@ -147,6 +147,8 @@ class OrdenVentaResponse(BaseModel):
     cliente_email: str | None = None
     cliente_telefono: str | None = None
     sucursal_ciudad: str | None = None
+    sucursal_nombre: str | None = None
+    sucursal_direccion: str | None = None
     detalles: list[DetalleVentaResponse] = []
     envio: EnvioResponse | None = None
     created_at: datetime

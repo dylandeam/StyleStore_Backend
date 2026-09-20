@@ -54,12 +54,10 @@ def _serialize_carrito(carrito: Carrito) -> dict:
         sub = it.precio_unitario * it.cantidad
         total += sub
 
-        prod_cod = None
-        prod_nom = None
-        col_nom = None
-        talla_nom = None
+        suc_id = None
         suc_nom = None
-        foto = None
+        suc_ciudad = None
+        suc_dir = None
         if si:
             if si.producto_color:
                 col_nom = si.producto_color.color.nombre if si.producto_color.color else None
@@ -70,7 +68,10 @@ def _serialize_carrito(carrito: Carrito) -> dict:
             if si.talla:
                 talla_nom = si.talla.nombre
             if si.sucursal:
-                suc_nom = f"{si.sucursal.ciudad} - {si.sucursal.direccion}"
+                suc_id = si.sucursal.id
+                suc_nom = si.sucursal.nombre
+                suc_ciudad = si.sucursal.ciudad
+                suc_dir = si.sucursal.direccion
 
         items_resp.append({
             "id": it.id,
@@ -82,7 +83,10 @@ def _serialize_carrito(carrito: Carrito) -> dict:
             "producto_nombre": prod_nom,
             "color_nombre": col_nom,
             "talla_nombre": talla_nom,
+            "sucursal_id": suc_id,
             "sucursal_nombre": suc_nom,
+            "sucursal_ciudad": suc_ciudad,
+            "sucursal_direccion": suc_dir,
             "foto": foto,
         })
 
@@ -269,7 +273,7 @@ async def confirm_cart(
         now = datetime.now()
         total_venta = Decimal("0.00")
         detalles_orden = []
-        sucursal_id = payload.sucursal_id
+        sucursal_id_desde_stock = None
 
         # Validar y descontar stock atómicamente
         for item in carrito.items:
@@ -288,9 +292,8 @@ async def confirm_cart(
                 prod_name = stock.producto_color.producto.nombre if (stock.producto_color and stock.producto_color.producto) else "Producto"
                 raise BadRequestException(f"Stock insuficiente para '{prod_name}'. Disponible: {stock.cantidad}, requerido: {item.cantidad}.")
 
-            # Si no se pasó sucursal_id explícita, adoptar la sucursal de donde proviene el stock
-            if not sucursal_id and stock.sucursal_id:
-                sucursal_id = stock.sucursal_id
+            if stock.sucursal_id and not sucursal_id_desde_stock:
+                sucursal_id_desde_stock = stock.sucursal_id
 
             # Descuento atómico
             stock.cantidad -= item.cantidad
@@ -319,12 +322,13 @@ async def confirm_cart(
                 "subtotal": subtotal,
             })
 
-        # Si aún no hay sucursal_id, buscar la primera sucursal activa como fallback seguro
-        if not sucursal_id:
+        # La orden de venta se asocia directamente a la sucursal de donde procede el stock real de las prendas
+        sucursal_final = sucursal_id_desde_stock or payload.sucursal_id
+        if not sucursal_final:
             from app.models.sucursal import Sucursal
             first_suc = db.query(Sucursal).filter(Sucursal.active == True).first()
             if first_suc:
-                sucursal_id = first_suc.id
+                sucursal_final = first_suc.id
 
         # Crear Orden de Venta
         metodo = (payload.metodo_pago or "EFECTIVO").upper()
@@ -334,7 +338,7 @@ async def confirm_cart(
             total=total_venta,
             tipo_venta="en linea",
             codigo_cliente=cliente.codigo,
-            sucursal_id=sucursal_id,
+            sucursal_id=sucursal_final,
             carrito_id=carrito.id,
             metodo_pago=metodo,
         )

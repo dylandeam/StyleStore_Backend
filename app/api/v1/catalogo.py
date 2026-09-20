@@ -79,6 +79,9 @@ async def get_catalogo(
                     "existencias": tallas_stock,
                 })
 
+        if sucursal_id is not None and stock_total <= 0:
+            continue
+
         result.append({
             "codigo": p.codigo,
             "nombre": p.nombre,
