@@ -36,11 +36,23 @@ class SucursalService:
         if existing:
             raise ConflictException(f"Ya existe una sucursal con el nombre '{data.name}'.")
 
+        maps_url = data.maps_url.strip() if getattr(data, "maps_url", None) else None
+        lat = data.latitud
+        lon = data.longitud
+        if (lat is None or lon is None) and maps_url:
+            from app.core.geo import extraer_coordenadas_de_url
+            plat, plon = extraer_coordenadas_de_url(maps_url)
+            if plat is not None and plon is not None:
+                lat, lon = plat, plon
+
         sucursal = Sucursal(
             name=data.name,
             city=data.city,
             address=data.address,
             phone=data.phone,
+            maps_url=maps_url,
+            latitud=lat,
+            longitud=lon,
             active=data.active,
         )
         self.db.add(sucursal)
@@ -75,6 +87,19 @@ class SucursalService:
             sucursal.phone = data.phone
         if data.active is not None:
             sucursal.active = data.active
+
+        if hasattr(data, "maps_url") and data.maps_url is not None:
+            sucursal.maps_url = data.maps_url.strip() if data.maps_url else None
+            if sucursal.maps_url:
+                from app.core.geo import extraer_coordenadas_de_url
+                plat, plon = extraer_coordenadas_de_url(sucursal.maps_url)
+                if plat is not None and plon is not None:
+                    sucursal.latitud = plat
+                    sucursal.longitud = plon
+        if hasattr(data, "latitud") and data.latitud is not None:
+            sucursal.latitud = data.latitud
+        if hasattr(data, "longitud") and data.longitud is not None:
+            sucursal.longitud = data.longitud
 
         self.db.commit()
         self.db.refresh(sucursal)

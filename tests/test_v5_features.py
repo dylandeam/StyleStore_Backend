@@ -116,8 +116,8 @@ def test_v5_profile_edit(client, admin_token):
 def test_v5_envio_cotizacion(client):
     res = client.post("/api/v1/envios/cotizar", json={"distancia_km": 2.5})
     assert res.status_code == 200
-    assert float(res.json()["costo"]) == 8.0
+    assert float(res.json()["costo"]) == 6.5
 
     res2 = client.post("/api/v1/envios/cotizar", json={"distancia_km": 7.0})
     assert res2.status_code == 200
-    assert float(res2.json()["costo"]) == 18.0
+    assert float(res2.json()["costo"]) == 9.2

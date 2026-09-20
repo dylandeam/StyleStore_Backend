@@ -21,6 +21,7 @@ class Sucursal(Base):
     phone: Mapped[str] = mapped_column(String(20), nullable=False)
     latitud: Mapped[Decimal | None] = mapped_column(Numeric(10, 6), nullable=True)
     longitud: Mapped[Decimal | None] = mapped_column(Numeric(10, 6), nullable=True)
+    maps_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -44,6 +45,10 @@ class Sucursal(Base):
     @property
     def telefono(self) -> str:
         return self.phone
+
+    @property
+    def ubicacion_url(self) -> str | None:
+        return self.maps_url
 
     def __repr__(self) -> str:
         return f"<Sucursal(id={self.id}, name='{self.name}', city='{self.city}')>"

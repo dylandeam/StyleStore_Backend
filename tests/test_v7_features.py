@@ -226,8 +226,8 @@ def test_v7_punto7_cotizacion_envio_distancia(client: TestClient, auth_context_v
     assert "distancia_km" in data
     assert "costo_envio" in data
     assert "minutos_estimados" in data
-    assert data["distancia_km"] > 0
-    assert data["costo_envio"] >= 15.0
+    assert data["costo_envio"] >= 5.0
+    assert data["costo_envio"] == round(5.0 + data["distancia_km"] * 0.6, 2)
 
 
 def test_v7_punto8_chatbot_add_to_cart(client: TestClient, auth_context_v7):

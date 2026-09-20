@@ -32,7 +32,7 @@ class Envio(Base):
 
     # Seguimiento GPS en tiempo real y repartidor (v7 Punto 7)
     token_seguimiento: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
-    tracking_activo: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
+    tracking_activo: Mapped[bool | None] = mapped_column(Boolean, default=True, server_default="true", nullable=True)
     repartidor_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )

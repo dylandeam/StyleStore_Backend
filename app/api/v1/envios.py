@@ -26,20 +26,9 @@ router = APIRouter(prefix="/envios", tags=["Envíos"])
 
 
 def _calcular_tarifa_escalonada(distancia_km: float) -> Decimal:
-    """Tabla de tarifas de referencia escalonadas v5 (sección 20):
-    0-3 km: Bs 8
-    3-6 km: Bs 12
-    6-10 km: Bs 18
-    >10 km: Bs 25
-    """
-    if distancia_km <= 3.0:
-        return Decimal("8.00")
-    elif distancia_km <= 6.0:
-        return Decimal("12.00")
-    elif distancia_km <= 10.0:
-        return Decimal("18.00")
-    else:
-        return Decimal("25.00")
+    """Tarifa oficial Delivery StyleStore: Tarifa fija 5 Bs + 0.60 Bs por km."""
+    from app.core.geo import cotizar_costo_envio
+    return cotizar_costo_envio(distancia_km)
 
 
 def _serialize_envio(e: Envio) -> dict:
@@ -84,13 +73,15 @@ def _serialize_envio(e: Envio) -> dict:
     }
 
 
-@router.post("/cotizar", summary="Cotizar tarifa escalonada de envío")
+@router.post("/cotizar", summary="Cotizar tarifa de envío Delivery StyleStore")
 async def cotizar_envio(payload: EnvioCotizacionRequest):
-    """Calcula el costo del envío según la distancia estimada en km."""
+    """Calcula el costo del envío: Tarifa fija 5 Bs + 0.60 Bs/km."""
     costo = _calcular_tarifa_escalonada(payload.distancia_km)
     return {
         "distancia_km": payload.distancia_km,
         "costo": costo,
+        "tarifa_base": 5.00,
+        "costo_por_km": 0.60,
         "moneda": "BOB",
     }
 
@@ -101,24 +92,49 @@ async def create_envio(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Crea el registro de envío asociado a una orden de venta."""
+    """Crea el registro de envío asociado a una orden de venta con tarifa fija 5 Bs + 0.60 Bs/km."""
     import uuid
+    from app.core.geo import cotizar_costo_envio, extraer_coordenadas_de_url, calcular_distancia_haversine
+    from app.models.sucursal import Sucursal
+
     orden = db.query(OrdenVenta).filter(OrdenVenta.id == payload.orden_venta_id).first()
     if not orden:
         raise NotFoundException(f"Orden de venta con ID {payload.orden_venta_id} no encontrada.")
-
-    # Calcular costo según distancia si se provee, o usar tabla por defecto
-    if payload.costo is not None:
-        costo = payload.costo
-    elif payload.distancia_km is not None:
-        costo = _calcular_tarifa_escalonada(payload.distancia_km)
-    else:
-        costo = Decimal("12.00")  # Valor intermedio de referencia
 
     dir_val = payload.direccion.strip() if payload.direccion else ""
     ub_url = payload.ubicacion_url.strip() if payload.ubicacion_url else None
     if not dir_val and ub_url:
         dir_val = "Ubicación GPS (Ver enlace)"
+
+    dest_lat, dest_lon = extraer_coordenadas_de_url(ub_url)
+
+    # Obtener sucursal de la orden para cálculo de origen
+    sucursal = None
+    if orden.sucursal_id:
+        sucursal = db.query(Sucursal).filter(Sucursal.id == orden.sucursal_id).first()
+    if not sucursal:
+        sucursal = db.query(Sucursal).first()
+
+    orig_lat = float(sucursal.latitud) if sucursal and sucursal.latitud else None
+    orig_lon = float(sucursal.longitud) if sucursal and sucursal.longitud else None
+    if (orig_lat is None or orig_lon is None) and sucursal and sucursal.maps_url:
+        orig_lat, orig_lon = extraer_coordenadas_de_url(sucursal.maps_url)
+
+    dist_calc = payload.distancia_km
+    if dist_calc is None and dest_lat is not None and dest_lon is not None and orig_lat is not None and orig_lon is not None:
+        dist_calc = calcular_distancia_haversine(orig_lat, orig_lon, dest_lat, dest_lon)
+
+    # Calcular costo según tarifa oficial: 5 Bs fija base + 0.60 Bs/km
+    if payload.costo is not None and payload.costo > 0:
+        costo = payload.costo
+    elif dist_calc is not None:
+        costo = cotizar_costo_envio(dist_calc)
+    else:
+        costo = Decimal("5.00")
+
+    # Sumar costo de envío al total de la orden de venta si no estaba ya contemplado
+    if costo and costo > 0:
+        orden.total = (orden.total or Decimal("0.00")) + costo
 
     token_seg = f"TRK-{uuid.uuid4().hex[:10].upper()}"
 
@@ -128,20 +144,34 @@ async def create_envio(
         ciudad=payload.ciudad.strip() if payload.ciudad else "Santa Cruz",
         referencia=payload.referencia.strip() if payload.referencia else None,
         ubicacion_url=ub_url,
+        latitud_destino=dest_lat,
+        longitud_destino=dest_lon,
+        distancia_km=Decimal(str(round(dist_calc, 2))) if dist_calc is not None else None,
+        minutos_estimados=max(15, int((dist_calc or 0) * 2.5) + 15),
         costo=costo,
         estado="pendiente",
         fecha=datetime.now().date(),
         token_seguimiento=token_seg,
         tracking_activo=True,
     )
-    db.add(envio)
-    db.commit()
-    db.refresh(envio)
+
+    try:
+        db.add(envio)
+        db.commit()
+        db.refresh(envio)
+    except Exception:
+        # Recuperación defensiva automática si alguna columna de la migración no existía aún en la BD
+        db.rollback()
+        from app.init_db import _run_column_migrations
+        _run_column_migrations(db)
+        db.add(envio)
+        db.commit()
+        db.refresh(envio)
 
     BitacoraService.registrar(
         db=db,
         user=current_user,
-        action=f"Registró envío #{envio.id} a {envio.ciudad} para Orden #{orden.id} (Costo: Bs {envio.costo})",
+        action=f"Registró envío #{envio.id} a {envio.ciudad} para Orden #{orden.id} (Costo Delivery: Bs {envio.costo})",
         module="envios",
     )
 
@@ -470,16 +500,23 @@ async def cotizar_por_distancia(
 ):
     """
     Calcula distancia real entre la sucursal de origen y el destino del cliente
-    utilizando la fórmula de Haversine (R=6371 km).
+    utilizando la fórmula de Haversine (R=6371 km) y tarifa oficial StyleStore (5 Bs + 0.60 Bs/km).
     """
-    from app.core.geo import calcular_cotizacion_completa, geocodificar_aproximado
+    from app.core.geo import calcular_cotizacion_completa, geocodificar_aproximado, extraer_coordenadas_de_url
     from app.models.sucursal import Sucursal
 
     sucursal_id = payload.get("sucursal_id")
     lat_dest = payload.get("lat")
     lon_dest = payload.get("lon")
+    ubicacion_url = payload.get("ubicacion_url")
     direccion = payload.get("direccion", "")
-    ciudad = payload.get("ciudad", "la paz")
+    ciudad = payload.get("ciudad", "santa cruz")
+
+    # Extraer de ubicacion_url si el cliente la proporcionó
+    if (lat_dest is None or lon_dest is None) and ubicacion_url:
+        lat_u, lon_u = extraer_coordenadas_de_url(ubicacion_url)
+        if lat_u is not None and lon_u is not None:
+            lat_dest, lon_dest = lat_u, lon_u
 
     # Obtener sucursal origen
     sucursal = None
@@ -488,11 +525,17 @@ async def cotizar_por_distancia(
     if not sucursal:
         sucursal = db.query(Sucursal).first()
 
-    # Coordenadas origen
+    # Coordenadas origen (desde lat/lon o desde sucursal.maps_url o ciudad)
+    lat_orig, lon_orig = None, None
     if sucursal and sucursal.latitud and sucursal.longitud:
         lat_orig = float(sucursal.latitud)
         lon_orig = float(sucursal.longitud)
-    else:
+    elif sucursal and getattr(sucursal, "maps_url", None):
+        lat_s, lon_s = extraer_coordenadas_de_url(sucursal.maps_url)
+        if lat_s is not None and lon_s is not None:
+            lat_orig, lon_orig = lat_s, lon_s
+
+    if lat_orig is None or lon_orig is None:
         lat_orig, lon_orig = geocodificar_aproximado(sucursal.ciudad if sucursal else ciudad)
 
     # Coordenadas destino
@@ -503,8 +546,11 @@ async def cotizar_por_distancia(
         lat_d, lon_d = geocodificar_aproximado(f"{direccion} {ciudad}")
 
     res = calcular_cotizacion_completa(lat_orig, lon_orig, lat_d, lon_d)
+    res["sucursal_id"] = sucursal.id if sucursal else None
     res["sucursal_nombre"] = sucursal.nombre if sucursal else "Sucursal Central"
     res["sucursal_ciudad"] = sucursal.ciudad if sucursal else ciudad
+    res["sucursal_direccion"] = sucursal.direccion if sucursal else ""
+    res["sucursal_maps_url"] = getattr(sucursal, "maps_url", None)
     return res
 
 

@@ -44,8 +44,10 @@ def _run_column_migrations(db: Session):
         # Sucursales
         "ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS latitud NUMERIC(10, 6)",
         "ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS longitud NUMERIC(10, 6)",
+        "ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS maps_url VARCHAR(500)",
         # Envios v7 (distancia real y repartidor)
         "ALTER TABLE envios ADD COLUMN IF NOT EXISTS token_seguimiento VARCHAR(100)",
+        "ALTER TABLE envios ADD COLUMN IF NOT EXISTS tracking_activo BOOLEAN DEFAULT TRUE",
         "ALTER TABLE envios ADD COLUMN IF NOT EXISTS repartidor_id INTEGER",
         "ALTER TABLE envios ADD COLUMN IF NOT EXISTS repartidor_lat NUMERIC(10, 6)",
         "ALTER TABLE envios ADD COLUMN IF NOT EXISTS repartidor_lon NUMERIC(10, 6)",

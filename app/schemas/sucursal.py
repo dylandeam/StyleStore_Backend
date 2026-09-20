@@ -13,6 +13,9 @@ class SucursalBase(BaseModel):
     city: str = Field(..., min_length=2, max_length=100, description="City where branch is located")
     address: str = Field(..., min_length=5, max_length=255, description="Street address")
     phone: str = Field(..., min_length=7, max_length=20, description="Contact phone number")
+    maps_url: str | None = Field(None, max_length=500, description="Enlace Google Maps de la sucursal")
+    latitud: float | None = None
+    longitud: float | None = None
     active: bool = Field(default=True, description="Whether branch is operational")
 
     @field_validator("phone")
@@ -35,6 +38,9 @@ class SucursalUpdate(BaseModel):
     city: str | None = Field(None, min_length=2, max_length=100)
     address: str | None = Field(None, min_length=5, max_length=255)
     phone: str | None = Field(None, min_length=7, max_length=20)
+    maps_url: str | None = Field(None, max_length=500)
+    latitud: float | None = None
+    longitud: float | None = None
     active: bool | None = None
 
     @field_validator("phone")
@@ -71,5 +77,10 @@ class SucursalResponse(SucursalBase):
     @property
     def telefono(self) -> str:
         return self.phone
+
+    @computed_field
+    @property
+    def ubicacion_url(self) -> str | None:
+        return self.maps_url
 
     model_config = {"from_attributes": True}
