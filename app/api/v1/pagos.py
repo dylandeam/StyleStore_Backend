@@ -85,6 +85,10 @@ async def create_paypal_order(
         module="pagos",
     )
 
+    order_data["orden_id"] = orden.id
+    order_data["orden_total_bob"] = float(orden.total)
+    order_data["total"] = float(orden.total)
+
     return order_data
 
 
