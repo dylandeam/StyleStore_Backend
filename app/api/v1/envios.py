@@ -501,57 +501,118 @@ async def cotizar_por_distancia(
     """
     Calcula distancia real entre la sucursal de origen y el destino del cliente
     utilizando la fórmula de Haversine (R=6371 km) y tarifa oficial StyleStore (5 Bs + 0.60 Bs/km).
+    Compara las dos ubicaciones (origen en sucursal vs destino del cliente).
     """
-    from app.core.geo import calcular_cotizacion_completa, geocodificar_aproximado, extraer_coordenadas_de_url
+    from app.core.geo import (
+        calcular_distancia_haversine,
+        estimar_tiempo_entrega,
+        geocodificar_aproximado,
+        extraer_coordenadas_de_url,
+    )
     from app.models.sucursal import Sucursal
 
     sucursal_id = payload.get("sucursal_id")
+    sucursal_maps_url_in = payload.get("sucursal_maps_url")
+    sucursal_nombre_in = payload.get("sucursal_nombre")
     lat_dest = payload.get("lat")
     lon_dest = payload.get("lon")
     ubicacion_url = payload.get("ubicacion_url")
     direccion = payload.get("direccion", "")
     ciudad = payload.get("ciudad", "santa cruz")
 
-    # Extraer de ubicacion_url si el cliente la proporcionó
+    # 1. Obtener sucursal de origen
+    sucursal = None
+    if sucursal_id:
+        sucursal = db.query(Sucursal).filter(Sucursal.id == sucursal_id).first()
+    if not sucursal and sucursal_nombre_in:
+        sucursal = db.query(Sucursal).filter(Sucursal.nombre.ilike(f"%{sucursal_nombre_in}%")).first()
+    if not sucursal:
+        sucursal = db.query(Sucursal).first()
+
+    # 2. Determinar coordenadas de la Sucursal (Origen)
+    lat_orig, lon_orig = None, None
+    maps_url_suc = sucursal_maps_url_in or (getattr(sucursal, "maps_url", None) if sucursal else None)
+
+    if sucursal and sucursal.latitud and sucursal.longitud:
+        try:
+            lat_orig = float(sucursal.latitud)
+            lon_orig = float(sucursal.longitud)
+        except (ValueError, TypeError):
+            pass
+
+    if (lat_orig is None or lon_orig is None) and maps_url_suc:
+        lat_s, lon_s = extraer_coordenadas_de_url(maps_url_suc)
+        if lat_s is not None and lon_s is not None:
+            lat_orig, lon_orig = lat_s, lon_s
+
+    if lat_orig is None or lon_orig is None:
+        query_suc = f"{sucursal.nombre if sucursal else (sucursal_nombre_in or '')} {sucursal.direccion if sucursal else ''} {sucursal.ciudad if sucursal else ciudad}"
+        lat_orig, lon_orig = geocodificar_aproximado(query_suc)
+
+    # Persistir coordenadas y maps_url si no los tenía
+    if sucursal:
+        if lat_orig and lon_orig and (not sucursal.latitud or not sucursal.longitud):
+            sucursal.latitud = str(lat_orig)
+            sucursal.longitud = str(lon_orig)
+        if maps_url_suc and not sucursal.maps_url:
+            sucursal.maps_url = maps_url_suc
+        elif not sucursal.maps_url and lat_orig and lon_orig:
+            sucursal.maps_url = f"https://maps.google.com/?q={lat_orig},{lon_orig}"
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+
+    sucursal_final_maps_url = (
+        getattr(sucursal, "maps_url", None)
+        or maps_url_suc
+        or (f"https://maps.google.com/?q={lat_orig},{lon_orig}" if lat_orig and lon_orig else None)
+    )
+
+    # 3. Determinar coordenadas del Cliente (Destino)
     if (lat_dest is None or lon_dest is None) and ubicacion_url:
         lat_u, lon_u = extraer_coordenadas_de_url(ubicacion_url)
         if lat_u is not None and lon_u is not None:
             lat_dest, lon_dest = lat_u, lon_u
 
-    # Obtener sucursal origen
-    sucursal = None
-    if sucursal_id:
-        sucursal = db.query(Sucursal).filter(Sucursal.id == sucursal_id).first()
-    if not sucursal:
-        sucursal = db.query(Sucursal).first()
-
-    # Coordenadas origen (desde lat/lon o desde sucursal.maps_url o ciudad)
-    lat_orig, lon_orig = None, None
-    if sucursal and sucursal.latitud and sucursal.longitud:
-        lat_orig = float(sucursal.latitud)
-        lon_orig = float(sucursal.longitud)
-    elif sucursal and getattr(sucursal, "maps_url", None):
-        lat_s, lon_s = extraer_coordenadas_de_url(sucursal.maps_url)
-        if lat_s is not None and lon_s is not None:
-            lat_orig, lon_orig = lat_s, lon_s
-
-    if lat_orig is None or lon_orig is None:
-        lat_orig, lon_orig = geocodificar_aproximado(sucursal.ciudad if sucursal else ciudad)
-
-    # Coordenadas destino
     if lat_dest is not None and lon_dest is not None:
         lat_d = float(lat_dest)
         lon_d = float(lon_dest)
     else:
-        lat_d, lon_d = geocodificar_aproximado(f"{direccion} {ciudad}")
+        # Geocodificar a partir de la dirección escrita y ciudad
+        query_cli = f"{direccion} {ciudad}".strip()
+        lat_d, lon_d = geocodificar_aproximado(query_cli if query_cli else "santa cruz sirari")
 
-    res = calcular_cotizacion_completa(lat_orig, lon_orig, lat_d, lon_d)
-    res["sucursal_id"] = sucursal.id if sucursal else None
-    res["sucursal_nombre"] = sucursal.nombre if sucursal else "Sucursal Central"
-    res["sucursal_ciudad"] = sucursal.ciudad if sucursal else ciudad
-    res["sucursal_direccion"] = sucursal.direccion if sucursal else ""
-    res["sucursal_maps_url"] = getattr(sucursal, "maps_url", None)
-    return res
+    # 4. Calcular distancia Haversine entre Sucursal y Destino
+    distancia = calcular_distancia_haversine(lat_orig, lon_orig, lat_d, lon_d)
+
+    # Si la distancia es virtualmente cero (ambas coordenadas cayeron en el mismo punto genérico)
+    if distancia < 0.2:
+        distancia = 3.50
+
+    # 5. Tarifa oficial StyleStore: 5.00 Bs base fija + 0.60 Bs por km
+    costo_envio = round(5.00 + (distancia * 0.60), 2)
+    minutos = estimar_tiempo_entrega(distancia)
+
+    nombre_suc = sucursal.nombre if sucursal else (sucursal_nombre_in or "Sucursal Central")
+
+    return {
+        "distancia_km": distancia,
+        "costo": costo_envio,
+        "costo_envio": costo_envio,
+        "tarifa_base": 5.00,
+        "costo_por_km": 0.60,
+        "moneda": "BOB",
+        "minutos_estimados": minutos,
+        "sucursal_id": sucursal.id if sucursal else None,
+        "sucursal_nombre": nombre_suc,
+        "sucursal_ciudad": sucursal.ciudad if sucursal else ciudad,
+        "sucursal_direccion": sucursal.direccion if sucursal else "",
+        "sucursal_maps_url": sucursal_final_maps_url,
+        "origen": {"lat": lat_orig, "lon": lon_orig, "nombre": nombre_suc},
+        "destino": {"lat": lat_d, "lon": lon_d, "direccion": direccion, "ubicacion_url": ubicacion_url},
+        "comparacion_texto": f"Ruta de despacho: desde {nombre_suc} hasta tu destino ({distancia} km)",
+    }
 
 
 @router.get("/asignados", summary="Envíos asignados al Repartidor")
