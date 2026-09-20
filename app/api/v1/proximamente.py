@@ -11,6 +11,7 @@ from app.schemas.proximamente import ProximamenteCreate, ProximamenteUpdate, Pro
 from app.api.deps import get_current_user, require_permission
 from app.core.exceptions import NotFoundException
 from app.services.bitacora_service import BitacoraService
+from app.services.notificacion_service import NotificacionService
 
 router = APIRouter(prefix="/proximamente", tags=["Próximamente"])
 
@@ -129,6 +130,36 @@ async def update_proximamente(
         module="proximamente",
     )
     return _serialize_proximamente(item)
+
+
+@router.post("/{item_id}/notificar", summary="Notificar llegada o disponibilidad a clientes suscritos")
+async def notificar_proximamente(
+    item_id: int,
+    current_user: User = Depends(require_permission("proximamente.editar")),
+    db: Session = Depends(get_db),
+):
+    """Notificar disponibilidad del artículo a todos los clientes suscritos."""
+    item = db.query(Proximamente).filter(Proximamente.id == item_id).first()
+    if not item:
+        raise NotFoundException(f"Prenda próxima con ID {item_id} no encontrada.")
+
+    item.active = True
+    db.commit()
+
+    service = NotificacionService(db)
+    total_notificados = service.notificar_llegada_proximamente(proximamente_id=item.id)
+
+    BitacoraService.registrar(
+        db=db,
+        user=current_user,
+        action=f"Notificó la llegada de la prenda próxima '{item.nombre}' a {total_notificados} clientes suscritos",
+        module="proximamente",
+    )
+    return {
+        "message": f"Se notificó con éxito a {total_notificados} clientes suscritos sobre la llegada de '{item.nombre}'.",
+        "total_notificados": total_notificados,
+        "item": _serialize_proximamente(item),
+    }
 
 
 @router.delete("/{item_id}", summary="Eliminar prenda próxima")

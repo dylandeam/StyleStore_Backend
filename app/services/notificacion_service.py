@@ -148,7 +148,7 @@ class NotificacionService:
         self.db.commit()
         return {"status": "suscrito", "mensaje": "Te avisaremos de inmediato cuando se reponga stock."}
 
-    def notificar_llegada_proximamente(self, proximamente_id: int, producto_codigo: str):
+    def notificar_llegada_proximamente(self, proximamente_id: int, producto_codigo: Optional[str] = None) -> int:
         """Dispara notificaciones masivas a los clientes suscritos a un artículo que ya llegó."""
         subs = (
             self.db.query(SuscripcionProximamente)
@@ -156,19 +156,22 @@ class NotificacionService:
             .all()
         )
         item = self.db.query(Proximamente).filter(Proximamente.id == proximamente_id).first()
-        nombre_item = item.titulo if item else "El artículo que esperabas"
+        nombre_item = item.nombre if (item and item.nombre) else "El artículo que esperabas"
+        url = f"/catalogo/producto/{producto_codigo}" if producto_codigo else "/catalogo"
+        count = len(subs)
 
         for s in subs:
             self.crear_notificacion(
                 user_id=s.user_id,
                 tipo="proximamente",
-                titulo="¡Ya llegó a StyleStore!",
+                titulo="¡Ya disponible en StyleStore!",
                 mensaje=f"Buenas noticias: '{nombre_item}' ya se encuentra disponible en tienda y catálogo. ¡No te quedes sin el tuyo!",
-                url_accion=f"/catalogo/producto/{producto_codigo}",
+                url_accion=url,
                 enviar_email=True,
             )
             self.db.delete(s)
         self.db.commit()
+        return count
 
     def notificar_reposicion_stock(self, stock_inventario_id: int):
         """Dispara notificaciones a los clientes suscritos a un stock que se acaba de reponer."""
