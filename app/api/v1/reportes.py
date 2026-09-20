@@ -385,7 +385,7 @@ async def pdf_rotacion(current_user: User = Depends(get_current_user), db: Sessi
     buf = srv.build_generic_pdf("Rotación de Prendas (Top y Menor Venta)", headers, rows, [100, 200, 80, 100])
     return Response(content=buf.getvalue(), media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="rotacion_prendas.pdf"'})
 
-# 7. Envíos Yango
+# 7. Envíos Delivery StyleStore
 @router.get("/envios/preview")
 async def preview_envios(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     srv = ReportService(db)
@@ -396,9 +396,9 @@ async def preview_envios(current_user: User = Depends(get_current_user), db: Ses
 async def excel_envios(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     srv = ReportService(db)
     data = srv.get_envios_report_data()
-    headers = ["Ticket", "Cliente", "Ciudad", "Dirección", "Conductor", "Tracking Yango", "Estado", "Costo (Bs.)", "Fecha"]
+    headers = ["Ticket", "Cliente", "Ciudad", "Dirección", "Conductor", "Tracking Delivery", "Estado", "Costo (Bs.)", "Fecha"]
     rows = [[d["ticket"], d["cliente"], d["ciudad"], d["direccion"], d["conductor"], d["tracking"], d["estado"], d["costo"], d["fecha"]] for d in data]
-    buf = srv.build_generic_excel("Envios", "Reporte de Despachos y Envíos Delivery", headers, rows)
+    buf = srv.build_generic_excel("Envios", "Reporte de Despachos y Envíos Delivery StyleStore", headers, rows)
     return Response(content=buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": 'attachment; filename="envios_delivery.xlsx"'})
 
 @router.get("/envios/pdf")
@@ -407,7 +407,7 @@ async def pdf_envios(current_user: User = Depends(get_current_user), db: Session
     data = srv.get_envios_report_data()
     headers = ["Ticket", "Cliente", "Destino", "Tracking / Conductor", "Estado", "Costo"]
     rows = [[d["ticket"], d["cliente"][:15], f"{d['ciudad']} - {d['direccion'][:18]}", f"{d['tracking']}\n{d['conductor']}", d["estado"], f"Bs. {d['costo']:.2f}"] for d in data]
-    buf = srv.build_generic_pdf("Reporte de Despachos y Envíos Yango", headers, rows, [80, 85, 140, 95, 55, 45])
+    buf = srv.build_generic_pdf("Reporte de Despachos y Envíos Delivery StyleStore", headers, rows, [80, 85, 140, 95, 55, 45])
     return Response(content=buf.getvalue(), media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="envios_delivery.pdf"'})
 
 # 8. Devoluciones y Cambios

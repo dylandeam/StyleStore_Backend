@@ -653,7 +653,7 @@ class ReportService:
         ]
         return {"mas_vendidas": mas, "menos_vendidas": menos}
 
-    # Reporte 7: Reporte de envíos (Yango / Delivery)
+    # Reporte 7: Reporte de envíos (Delivery StyleStore)
     def get_envios_report_data(self) -> List[Dict[str, Any]]:
         envios = self.db.query(Envio).options(
             joinedload(Envio.orden_venta).joinedload(OrdenVenta.cliente).joinedload(Cliente.user)
@@ -673,7 +673,7 @@ class ReportService:
                 "ciudad": e.ciudad,
                 "direccion": e.direccion,
                 "conductor": getattr(e, "delivery_conductor", None) or "Por asignar",
-                "tracking": getattr(e, "yango_tracking_code", None) or "-",
+                "tracking": getattr(e, "tracking_code", None) or getattr(e, "token_seguimiento", None) or getattr(e, "yango_tracking_code", None) or "-",
                 "estado": e.estado.upper(),
                 "costo": float(e.costo),
                 "fecha": e.fecha.strftime("%d/%m/%Y") if e.fecha else "-",

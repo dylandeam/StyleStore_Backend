@@ -65,7 +65,7 @@ class DashboardService:
             reservas_query = reservas_query.filter(Reserva.sucursal_id == sucursal_id)
         reservas_activas = reservas_query.count()
 
-        # 5. Envíos Pendientes (Yango / Delivery)
+        # 5. Envíos Pendientes (Delivery StyleStore)
         envios_query = self.db.query(Envio).filter(Envio.estado.in_(["pendiente", "en_camino"]))
         if sucursal_id:
             envios_query = envios_query.join(OrdenVenta, Envio.orden_venta_id == OrdenVenta.id).filter(

@@ -148,13 +148,13 @@ class ChatbotService:
                 ],
             }
 
-        # 4. Envíos / Yango / Delivery / Tracking
-        if any(w in norm for w in ["envio", "envios", "yango", "delivery", "ubicacion maps", "costo envio", "seguimiento"]):
+        # 4. Envíos / Delivery StyleStore / Tracking
+        if any(w in norm for w in ["envio", "envios", "delivery", "ubicacion maps", "costo envio", "seguimiento", "yango"]):
             return {
-                "respuesta": "🛵 **Envíos y Entregas con Yango Delivery:**\n\n"
-                             "• Realizamos envíos a domicilio mediante moto/auto a través del servicio de **Yango**.\n"
+                "respuesta": "🛵 **Delivery StyleStore Oficial:**\n\n"
+                             "• Realizamos despachos a domicilio mediante nuestro servicio propio de **Delivery StyleStore** con repartidores asignados.\n"
                              "• Al finalizar tu pedido, debes proporcionar tu **enlace de Google Maps o Apple Maps** para que el conductor llegue a tu puerta con exactitud.\n"
-                             "• La tarifa es variable según la app de Yango (distancia, clima, horario). Nuestro encargado te contactará o despachará tu orden inmediatamente.",
+                             "• Podrás realizar seguimiento en tiempo real de tu pedido y consultar su estado en todo momento.",
                 "chips": [
                     {"label": "📦 Ver Estado de Pedidos", "action": "navigate", "route": "/cuenta/mis-compras"},
                     {"label": "🛍️ Ver Mi Carrito", "action": "navigate", "route": "/carrito"},
@@ -307,7 +307,7 @@ class ChatbotService:
 
         # 11. Respuesta por defecto
         return {
-            "respuesta": "Entiendo tu consulta. Como asistente virtual de StyleStore puedo ayudarte a consultar sucursales, recomendaciones de ropa, pedidos, envíos con Yango, políticas de reserva o solicitar cambios. ¿Cuál de estas opciones te gustaría explorar?",
+            "respuesta": "Entiendo tu consulta. Como asistente virtual de StyleStore puedo ayudarte a consultar sucursales, recomendaciones de ropa, pedidos, envíos con Delivery StyleStore, políticas de reserva o solicitar cambios. ¿Cuál de estas opciones te gustaría explorar?",
             "chips": [
                 {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/admin/sucursales"},
                 {"label": "👗 Catálogo Online", "action": "navigate", "route": "/catalogo"},
