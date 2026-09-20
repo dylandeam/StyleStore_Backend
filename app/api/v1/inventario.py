@@ -144,17 +144,22 @@ async def get_inventario_sucursal(
 
         result.append({
             "stock_inventario_id": s.id,
+            "id": s.id,
             "producto_codigo": p_cod,
             "producto_nombre": p_nom,
             "foto": p_foto,
             "precio": p_precio,
+            "precio_unitario": p_precio,
             "producto_color_id": s.producto_color_id,
             "color": color_nom,
+            "color_nombre": color_nom,
             "talla_id": s.talla_id,
             "talla": talla_nom,
+            "talla_nombre": talla_nom,
             "sucursal_id": s.sucursal_id,
             "sucursal": suc_nom,
             "cantidad": s.cantidad,
+            "cantidad_disponible": s.cantidad,
         })
     return result
 

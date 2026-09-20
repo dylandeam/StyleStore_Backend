@@ -195,6 +195,8 @@ async def create_venta_presencial(
     total_venta = Decimal("0.00")
     detalles_orden = []
 
+    sucursal_id_detectada = payload.sucursal_id
+
     for item in payload.items:
         stock = (
             db.query(StockInventario)
@@ -206,9 +208,27 @@ async def create_venta_presencial(
             db.rollback()
             raise NotFoundException(f"Inventario #{item.stock_inventario_id} no encontrado.")
 
+        # Si se seleccionó una sucursal en caja y el stock pertenece a otra, buscar existencia local
+        if payload.sucursal_id and stock.sucursal_id != payload.sucursal_id:
+            stock_local = (
+                db.query(StockInventario)
+                .filter(
+                    StockInventario.producto_color_id == stock.producto_color_id,
+                    StockInventario.talla_id == stock.talla_id,
+                    StockInventario.sucursal_id == payload.sucursal_id,
+                )
+                .with_for_update(of=StockInventario)
+                .first()
+            )
+            if stock_local:
+                stock = stock_local
+
+        if not sucursal_id_detectada:
+            sucursal_id_detectada = stock.sucursal_id
+
         if stock.cantidad < item.cantidad:
             db.rollback()
-            raise BadRequestException(f"Stock insuficiente. Disponible: {stock.cantidad}, solicitado: {item.cantidad}.")
+            raise BadRequestException(f"Stock insuficiente en sucursal. Disponible: {stock.cantidad}, solicitado: {item.cantidad}.")
 
         stock.cantidad -= item.cantidad
 
@@ -256,7 +276,7 @@ async def create_venta_presencial(
         efectivo_recibido=recibido if metodo == "efectivo" else total_venta,
         cambio_devuelto=cambio if metodo == "efectivo" else Decimal("0.00"),
         codigo_cliente=cliente.codigo,
-        sucursal_id=payload.sucursal_id,
+        sucursal_id=sucursal_id_detectada or payload.sucursal_id,
     )
     db.add(orden)
     db.flush()

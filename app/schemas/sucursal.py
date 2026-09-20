@@ -3,7 +3,7 @@ Pydantic schemas for Sucursales (Store Branches).
 """
 from datetime import datetime
 import re
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, computed_field
 
 
 class SucursalBase(BaseModel):
@@ -51,5 +51,25 @@ class SucursalResponse(SucursalBase):
     id: int
     created_at: datetime
     updated_at: datetime
+
+    @computed_field
+    @property
+    def nombre(self) -> str:
+        return self.name
+
+    @computed_field
+    @property
+    def ciudad(self) -> str:
+        return self.city
+
+    @computed_field
+    @property
+    def direccion(self) -> str:
+        return self.address
+
+    @computed_field
+    @property
+    def telefono(self) -> str:
+        return self.phone
 
     model_config = {"from_attributes": True}
