@@ -160,7 +160,7 @@ def extraer_coordenadas_de_url(url: str | None) -> Tuple[float | None, float | N
     """
     if not url:
         return None, None
-    url_clean = str(url).strip()
+    url_clean = url.strip()
 
     # 1. Intentar extracción directa
     lat, lon = _parse_coords_from_text(url_clean)

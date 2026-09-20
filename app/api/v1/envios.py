@@ -552,8 +552,8 @@ async def cotizar_por_distancia(
     # Persistir coordenadas y maps_url si no los tenía
     if sucursal:
         if lat_orig and lon_orig and (not sucursal.latitud or not sucursal.longitud):
-            sucursal.latitud = str(lat_orig)
-            sucursal.longitud = str(lon_orig)
+            sucursal.latitud = Decimal(str(round(lat_orig, 6)))
+            sucursal.longitud = Decimal(str(round(lon_orig, 6)))
         if maps_url_suc and not sucursal.maps_url:
             sucursal.maps_url = maps_url_suc
         elif not sucursal.maps_url and lat_orig and lon_orig:
