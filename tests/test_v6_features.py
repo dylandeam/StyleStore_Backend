@@ -439,3 +439,19 @@ def test_catalogo_para_ti_y_sucursales_publicas(client: TestClient, auth_tokens)
     assert res_suc.status_code == 200
     assert isinstance(res_suc.json(), list)
 
+
+def test_asistente_ia_reportes(client: TestClient, auth_tokens):
+    """Verifica que el asistente de IA para reportes responda adecuadamente al admin."""
+    headers = {"Authorization": f"Bearer {auth_tokens['admin_token']}"}
+    res = client.post(
+        "/api/v1/reportes/asistente-ia",
+        json={"pregunta": "¿Cuántas ropas se vendieron hoy y cuántos pedidos por delivery hubo?"},
+        headers=headers,
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert "respuesta" in data
+    assert "kpis" in data
+    assert isinstance(data["kpis"], list)
+
+

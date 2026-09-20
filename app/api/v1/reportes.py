@@ -569,3 +569,36 @@ async def alias_excel_garantias(sucursal_id: Optional[int] = None, current_user:
 async def alias_pdf_garantias(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return await pdf_devoluciones(sucursal_id=sucursal_id, current_user=current_user, db=db)
 
+
+# ==========================================================
+# ASISTENTE DE INTELIGENCIA ARTIFICIAL PARA REPORTES & VOZ
+# ==========================================================
+from pydantic import BaseModel
+from app.services.report_ai_service import ReportAIService
+
+
+class ConsultaReporteIARequest(BaseModel):
+    pregunta: str
+
+
+@router.post("/asistente-ia", summary="Consulta ejecutiva analítica con IA para administradores y encargados")
+async def consultar_asistente_ia(
+    req: ConsultaReporteIARequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Procesa una consulta gerencial o analítica de reportes usando IA Groq y contexto operativo."""
+    service = ReportAIService(db)
+    user_name = current_user.name or "Administrador"
+    resultado = service.procesar_consulta(pregunta=req.pregunta, user_name=user_name)
+
+    BitacoraService.registrar(
+        db=db,
+        user=current_user,
+        action=f"Consultó asistente de IA para reportes: '{req.pregunta[:60]}'",
+        module="reportes",
+    )
+
+    return resultado
+
+
