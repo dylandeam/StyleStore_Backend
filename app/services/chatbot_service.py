@@ -19,6 +19,7 @@ from app.models.reserva import Reserva
 from app.models.orden_venta import OrdenVenta
 from app.models.cliente import Cliente
 from app.models.user import User
+from app.config import settings
 
 
 def _normalize(text: str) -> str:
@@ -45,24 +46,124 @@ class ChatbotService:
     def __init__(self, db: Session):
         self.db = db
 
+    def _consultar_groq(self, mensaje: str, user: Optional[User] = None) -> Optional[Dict[str, Any]]:
+        """Consulta el motor de IA Groq (LLM) enriquecido con contexto de sucursales y catálogo en tiempo real."""
+        if not settings.GROQ_API_KEY:
+            return None
+
+        try:
+            import httpx
+
+            # 1. Sucursales en vivo
+            sucursales = self.db.query(Sucursal).filter(Sucursal.active == True).all()
+            suc_info = [f"• {s.nombre} (Dirección: {s.direccion}, Tel: {s.telefono or 'N/A'}, Ciudad: {s.ciudad})" for s in sucursales]
+            suc_str = "\n".join(suc_info) if suc_info else "Sucursales activas en Santa Cruz y principales avenidas."
+
+            # 2. Catálogo de productos y precios en vivo (muestra de hasta 80 prendas activas)
+            productos = self.db.query(Producto).filter(Producto.active == True).limit(80).all()
+            prods_info = [f"• {p.nombre} (Ref: {p.codigo}, Precio: Bs. {float(p.precio):.2f})" for p in productos]
+            prods_str = "\n".join(prods_info) if prods_info else "Variedad exclusiva en ropa de moda masculina y femenina."
+
+            user_name = user.name if user else "estimado cliente"
+
+            system_prompt = f"""Eres el Asistente Virtual Inteligente con IA de "StyleStore", una prestigiosa y moderna boutique de ropa y moda en Bolivia.
+Tu misión es atender a los clientes con calidez, elegancia, agilidad y precisión, respondiendo tanto a consultas escritas como a consultas por voz.
+La moneda de StyleStore es el Boliviano (Bs.). El cliente actual se llama: {user_name}.
+
+INFORMACIÓN EN TIEMPO REAL DE STYLESTORE:
+1. SUCURSALES ACTIVAS:
+{suc_str}
+
+2. CATÁLOGO ACTIVO DE PRENDAS Y PRECIOS (BOLIVIANOS):
+{prods_str}
+
+3. POLÍTICAS Y SERVICIOS DISPONIBLES:
+- Envíos y Delivery: Servicio 'Delivery StyleStore' con rastreo GPS en tiempo real (Delivery Tracker en vivo), donde el repartidor comparte su ubicación y el cliente visualiza distancia, tiempo estimado y el mapa de su pedido.
+- Métodos de Pago: QR Simple en línea, Tarjetas de Débito/Crédito, Efectivo contra entrega y PayPal Oficial (con conversión automática de USD a BOB).
+- Reservas en Tienda: Reserva por 48 horas sin costo en la sucursal de tu preferencia para probarte la ropa.
+- Cambios y Devoluciones: Hasta 7 días calendario para solicitar cambios desde la sección 'Mis Compras'.
+
+REGLAS DE RESPUESTA:
+- Responde siempre en español, con un tono entusiasta, servicial y experto en moda.
+- Si el cliente pregunta por precios o rangos presupuestarios (por ejemplo: '¿hay pantalones de 60bs o menos?', '¿cuál es la prenda más barata?'), revisa rigurosamente la lista de productos de arriba y responde con exactitud mencionando los nombres y precios reales encontrados.
+- Si el cliente pregunta qué sucursales hay o sus direcciones, enuméralas con sus nombres y direcciones.
+- Si el cliente desea comprar o añadir algo al carrito, infórmale amablemente que puede decir o escribir: 'agrega [nombre de prenda] al carrito'.
+- Mantén respuestas concisas, fáciles de leer en pantalla o escuchar por voz. Usa negritas y viñetas cuando sea apropiado.
+- Al final de tu respuesta, agrega SIEMPRE una última línea con CHIPS de navegación relevantes en este formato exacto:
+CHIPS: [Texto Chip | /ruta], [Texto Chip 2 | /ruta]
+Rutas disponibles:
+- /catalogo (Ver Catálogo)
+- /admin/sucursales (Nuestras Sucursales)
+- /cuenta/mis-compras (Mis Compras / Seguimiento)
+- /cuenta/mis-pagos (Mis Pagos)
+- /carrito (Bolsa de Compras)
+"""
+
+            response = httpx.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": settings.GROQ_MODEL,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": mensaje}
+                    ],
+                    "temperature": 0.3,
+                    "max_tokens": 500
+                },
+                timeout=6.0
+            )
+
+            if response.status_code != 200:
+                return None
+
+            data = response.json()
+            raw_text = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+            if not raw_text:
+                return None
+
+            # Parsear chips al final del texto
+            chips = []
+            text_lines = []
+            for line in raw_text.splitlines():
+                if line.strip().startswith("CHIPS:"):
+                    chip_part = line.strip()[6:].strip()
+                    matches = re.findall(r"\[([^\]\|]+)\|([^\]]+)\]", chip_part)
+                    for label, route in matches:
+                        chips.append({
+                            "label": label.strip(),
+                            "action": "navigate",
+                            "route": route.strip()
+                        })
+                else:
+                    text_lines.append(line)
+
+            cleaned_text = "\n".join(text_lines).strip()
+
+            if not chips:
+                chips = [
+                    {"label": "👗 Catálogo", "action": "navigate", "route": "/catalogo"},
+                    {"label": "📍 Sucursales", "action": "navigate", "route": "/admin/sucursales"},
+                    {"label": "📦 Mis Compras", "action": "navigate", "route": "/cuenta/mis-compras"}
+                ]
+
+            return {
+                "respuesta": cleaned_text,
+                "chips": chips,
+                "ia_powered": True
+            }
+
+        except Exception:
+            return None
+
     def responder(self, mensaje: str, user: Optional[User] = None) -> Dict[str, Any]:
         """Procesa el mensaje del usuario y devuelve respuesta textual y chips de acción."""
         norm = _normalize(mensaje)
 
-        # 1. Saludos
-        if any(w in norm for w in ["hola", "buen dia", "buenas tardes", "buenas noches", "hey", "saludos"]):
-            nombre = f", {user.name}" if user else ""
-            return {
-                "respuesta": f"¡Hola{nombre}! 👋 Bienvenido a StyleStore. ¿En qué puedo colaborarte hoy? Puedes consultarme sobre nuestras sucursales, prendas disponibles, temporadas, estado de tus pedidos o decirme 'agrega el vestido rojo al carrito' para comprar directamente.",
-                "chips": [
-                    {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/admin/sucursales"},
-                    {"label": "👗 Catálogo de Ropa", "action": "navigate", "route": "/catalogo"},
-                    {"label": "📦 Mis Compras", "action": "navigate", "route": "/cuenta/mis-compras"},
-                    {"label": "💳 Métodos de Pago", "action": "navigate", "route": "/cuenta/mis-pagos"},
-                ],
-            }
-
-        # 1.1 Acción Ejecutable: Agregar prenda al carrito (Punto 8 / v7)
+        # 1. Acción Ejecutable Inmediata: Agregar prenda al carrito (Punto 8 / v7)
         if any(f in norm for f in ["agrega", "agregar", "anade", "anadir", "pon en mi bolsa", "pon al carrito", "comprar", "metelo"]):
             cant_match = re.search(r"\b(\d+)\b", norm)
             cantidad = int(cant_match.group(1)) if cant_match else 1
@@ -112,8 +213,51 @@ class ChatbotService:
                         {"label": "👗 Ver Catálogo", "action": "navigate", "route": "/catalogo"},
                     ],
                 }
+            else:
+                return {
+                    "respuesta": "No encontré en nuestro catálogo activo la prenda que intentas añadir. Por favor revisa el catálogo o indícame el nombre exacto de la prenda.",
+                    "chips": [
+                        {"label": "👗 Explorar Catálogo", "action": "navigate", "route": "/catalogo"},
+                        {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/admin/sucursales"},
+                    ],
+                }
 
-        # 2. Sucursales / Ubicaciones / Horarios
+        # 2. Saludos Puros (Respuesta inmediata de bienvenida con chips rápidos)
+        es_saludo_puro = any(w in norm for w in ["hola", "buen dia", "buenas tardes", "buenas noches", "hey", "saludos"]) and not any(
+            q in norm for q in ["que", "cual", "donde", "precio", "cuanto", "hay", "tienen", "venden", "pantalon", "camisa", "ropa", "sucursal", "pedido", "delivery", "reserva", "vestido"]
+        )
+        if es_saludo_puro:
+            nombre = f", {user.name}" if user else ""
+            return {
+                "respuesta": f"¡Hola{nombre}! 👋 Bienvenido a StyleStore. ¿En qué puedo colaborarte hoy? Puedes consultarme sobre nuestras sucursales, prendas disponibles, temporadas, estado de tus pedidos o decirme 'agrega el vestido rojo al carrito' para comprar directamente.",
+                "chips": [
+                    {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/admin/sucursales"},
+                    {"label": "👗 Catálogo de Ropa", "action": "navigate", "route": "/catalogo"},
+                    {"label": "📦 Mis Compras", "action": "navigate", "route": "/cuenta/mis-compras"},
+                    {"label": "💳 Métodos de Pago", "action": "navigate", "route": "/cuenta/mis-pagos"},
+                ],
+            }
+
+        # 3. Motor de Inteligencia Artificial Groq LLM (con contexto de catálogo y sucursales en vivo)
+        if settings.GROQ_API_KEY:
+            groq_res = self._consultar_groq(mensaje, user)
+            if groq_res:
+                return groq_res
+
+        # 4. Fallback Local: Saludos Generales
+        if any(w in norm for w in ["hola", "buen dia", "buenas tardes", "buenas noches", "hey", "saludos"]):
+            nombre = f", {user.name}" if user else ""
+            return {
+                "respuesta": f"¡Hola{nombre}! 👋 Bienvenido a StyleStore. ¿En qué puedo colaborarte hoy? Puedes consultarme sobre nuestras sucursales, prendas disponibles, temporadas, estado de tus pedidos o decirme 'agrega el vestido rojo al carrito' para comprar directamente.",
+                "chips": [
+                    {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/admin/sucursales"},
+                    {"label": "👗 Catálogo de Ropa", "action": "navigate", "route": "/catalogo"},
+                    {"label": "📦 Mis Compras", "action": "navigate", "route": "/cuenta/mis-compras"},
+                    {"label": "💳 Métodos de Pago", "action": "navigate", "route": "/cuenta/mis-pagos"},
+                ],
+            }
+
+        # 4. Fallback Local: Sucursales / Ubicaciones / Horarios
         if any(w in norm for w in ["sucursal", "sucursales", "donde estan", "ubicacion", "direccion", "tienda fisica", "horario"]):
             sucursales = self.db.query(Sucursal).filter(Sucursal.active == True).all()
             if not sucursales:

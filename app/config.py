@@ -72,6 +72,10 @@ class Settings:
     # Security & Master Key for Bitácora
     ADMIN_MASTER_KEY: str = os.getenv("ADMIN_MASTER_KEY", "StyleStoreMaster2025#")
 
+    # Groq AI Engine
+    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+
     # Backups directory
     BACKUP_DIR: Path = Path(__file__).resolve().parent.parent / "backups"
 

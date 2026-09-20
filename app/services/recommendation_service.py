@@ -14,6 +14,20 @@ from app.models.cliente import Cliente
 from app.models.orden_venta import OrdenVenta
 
 
+TOPS_KEYWORDS = {"camisa", "polera", "polo", "blusa", "chaqueta", "sueter", "poleron", "top", "saco", "chaleco", "chompa", "vestido"}
+BOTTOMS_KEYWORDS = {"pantalon", "jeans", "jean", "falda", "bermuda", "short", "jogger", "calza"}
+
+
+def _is_top(text: str) -> bool:
+    t = text.lower()
+    return any(w in t for w in TOPS_KEYWORDS)
+
+
+def _is_bottom(text: str) -> bool:
+    t = text.lower()
+    return any(w in t for w in BOTTOMS_KEYWORDS)
+
+
 def _tokenize(text: str | None) -> set[str]:
     """Extrae palabras clave normalizadas (lematización/stopwords básicas en español)."""
     if not text:
@@ -74,38 +88,49 @@ class RecommendationService:
 
         target_tokens = _tokenize(f"{target.nombre} {target.descripcion or ''}")
         target_price = float(target.precio)
+        target_cat_nom = target.categoria.nombre if target.categoria else ""
+        target_is_top = _is_top(f"{target.nombre} {target_cat_nom}")
+        target_is_bottom = _is_bottom(f"{target.nombre} {target_cat_nom}")
 
         scored_candidates = []
 
         for p in candidates:
             score = 0.0
             reasons = []
+            p_cat_nom = p.categoria.nombre if p.categoria else ""
 
-            # 1. Misma categoría (peso 0.35)
+            # 1. Misma categoría (peso 0.30)
             if target.categoria_id and p.categoria_id == target.categoria_id:
-                score += 0.35
-                cat_name = p.categoria.nombre if p.categoria else "Categoría similar"
-                reasons.append(f"Misma categoría ({cat_name})")
+                score += 0.30
+                reasons.append(f"Misma categoría ({p_cat_nom or 'similar'})")
 
-            # 2. Misma colección (peso 0.25)
+            # 1.1 Cross-selling / Outfit Complementario ("Completa tu look") (peso 0.35)
+            p_is_top = _is_top(f"{p.nombre} {p_cat_nom}")
+            p_is_bottom = _is_bottom(f"{p.nombre} {p_cat_nom}")
+            is_complementary = (target_is_top and p_is_bottom) or (target_is_bottom and p_is_top)
+            if is_complementary:
+                score += 0.35
+                reasons.append("Completa tu look ideal")
+
+            # 2. Misma colección (peso 0.20)
             if target.coleccion_id and p.coleccion_id == target.coleccion_id:
-                score += 0.25
+                score += 0.20
                 col_name = p.coleccion.nombre if p.coleccion else "Colección afín"
                 reasons.append(f"Colección {col_name}")
 
-            # 3. Misma temporada (peso 0.20)
+            # 3. Misma temporada (peso 0.15)
             if target.temporada_id and p.temporada_id == target.temporada_id:
-                score += 0.20
+                score += 0.15
                 temp_name = p.temporada.nombre if p.temporada else "Temporada coincidente"
                 reasons.append(f"Temporada {temp_name}")
 
-            # 4. Rango de precio afín ±35% (peso 0.10)
+            # 4. Rango de precio afín ±35% (peso 0.15)
             p_price = float(p.precio)
             if target_price > 0:
                 price_ratio = min(p_price, target_price) / max(p_price, target_price)
                 if price_ratio >= 0.65:
-                    score += 0.10 * price_ratio
-                    reasons.append("Precio similar")
+                    score += 0.15 * price_ratio
+                    reasons.append("Rango de precio afín")
 
             # 5. Similitud semántica de palabras clave (peso 0.10)
             p_tokens = _tokenize(f"{p.nombre} {p.descripcion or ''}")
@@ -124,12 +149,24 @@ class RecommendationService:
                 score += 0.05
                 reasons.append("Gama de colores afín")
 
-            scored_candidates.append((score, reasons, p))
+            # Determinar Tag de Incentivo de Compra
+            if is_complementary:
+                tag_incentivo = "✨ Completa tu look"
+            elif target_price > 0 and 0.85 <= (p_price / target_price) <= 1.15:
+                tag_incentivo = "🏷️ Precio similar"
+            elif target_price > 0 and 0.60 <= (p_price / target_price) < 0.85:
+                tag_incentivo = "💡 Mejor precio"
+            elif score >= 0.60:
+                tag_incentivo = "🔥 Match perfecto"
+            else:
+                tag_incentivo = "🌟 Recomendado"
+
+            scored_candidates.append((score, reasons, tag_incentivo, p))
 
         scored_candidates.sort(key=lambda x: x[0], reverse=True)
 
         results = []
-        for score, reasons, p in scored_candidates[:limit]:
+        for score, reasons, tag_incentivo, p in scored_candidates[:limit]:
             results.append({
                 "codigo": p.codigo,
                 "nombre": p.nombre,
@@ -140,6 +177,7 @@ class RecommendationService:
                 "coleccion_nombre": p.coleccion.nombre if p.coleccion else None,
                 "temporada_nombre": p.temporada.nombre if p.temporada else None,
                 "score_afinidad": round(score, 2),
+                "tag_incentivo": tag_incentivo,
                 "razon_recomendacion": " • ".join(reasons[:2]) if reasons else "Prenda sugerida para combinar tu estilo",
             })
 
@@ -173,6 +211,8 @@ class RecommendationService:
                             )
                             for r in recs:
                                 r["razon_recomendacion"] = f"Basado en tus preferencias: {r['razon_recomendacion']}"
+                                if not r.get("tag_incentivo"):
+                                    r["tag_incentivo"] = "🎯 Para ti"
                                 results.append(r)
                                 seen_codigos.add(r["codigo"])
             except Exception:
@@ -216,6 +256,8 @@ class RecommendationService:
                 elif p.temporada:
                     reason = f"Favorito temporada {p.temporada.nombre}"
 
+                tag = "🔥 Más llevado" if idx == 0 else ("✨ Novedad" if idx == 1 else "🌟 Recomendado")
+
                 results.append({
                     "codigo": p.codigo,
                     "nombre": p.nombre,
@@ -226,6 +268,7 @@ class RecommendationService:
                     "coleccion_nombre": p.coleccion.nombre if p.coleccion else None,
                     "temporada_nombre": p.temporada.nombre if p.temporada else None,
                     "score_afinidad": score,
+                    "tag_incentivo": tag,
                     "razon_recomendacion": reason,
                 })
                 seen_codigos.add(p.codigo)
