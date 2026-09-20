@@ -588,17 +588,27 @@ async def consultar_asistente_ia(
     db: Session = Depends(get_db),
 ):
     """Procesa una consulta gerencial o analítica de reportes usando IA Groq y contexto operativo."""
-    service = ReportAIService(db)
-    user_name = current_user.name or "Administrador"
-    resultado = service.procesar_consulta(pregunta=req.pregunta, user_name=user_name)
+    try:
+        service = ReportAIService(db)
+        user_name = current_user.name or "Administrador"
+        resultado = service.procesar_consulta(pregunta=req.pregunta, user_name=user_name)
 
-    BitacoraService.registrar(
-        db=db,
-        user=current_user,
-        action=f"Consultó asistente de IA para reportes: '{req.pregunta[:60]}'",
-        module="reportes",
-    )
+        BitacoraService.registrar(
+            db=db,
+            user=current_user,
+            action=f"Consultó asistente de IA para reportes: '{req.pregunta[:60]}'",
+            module="reportes",
+        )
 
-    return resultado
+        return resultado
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {
+            "pregunta": req.pregunta,
+            "respuesta": "No se pudo completar la consulta analítica en este momento. Por favor verifica los filtros o intenta con otra pregunta.",
+            "kpis": [],
+            "ia_powered": False,
+        }
 
 

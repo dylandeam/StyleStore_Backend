@@ -35,30 +35,40 @@ class ReportAIService:
         primer_dia_mes = hoy.replace(day=1)
 
         # 1. Ventas de HOY
-        ordenes_hoy = (
-            self.db.query(OrdenVenta)
-            .options(joinedload(OrdenVenta.sucursal), joinedload(OrdenVenta.detalles))
-            .filter(OrdenVenta.fecha == hoy, OrdenVenta.estado != "cancelada")
-            .all()
-        )
-        total_hoy = sum([float(o.total) for o in ordenes_hoy])
-        prendas_hoy_map = {}
-        for o in ordenes_hoy:
-            for d in o.detalles:
-                nom = d.codigo_producto
-                # Si podemos encontrar el nombre del producto
-                prendas_hoy_map[nom] = prendas_hoy_map.get(nom, 0) + (d.cantidad or 1)
+        ordenes_hoy = []
+        try:
+            ordenes_hoy = (
+                self.db.query(OrdenVenta)
+                .options(joinedload(OrdenVenta.sucursal), joinedload(OrdenVenta.detalles))
+                .filter(OrdenVenta.fecha == hoy, OrdenVenta.estado != "cancelada")
+                .all()
+            )
+        except Exception:
+            pass
 
-        # Buscar nombres de esas prendas
+        total_hoy = sum([float(o.total) for o in ordenes_hoy]) if ordenes_hoy else 0.0
         prendas_vendidas_detalle = []
-        if prendas_hoy_map:
-            cods = list(prendas_hoy_map.keys())
-            prods = self.db.query(Producto).filter(Producto.codigo.in_(cods)).all()
-            prod_names = {p.codigo: p.nombre for p in prods}
-            for cod, cant in prendas_hoy_map.items():
-                prendas_vendidas_detalle.append(f"{cant}x {prod_names.get(cod, cod)} (Ref: {cod})")
+        total_prendas_hoy = 0
 
-        total_prendas_hoy = sum(prendas_hoy_map.values())
+        for o in ordenes_hoy:
+            if not o.detalles:
+                continue
+            for d in o.detalles:
+                cant = int(d.cantidad) if d.cantidad else 1
+                total_prendas_hoy += cant
+                nom = getattr(d, "producto_nombre", None) or "Prenda StyleStore"
+                color = getattr(d, "color_nombre", None)
+                talla = getattr(d, "talla_nombre", None)
+                sub = float(d.subtotal) if getattr(d, "subtotal", None) else 0.0
+
+                extra = []
+                if color:
+                    extra.append(f"Color: {color}")
+                if talla:
+                    extra.append(f"Talla: {talla}")
+                extra_str = f" ({', '.join(extra)})" if extra else ""
+
+                prendas_vendidas_detalle.append(f"{cant}x {nom}{extra_str} - Bs. {sub:.2f}")
 
         # 2. Recaudación por Sucursal (Hoy y Mes)
         sucursales = self.db.query(Sucursal).filter(Sucursal.active == True).all()
