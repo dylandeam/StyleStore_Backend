@@ -70,6 +70,13 @@ def _serialize_orden(o: OrdenVenta) -> dict:
             "yango_tracking_code": getattr(env, "yango_tracking_code", None),
             "yango_tracking_url": getattr(env, "yango_tracking_url", None),
             "delivery_conductor": getattr(env, "delivery_conductor", None),
+            "token_seguimiento": getattr(env, "token_seguimiento", None),
+            "tracking_activo": getattr(env, "tracking_activo", True),
+            "repartidor_lat": float(env.repartidor_lat) if env.repartidor_lat else None,
+            "repartidor_lon": float(env.repartidor_lon) if env.repartidor_lon else None,
+            "repartidor_actualizado_en": env.repartidor_actualizado_en.isoformat() if env.repartidor_actualizado_en else None,
+            "distancia_km": float(env.distancia_km) if env.distancia_km else None,
+            "minutos_estimados": env.minutos_estimados,
         }
 
     return {

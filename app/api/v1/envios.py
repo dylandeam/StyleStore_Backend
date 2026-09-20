@@ -342,7 +342,7 @@ async def marcar_entregado_conductor(token: str, db: Session = Depends(get_db)):
 @router.get("/public/rastreo/{token}", summary="Rastreo en vivo para el cliente con mapa OpenStreetMap")
 async def get_rastreo_cliente(token: str, db: Session = Depends(get_db)):
     """Retorna coordenadas en tiempo real del conductor, origen y destino para el mapa del cliente."""
-    from app.core.geo import geocodificar_aproximado
+    from app.core.geo import geocodificar_aproximado, calcular_distancia_haversine, estimar_tiempo_entrega
     envio = db.query(Envio).filter(Envio.token_seguimiento == token).first()
     if not envio:
         raise NotFoundException("Código o enlace de rastreo no encontrado.")
@@ -360,12 +360,33 @@ async def get_rastreo_cliente(token: str, db: Session = Depends(get_db)):
     dest_lon = float(envio.longitud_destino) if envio.longitud_destino else orig_lon + 0.015
 
     rep_pos = None
+    distancia_actual = float(envio.distancia_km) if envio.distancia_km else 3.5
+    minutos_actual = envio.minutos_estimados or 20
+
     if envio.repartidor_lat and envio.repartidor_lon:
+        r_lat = float(envio.repartidor_lat)
+        r_lon = float(envio.repartidor_lon)
+
+        # Validar coherencia de ciudad entre el repartidor y el destino
+        dist_al_destino = calcular_distancia_haversine(r_lat, r_lon, dest_lat, dest_lon)
+        # Si la coordenada guardada quedó en otra ciudad (> 80 km, ej: La Paz vs Santa Cruz)
+        if dist_al_destino > 80.0:
+            # Reubicar al repartidor en la ciudad correcta partiendo desde la sucursal
+            r_lat = orig_lat + 0.003
+            r_lon = orig_lon + 0.003
+            dist_al_destino = calcular_distancia_haversine(r_lat, r_lon, dest_lat, dest_lon)
+            envio.repartidor_lat = Decimal(str(round(r_lat, 6)))
+            envio.repartidor_lon = Decimal(str(round(r_lon, 6)))
+            db.commit()
+
         rep_pos = {
-            "lat": float(envio.repartidor_lat),
-            "lon": float(envio.repartidor_lon),
+            "lat": r_lat,
+            "lon": r_lon,
             "actualizado_en": envio.repartidor_actualizado_en.isoformat() if envio.repartidor_actualizado_en else None,
         }
+        # Cálculo dinámico del trayecto restante según la posición del repartidor en vivo
+        distancia_actual = round(dist_al_destino, 2)
+        minutos_actual = estimar_tiempo_entrega(dist_al_destino)
 
     return {
         "envio_id": envio.id,
@@ -373,8 +394,8 @@ async def get_rastreo_cliente(token: str, db: Session = Depends(get_db)):
         "estado": envio.estado,
         "tracking_activo": getattr(envio, "tracking_activo", True),
         "delivery_conductor": envio.delivery_conductor or "Repartidor Asignado",
-        "distancia_km": float(envio.distancia_km) if envio.distancia_km else 3.5,
-        "minutos_estimados": envio.minutos_estimados or 20,
+        "distancia_km": distancia_actual,
+        "minutos_estimados": minutos_actual,
         "origen": {
             "nombre": sucursal.nombre if sucursal else "Sucursal StyleStore",
             "ciudad": sucursal.ciudad if sucursal else envio.ciudad,
@@ -734,7 +755,7 @@ async def get_envio_tracking_map(
     Retorna los datos de trazado para Leaflet + OpenStreetMap:
     Marcador de sucursal, marcador de destino y marcador de repartidor.
     """
-    from app.core.geo import geocodificar_aproximado
+    from app.core.geo import geocodificar_aproximado, calcular_distancia_haversine, estimar_tiempo_entrega
     envio = db.query(Envio).filter(Envio.id == envio_id).first()
     if not envio:
         raise NotFoundException(f"Envío #{envio_id} no encontrado.")
@@ -752,20 +773,36 @@ async def get_envio_tracking_map(
     dest_lon = float(envio.longitud_destino) if envio.longitud_destino else orig_lon + 0.02
 
     rep_pos = None
+    distancia_actual = float(envio.distancia_km) if envio.distancia_km else 3.5
+    minutos_actual = envio.minutos_estimados or 25
+
     if envio.repartidor_lat and envio.repartidor_lon:
+        r_lat = float(envio.repartidor_lat)
+        r_lon = float(envio.repartidor_lon)
+        dist_al_destino = calcular_distancia_haversine(r_lat, r_lon, dest_lat, dest_lon)
+        if dist_al_destino > 80.0:
+            r_lat = orig_lat + 0.003
+            r_lon = orig_lon + 0.003
+            dist_al_destino = calcular_distancia_haversine(r_lat, r_lon, dest_lat, dest_lon)
+            envio.repartidor_lat = Decimal(str(round(r_lat, 6)))
+            envio.repartidor_lon = Decimal(str(round(r_lon, 6)))
+            db.commit()
+
         rep_pos = {
-            "lat": float(envio.repartidor_lat),
-            "lon": float(envio.repartidor_lon),
+            "lat": r_lat,
+            "lon": r_lon,
             "nombre": envio.delivery_conductor or "Repartidor en ruta",
             "actualizado_en": envio.repartidor_actualizado_en.isoformat() if envio.repartidor_actualizado_en else None,
         }
+        distancia_actual = round(dist_al_destino, 2)
+        minutos_actual = estimar_tiempo_entrega(dist_al_destino)
 
     return {
         "envio_id": envio.id,
         "estado": envio.estado,
         "token_seguimiento": envio.token_seguimiento,
-        "distancia_km": float(envio.distancia_km) if envio.distancia_km else 3.5,
-        "minutos_estimados": envio.minutos_estimados or 25,
+        "distancia_km": distancia_actual,
+        "minutos_estimados": minutos_actual,
         "origen": {
             "nombre": sucursal.nombre if sucursal else "Sucursal Central",
             "ciudad": sucursal.ciudad if sucursal else envio.ciudad,
