@@ -52,11 +52,30 @@ class AuthService:
         role_cliente = self.db.query(Role).filter(Role.nombre.ilike("cliente")).first()
         role_id_val = role_cliente.id if role_cliente else None
 
+        # Sanitize name and apellido to prevent duplicate surnames (e.g. 'Lupita Cardozo Mendez' + 'Cardozo Mendez')
+        raw_name = request.name.strip() if request.name else ""
+        raw_apellido = request.apellido.strip() if request.apellido else ""
+
+        if raw_apellido:
+            # If name ends with apellido, strip it to leave only first name(s)
+            if raw_name.lower().endswith(raw_apellido.lower()) and len(raw_name) > len(raw_apellido):
+                clean_name = raw_name[:-len(raw_apellido)].strip()
+                clean_apellido = raw_apellido
+            elif raw_name.lower() == raw_apellido.lower():
+                clean_name = raw_name
+                clean_apellido = None
+            else:
+                clean_name = raw_name
+                clean_apellido = raw_apellido
+        else:
+            clean_name = raw_name
+            clean_apellido = None
+
         # Create new user with default client role (CU9 / v7 Punto 1)
         user = User(
             email=request.email,
-            name=request.name.strip(),
-            apellido=request.apellido.strip() if request.apellido else None,
+            name=clean_name,
+            apellido=clean_apellido,
             ci=ci_val,
             telefono=request.telefono.strip() if request.telefono else None,
             direccion=request.direccion.strip() if request.direccion else None,
@@ -71,7 +90,7 @@ class AuthService:
 
         # Create corresponding Cliente record (CU9)
         from app.models.cliente import Cliente
-        letra_nom = request.name.strip()[0].upper() if request.name and request.name.strip() else "C"
+        letra_nom = clean_name[0].upper() if clean_name else "C"
         codigo = f"CL{letra_nom}{user.id:04d}"
         # Ensure unique codigo
         c = 1

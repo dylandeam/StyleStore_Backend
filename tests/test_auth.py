@@ -172,3 +172,20 @@ def test_refresh_token(client):
     data = refresh_res.json()
     assert "access_token" in data
     assert data["token_type"] == "bearer"
+
+
+def test_register_with_name_and_apellido_sanitization(client):
+    """Test that when a user registers with full name in name and surname in apellido, no duplicate is saved."""
+    response = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "lupita@example.com",
+            "password": "Password123!",
+            "name": "Lupita Cardozo Mendez",
+            "apellido": "Cardozo Mendez",
+        },
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["name"] == "Lupita"
+    assert data["apellido"] == "Cardozo Mendez"

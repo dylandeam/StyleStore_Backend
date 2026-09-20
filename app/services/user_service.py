@@ -118,10 +118,22 @@ class UserService:
         ci_str = request.ci.strip() if request.ci else "12345678"
         raw_password = request.password.strip() if (request.password and request.password.strip()) else ci_str
 
+        raw_name = request.name.strip() if request.name else ""
+        raw_apellido = request.apellido.strip() if request.apellido else ""
+        if raw_apellido and raw_name.lower().endswith(raw_apellido.lower()) and len(raw_name) > len(raw_apellido):
+            clean_name = raw_name[:-len(raw_apellido)].strip()
+            clean_apellido = raw_apellido
+        elif not raw_apellido:
+            clean_name = raw_name
+            clean_apellido = None
+        else:
+            clean_name = raw_name
+            clean_apellido = raw_apellido
+
         user = User(
             email=request.email,
-            name=request.name.strip(),
-            apellido=request.apellido.strip() if request.apellido else None,
+            name=clean_name,
+            apellido=clean_apellido,
             ci=request.ci.strip() if request.ci else None,
             hashed_password=hash_password(raw_password),
             role=role_str,

@@ -59,19 +59,43 @@ class ClienteService:
             self.db.add(new_cli)
         self.db.commit()
 
+    @staticmethod
+    def _sanitize_names(nombre: str | None, apellido: str | None) -> tuple[str | None, str | None]:
+        """Elimina la duplicación de apellidos si el nombre ya contiene el apellido como sufijo."""
+        if not nombre:
+            return nombre, apellido
+        n = nombre.strip()
+        if not apellido:
+            return n, None
+        a = apellido.strip()
+        if n.lower().endswith(a.lower()) and len(n) > len(a):
+            n = n[:-len(a)].strip()
+        return n, a
+
     def list_clientes(self) -> list[ClienteResponse]:
         self._sync_orphan_cliente_users()
         clientes = self.db.query(Cliente).all()
         result = []
+        needs_commit = False
         for cli in clientes:
+            nombre = cli.user.name if cli.user else None
+            apellido = cli.user.apellido if cli.user else None
+            clean_nom, clean_ap = self._sanitize_names(nombre, apellido)
+
+            if cli.user and (cli.user.name != clean_nom or cli.user.apellido != clean_ap):
+                cli.user.name = clean_nom
+                cli.user.apellido = clean_ap
+                self.db.add(cli.user)
+                needs_commit = True
+
             result.append(
                 ClienteResponse(
                     codigo=cli.codigo,
                     user_id=cli.user_id,
                     telefono=cli.telefono,
                     direccion=cli.direccion,
-                    nombre=cli.user.name if cli.user else None,
-                    apellido=cli.user.apellido if cli.user else None,
+                    nombre=clean_nom,
+                    apellido=clean_ap,
                     ci=cli.user.ci if cli.user else None,
                     email=cli.user.email if cli.user else None,
                     role=cli.user.role if (cli.user and cli.user.role) else "cliente",
@@ -79,6 +103,8 @@ class ClienteService:
                     updated_at=cli.updated_at,
                 )
             )
+        if needs_commit:
+            self.db.commit()
         return result
 
     def get_cliente_by_codigo(self, codigo: str) -> ClienteResponse:
@@ -88,13 +114,22 @@ class ClienteService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Cliente con código '{codigo}' no encontrado.",
             )
+        nom = cli.user.name if cli.user else None
+        ap = cli.user.apellido if cli.user else None
+        clean_nom, clean_ap = self._sanitize_names(nom, ap)
+        if cli.user and (cli.user.name != clean_nom or cli.user.apellido != clean_ap):
+            cli.user.name = clean_nom
+            cli.user.apellido = clean_ap
+            self.db.add(cli.user)
+            self.db.commit()
+
         return ClienteResponse(
             codigo=cli.codigo,
             user_id=cli.user_id,
             telefono=cli.telefono,
             direccion=cli.direccion,
-            nombre=cli.user.name if cli.user else None,
-            apellido=cli.user.apellido if cli.user else None,
+            nombre=clean_nom,
+            apellido=clean_ap,
             ci=cli.user.ci if cli.user else None,
             email=cli.user.email if cli.user else None,
             role=cli.user.role if (cli.user and cli.user.role) else "cliente",
@@ -109,7 +144,8 @@ class ClienteService:
                 detail=f"El correo electrónico '{req.email}' ya está registrado.",
             )
 
-        base_codigo = self.generar_codigo(req.apellido, req.nombre, req.ci)
+        clean_nom, clean_ap = self._sanitize_names(req.nombre, req.apellido)
+        base_codigo = self.generar_codigo(clean_ap or "C", clean_nom or "L", req.ci)
         codigo = base_codigo
         counter = 1
         while self.db.query(Cliente).filter(Cliente.codigo == codigo).first():
@@ -118,8 +154,8 @@ class ClienteService:
 
         nuevo_user = User(
             email=req.email,
-            name=req.nombre,
-            apellido=req.apellido,
+            name=clean_nom or req.nombre,
+            apellido=clean_ap,
             ci=req.ci,
             hashed_password=get_password_hash(req.password),
             role="cliente",
@@ -142,7 +178,7 @@ class ClienteService:
             self.bitacora.registrar_accion(
                 user_id=current_user.id,
                 user_snapshot=f"{current_user.name} ({current_user.email})",
-                action=f"Creó cliente '{codigo}' para {req.nombre} {req.apellido}",
+                action=f"Creó cliente '{codigo}' para {clean_nom} {clean_ap or ''}".strip(),
                 module="clientes",
             )
 
@@ -164,10 +200,11 @@ class ClienteService:
             cli.direccion = req.direccion
 
         if cli.user:
-            if req.nombre is not None:
-                cli.user.name = req.nombre
-            if req.apellido is not None:
-                cli.user.apellido = req.apellido
+            curr_name = req.nombre if req.nombre is not None else cli.user.name
+            curr_ap = req.apellido if req.apellido is not None else cli.user.apellido
+            clean_nom, clean_ap = self._sanitize_names(curr_name, curr_ap)
+            cli.user.name = clean_nom
+            cli.user.apellido = clean_ap
             if req.ci is not None:
                 cli.user.ci = req.ci
 
