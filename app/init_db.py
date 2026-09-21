@@ -125,6 +125,21 @@ def init_db():
             db.add(cfg)
             db.commit()
 
+        # Seed default QR de cobro en mostrador if not exists
+        from app.models.qr_pago_config import QRPagoConfig
+        qr_cfg = db.query(QRPagoConfig).first()
+        if not qr_cfg:
+            qr_cfg = QRPagoConfig(
+                imagen_url="/uploads/qr/qr_mostrador_default.png",
+                banco_destino="Red Enlace / Banco Unión / BNB / BCP",
+                titular="StyleStore Bolivia",
+                activo=True,
+                sucursal_id=1,
+            )
+            db.add(qr_cfg)
+            db.commit()
+            logger.info("Created default QR Pago Config: /uploads/qr/qr_mostrador_default.png")
+
         # Seed initial admin if none exists
         admin_user = db.query(User).filter(User.role == "administrador").first()
         if not admin_user:
