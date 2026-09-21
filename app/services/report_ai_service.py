@@ -6,10 +6,10 @@ y consulta el motor Groq LLM para responder analíticamente a preguntas del admi
 """
 import re
 import json
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional
 from decimal import Decimal
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import func, or_
 
 from app.models.orden_venta import OrdenVenta, DetalleVenta
@@ -30,21 +30,49 @@ class ReportAIService:
 
     def _recopilar_contexto_operativo(self) -> Dict[str, Any]:
         """Extrae un resumen consolidado de las operaciones de StyleStore para el LLM."""
-        hoy = date.today()
-        hace_7_dias = hoy - timedelta(days=7)
-        primer_dia_mes = hoy.replace(day=1)
+        # Calculamos la fecha en hora oficial de Bolivia (UTC-4) y UTC del servidor
+        now_utc = datetime.now(timezone.utc)
+        now_bo = now_utc - timedelta(hours=4)
+        hoy_bo = now_bo.date()
+        hoy_utc = now_utc.date()
+        fechas_filtro = list({hoy_bo, hoy_utc})
+        primer_dia_mes = hoy_bo.replace(day=1)
 
-        # 1. Ventas de HOY
+        # 1. Ventas de HOY (contemplando huso horario de Bolivia UTC-4 y servidores UTC)
         ordenes_hoy = []
         try:
             ordenes_hoy = (
                 self.db.query(OrdenVenta)
-                .options(joinedload(OrdenVenta.sucursal), joinedload(OrdenVenta.detalles))
-                .filter(OrdenVenta.fecha == hoy, OrdenVenta.estado != "cancelada")
+                .options(joinedload(OrdenVenta.sucursal), selectinload(OrdenVenta.detalles))
+                .filter(
+                    or_(
+                        OrdenVenta.fecha.in_(fechas_filtro),
+                        func.date(OrdenVenta.created_at).in_(fechas_filtro),
+                    ),
+                    OrdenVenta.estado != "cancelada",
+                )
+                .order_by(OrdenVenta.id.desc())
                 .all()
             )
-        except Exception:
-            pass
+            # Respaldo: si la fecha del servidor o base de datos tiene desfase, buscar en las últimas 24h
+            if not ordenes_hoy:
+                limite_24h = now_utc - timedelta(hours=24)
+                ordenes_hoy = (
+                    self.db.query(OrdenVenta)
+                    .options(joinedload(OrdenVenta.sucursal), selectinload(OrdenVenta.detalles))
+                    .filter(
+                        OrdenVenta.created_at >= limite_24h,
+                        OrdenVenta.estado != "cancelada",
+                    )
+                    .order_by(OrdenVenta.id.desc())
+                    .all()
+                )
+        except Exception as e:
+            print(f"[ReportAIService] Error consultando ordenes_hoy: {e}")
+
+        # Evitar duplicados por múltiples criterios de fecha
+        ordenes_unicas_dict = {o.id: o for o in ordenes_hoy}
+        ordenes_hoy = list(ordenes_unicas_dict.values())
 
         total_hoy = sum([float(o.total) for o in ordenes_hoy]) if ordenes_hoy else 0.0
         prendas_vendidas_detalle = []
@@ -70,6 +98,37 @@ class ReportAIService:
 
                 prendas_vendidas_detalle.append(f"{cant}x {nom}{extra_str} - Bs. {sub:.2f}")
 
+        # Ventas más recientes registradas en el sistema (por si hoy aún no hay compras)
+        ultimas_prendas_detalle = []
+        try:
+            ultimas_ordenes = (
+                self.db.query(OrdenVenta)
+                .options(joinedload(OrdenVenta.sucursal), selectinload(OrdenVenta.detalles))
+                .filter(OrdenVenta.estado != "cancelada")
+                .order_by(OrdenVenta.id.desc())
+                .limit(6)
+                .all()
+            )
+            for o in ultimas_ordenes:
+                if not o.detalles:
+                    continue
+                for d in o.detalles:
+                    cant = int(d.cantidad) if d.cantidad else 1
+                    nom = getattr(d, "producto_nombre", None) or "Prenda StyleStore"
+                    color = getattr(d, "color_nombre", None)
+                    talla = getattr(d, "talla_nombre", None)
+                    sub = float(d.subtotal) if getattr(d, "subtotal", None) else 0.0
+                    extra = []
+                    if color:
+                        extra.append(f"Color: {color}")
+                    if talla:
+                        extra.append(f"Talla: {talla}")
+                    extra_str = f" ({', '.join(extra)})" if extra else ""
+                    fecha_str = o.fecha.strftime('%d/%m') if hasattr(o, "fecha") and o.fecha else ""
+                    ultimas_prendas_detalle.append(f"{cant}x {nom}{extra_str} [Fecha: {fecha_str}] - Bs. {sub:.2f}")
+        except Exception as e:
+            print(f"[ReportAIService] Error consultando ultimas_ordenes: {e}")
+
         # 2. Recaudación por Sucursal (Hoy y Mes)
         sucursales = self.db.query(Sucursal).filter(Sucursal.active == True).all()
         sucursal_metricas = []
@@ -82,7 +141,10 @@ class ReportAIService:
                 self.db.query(func.coalesce(func.sum(OrdenVenta.total), 0))
                 .filter(
                     OrdenVenta.sucursal_id == s.id,
-                    OrdenVenta.fecha >= primer_dia_mes,
+                    or_(
+                        OrdenVenta.fecha >= primer_dia_mes,
+                        func.date(OrdenVenta.created_at) >= primer_dia_mes,
+                    ),
                     OrdenVenta.estado != "cancelada",
                 )
                 .scalar()
@@ -97,7 +159,28 @@ class ReportAIService:
             })
 
         # 3. Pedidos por Delivery / Envíos
-        envios_hoy = self.db.query(Envio).filter(Envio.fecha == hoy).all()
+        envios_hoy = []
+        try:
+            envios_hoy = (
+                self.db.query(Envio)
+                .filter(
+                    or_(
+                        Envio.fecha.in_(fechas_filtro),
+                        func.date(Envio.created_at).in_(fechas_filtro),
+                    )
+                )
+                .all()
+            )
+            if not envios_hoy:
+                limite_24h = now_utc - timedelta(hours=24)
+                envios_hoy = (
+                    self.db.query(Envio)
+                    .filter(Envio.created_at >= limite_24h)
+                    .all()
+                )
+        except Exception as e:
+            print(f"[ReportAIService] Error consultando envios_hoy: {e}")
+
         total_envios_hoy = len(envios_hoy)
         entregados_hoy = len([e for e in envios_hoy if e.estado in ["entregado", "completado"]])
         en_camino_hoy = len([e for e in envios_hoy if e.estado in ["en camino", "en_camino"]])
@@ -106,7 +189,12 @@ class ReportAIService:
 
         envios_mes_total = (
             self.db.query(func.count(Envio.id))
-            .filter(Envio.fecha >= primer_dia_mes)
+            .filter(
+                or_(
+                    Envio.fecha >= primer_dia_mes,
+                    func.date(Envio.created_at) >= primer_dia_mes,
+                )
+            )
             .scalar()
             or 0
         )
@@ -143,18 +231,26 @@ class ReportAIService:
         # 6. Recaudación Total Mes
         recaudacion_mes_total = (
             self.db.query(func.coalesce(func.sum(OrdenVenta.total), 0))
-            .filter(OrdenVenta.fecha >= primer_dia_mes, OrdenVenta.estado != "cancelada")
+            .filter(
+                or_(
+                    OrdenVenta.fecha >= primer_dia_mes,
+                    func.date(OrdenVenta.created_at) >= primer_dia_mes,
+                ),
+                OrdenVenta.estado != "cancelada",
+            )
             .scalar()
         )
 
         return {
-            "fecha_actual": hoy.isoformat(),
+            "fecha_actual": hoy_bo.isoformat(),
+            "fecha_actual_legible": hoy_bo.strftime('%d/%m/%Y'),
             "ventas_hoy": {
                 "total_bs": total_hoy,
                 "cantidad_ordenes": len(ordenes_hoy),
                 "total_prendas": total_prendas_hoy,
                 "prendas_detalle": prendas_vendidas_detalle,
             },
+            "ultimas_ventas_recientes": ultimas_prendas_detalle,
             "sucursales": sucursal_metricas,
             "delivery": {
                 "total_hoy": total_envios_hoy,
@@ -187,7 +283,13 @@ class ReportAIService:
                 prendas_txt = (
                     "\n".join([f"- {p}" for p in contexto["ventas_hoy"]["prendas_detalle"]])
                     if contexto["ventas_hoy"]["prendas_detalle"]
-                    else "No se han registrado ventas de prendas en el día de hoy hasta el momento."
+                    else "No se registran ventas de prendas en la fecha de hoy aún."
+                )
+
+                ultimas_txt = (
+                    "\n".join([f"- {p}" for p in contexto["ultimas_ventas_recientes"][:6]])
+                    if contexto.get("ultimas_ventas_recientes")
+                    else "Sin ventas previas registradas."
                 )
 
                 critico_txt = (
@@ -201,7 +303,7 @@ class ReportAIService:
                 system_prompt = f"""Eres el Asistente Ejecutivo de Inteligencia Artificial para el Módulo de Reportes de "StyleStore" (Boutique de moda en Bolivia).
 Tu interlocutor es el usuario administrador o encargado de tienda: {user_name}.
 Tu misión es responder con absoluta precisión analítica, ejecutiva, elegante y directa a preguntas sobre ventas, sucursales, pedidos por delivery, inventario y métricas clave.
-La moneda oficial es el Boliviano (Bs.). La fecha actual del sistema es {contexto['fecha_actual']}.
+La moneda oficial es el Boliviano (Bs.). La fecha oficial de operaciones en Bolivia es {contexto['fecha_actual_legible']}.
 
 SNAPSHOT DE DATOS OPERATIVOS EN VIVO:
 1. VENTAS DE HOY:
@@ -211,29 +313,31 @@ SNAPSHOT DE DATOS OPERATIVOS EN VIVO:
 - Lista de prendas vendidas hoy:
 {prendas_txt}
 
-2. DESGLOSE POR SUCURSAL:
+2. PRENDAS VENDIDAS RECIENTEMENTE EN EL SISTEMA (Referencia de cortes anteriores):
+{ultimas_txt}
+
+3. DESGLOSE POR SUCURSAL:
 {suc_txt}
 
-3. PEDIDOS POR DELIVERY Y ENVÍOS:
+4. PEDIDOS POR DELIVERY Y ENVÍOS:
 - Total pedidos delivery hoy: {contexto['delivery']['total_hoy']} (Entregados: {contexto['delivery']['entregados_hoy']}, En camino: {contexto['delivery']['en_camino_hoy']}, Pendientes: {contexto['delivery']['pendientes_hoy']})
 - Total cobrado en tarifas de delivery hoy: Bs. {contexto['delivery']['recaudado_tarifas_hoy']:.2f}
 - Pedidos delivery acumulados en el mes: {contexto['delivery']['total_mes']}
 
-4. MÉTODOS DE PAGO HOY:
+5. MÉTODOS DE PAGO HOY:
 {pagos_txt}
 
-5. RECAUDACIÓN ACUMULADA DEL MES:
+6. RECAUDACIÓN ACUMULADA DEL MES:
 - Total general del mes: Bs. {contexto['recaudacion_mes_total']:.2f}
 
-6. INVENTARIO CRÍTICO (STOCK <= 5 O AGOTADOS):
+7. INVENTARIO CRÍTICO (STOCK <= 5 O AGOTADOS):
 {critico_txt}
 
 DIRECTRICES DE RESPUESTA:
 - Responde siempre en español, con tono formal, ejecutivo y claro.
-- Proporciona cifras exactas. Si preguntan "¿cuántas ropas se vendieron hoy? y cuáles son?", menciona el total de prendas y la lista de prendas exactas vendidas hoy.
+- Proporciona cifras exactas. Si preguntan "¿cuántas ropas se vendieron hoy? y cuáles son?", menciona el total de prendas y la lista de prendas vendidas hoy. Si hoy no se registran compras todavía, indícalo con amabilidad y menciona las prendas vendidas en el corte más reciente.
 - Si preguntan por una sucursal específica (ej. "¿cuánto recaudó la sucursal alemana?"), busca la coincidencia por nombre o ciudad y reporta tanto lo recaudado hoy como en el mes.
 - Si preguntan por delivery, detalla la cantidad de pedidos y los estados.
-- Si no hay datos registrados hoy (ej. 0 ventas o sin órdenes hoy), explícalo con claridad indicando que no se registran movimientos en la fecha actual aún.
 - Al final de tu respuesta, si aplica, incluye una línea especial con 1 a 3 tarjetas métricas KPI en formato JSON:
 KPIS: [{{"label": "Vendido Hoy", "valor": "Bs. 0.00"}}, {{"label": "Prendas Vendidas", "valor": "0"}}]
 """
@@ -423,16 +527,22 @@ KPIS: [{{"label": "Vendido Hoy", "valor": "Bs. 0.00"}}, {{"label": "Prendas Vend
             total_bs = ctx["ventas_hoy"]["total_bs"]
             total_prendas = ctx["ventas_hoy"]["total_prendas"]
             prendas = ctx["ventas_hoy"]["prendas_detalle"]
+            ultimas = ctx.get("ultimas_ventas_recientes", [])
 
             lineas = [
-                f"📊 **Reporte Operativo de Ventas de Hoy:**",
+                f"📊 **Reporte Operativo de Ventas de Hoy ({ctx.get('fecha_actual_legible', '')}):**",
                 f"• **Recaudación Total:** Bs. {total_bs:.2f}",
                 f"• **Cantidad de Órdenes:** {ctx['ventas_hoy']['cantidad_ordenes']}",
                 f"• **Prendas Vendidas:** {total_prendas} unidades\n",
             ]
             if prendas:
-                lineas.append("**Detalle de prendas vendidas:**")
+                lineas.append("**Detalle de prendas vendidas hoy:**")
                 for pr in prendas:
+                    lineas.append(f"• {pr}")
+            elif ultimas:
+                lineas.append(f"En la fecha de hoy ({ctx.get('fecha_actual_legible', '')}) aún no se registran nuevas ventas.")
+                lineas.append("\n**Prendas registradas en los cortes de venta más recientes:**")
+                for pr in ultimas[:8]:
                     lineas.append(f"• {pr}")
             else:
                 lineas.append("Hasta el momento no se registran prendas vendidas en el sistema el día de hoy.")
