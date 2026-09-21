@@ -351,6 +351,7 @@ async def marcar_entregado_conductor(token: str, db: Session = Depends(get_db)):
 
 
 @router.get("/public/rastreo/{token}", summary="Rastreo en vivo para el cliente con mapa OpenStreetMap")
+@router.get("/rastreo/{token}", summary="Rastreo en vivo para el cliente con mapa (alias)", include_in_schema=False)
 async def get_rastreo_cliente(token: str, db: Session = Depends(get_db)):
     """Retorna coordenadas en tiempo real del conductor, origen y destino para el mapa del cliente."""
     from app.core.geo import geocodificar_aproximado, calcular_distancia_haversine, estimar_tiempo_entrega
