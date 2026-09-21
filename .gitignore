@@ -27,6 +27,8 @@ alembic/versions/__pycache__/
 # Uploads
 uploads/*
 !uploads/**/.gitkeep
+!uploads/qr/qr_mostrador_default.png
+!uploads/pagos/qr_mostrador_default.png
 
 # Backups
 backups/*
