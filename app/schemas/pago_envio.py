@@ -42,6 +42,7 @@ class PayPalCapturarOrdenRequest(BaseModel):
 class CobroCajaRequest(BaseModel):
     orden_venta_id: int
     efectivo_recibido: Decimal = Field(..., ge=Decimal("0"))
+    metodo_pago: str | None = Field(default="efectivo", description="'efectivo' o 'qr'")
 
 
 class CobroCajaResponse(BaseModel):
@@ -52,6 +53,22 @@ class CobroCajaResponse(BaseModel):
     cambio_devuelto: Decimal
     ticket_numero: str
     fecha: datetime
+
+
+class QRConfigDTO(BaseModel):
+    imagen_url: str
+    banco_destino: str | None = "QR Simple - Red Enlace / Banco Unión / BCP / BNB"
+    titular: str | None = "StyleStore Bolivia"
+    sucursal_id: int | None = None
+
+
+class QRConfigResponse(BaseModel):
+    id: int | None = None
+    imagen_url: str | None = None
+    banco_destino: str | None = None
+    titular: str | None = None
+    activo: bool = True
+    updated_at: str | None = None
 
 
 # --- ENVÍOS ---

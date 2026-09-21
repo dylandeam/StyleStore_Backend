@@ -17,7 +17,7 @@ from app.api.deps import get_current_user
 router = APIRouter(prefix="/uploads", tags=["Uploads"])
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
-ALLOWED_FOLDERS = {"productos", "empleados"}
+ALLOWED_FOLDERS = {"productos", "empleados", "pagos", "qr"}
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 
 

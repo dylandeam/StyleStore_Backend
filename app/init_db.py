@@ -67,7 +67,21 @@ def _run_column_migrations(db: Session):
         "ALTER TABLE productos ADD COLUMN IF NOT EXISTS foto_vestidor_frontal VARCHAR(255)",
         "ALTER TABLE productos ADD COLUMN IF NOT EXISTS foto_vestidor_trasera VARCHAR(255)",
         "ALTER TABLE productos ADD COLUMN IF NOT EXISTS tipo_prenda VARCHAR(30) DEFAULT 'superior'",
-        "ALTER TABLE productos ADD COLUMN IF NOT EXISTS puntos_clave_ia TEXT",
+        # Pagos
+        "ALTER TABLE pagos ADD COLUMN IF NOT EXISTS metodo_pago VARCHAR(30)",
+        # QR Pago Config
+        """
+        CREATE TABLE IF NOT EXISTS qr_pago_config (
+            id SERIAL PRIMARY KEY,
+            imagen_url VARCHAR(500) NOT NULL,
+            banco_destino VARCHAR(100),
+            titular VARCHAR(150),
+            activo BOOLEAN DEFAULT TRUE,
+            sucursal_id INTEGER,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
     ]
     for stmt in statements:
         try:

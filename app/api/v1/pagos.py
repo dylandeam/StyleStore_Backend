@@ -15,6 +15,7 @@ from app.models.user import User
 from app.models.cliente import Cliente
 from app.models.orden_venta import OrdenVenta
 from app.models.pago import Pago
+from app.models.qr_pago_config import QRPagoConfig
 from app.schemas.pago_envio import (
     PagoCreateRequest,
     PagoResponse,
@@ -22,6 +23,8 @@ from app.schemas.pago_envio import (
     PayPalCapturarOrdenRequest,
     CobroCajaRequest,
     CobroCajaResponse,
+    QRConfigDTO,
+    QRConfigResponse,
 )
 from app.api.deps import get_current_user, get_optional_current_user, require_permission
 from app.core.exceptions import NotFoundException, BadRequestException
@@ -205,17 +208,23 @@ async def process_caja_payment(
     if orden.estado == "pagada":
         raise BadRequestException("Esta orden ya ha sido cobrada y está pagada.")
 
-    if payload.efectivo_recibido < orden.total:
-        diff = orden.total - payload.efectivo_recibido
-        raise BadRequestException(f"El monto recibido (Bs. {payload.efectivo_recibido}) es inferior al total a pagar (Bs. {orden.total}). Faltan: Bs. {diff}")
+    metodo = (payload.metodo_pago or "efectivo").lower()
+    if metodo == "qr":
+        monto_recibido = orden.total
+        cambio = Decimal("0.00")
+    else:
+        if payload.efectivo_recibido < orden.total:
+            diff = orden.total - payload.efectivo_recibido
+            raise BadRequestException(f"El monto recibido (Bs. {payload.efectivo_recibido}) es inferior al total a pagar (Bs. {orden.total}). Faltan: Bs. {diff}")
+        monto_recibido = payload.efectivo_recibido
+        cambio = payload.efectivo_recibido - orden.total
 
-    cambio = payload.efectivo_recibido - orden.total
     ticket_num = f"TKT-{datetime.now().strftime('%Y%m%d')}-{orden.id:04d}"
 
     orden.estado = "pagada"
-    orden.metodo_pago = "efectivo"
+    orden.metodo_pago = metodo
     orden.ticket_numero = ticket_num
-    orden.efectivo_recibido = payload.efectivo_recibido
+    orden.efectivo_recibido = monto_recibido
     orden.cambio_devuelto = cambio
 
     pago = db.query(Pago).filter(Pago.orden_venta_id == orden.id).first()
@@ -223,21 +232,24 @@ async def process_caja_payment(
         pago = Pago(
             orden_venta_id=orden.id,
             monto=orden.total,
-            tipo_pago="en caja",
+            tipo_pago="qr" if metodo == "qr" else "en caja",
+            metodo_pago=metodo,
             estado="aprobado",
         )
         db.add(pago)
     else:
-        pago.tipo_pago = "en caja"
+        pago.tipo_pago = "qr" if metodo == "qr" else "en caja"
+        pago.metodo_pago = metodo
         pago.estado = "aprobado"
 
     db.commit()
     db.refresh(pago)
 
+    desc_pago = f"[{metodo.upper()}]" if metodo == "qr" else f"Recibido: Bs. {monto_recibido}, Cambio: Bs. {cambio}"
     BitacoraService.registrar(
         db=db,
         user=current_user,
-        action=f"Emitió ticket de caja {ticket_num} para Orden #{orden.id}. Recibido: Bs. {payload.efectivo_recibido}, Cambio: Bs. {cambio}",
+        action=f"Emitió ticket de caja {ticket_num} para Orden #{orden.id}. {desc_pago}",
         module="pagos",
     )
 
@@ -245,7 +257,7 @@ async def process_caja_payment(
         pago_id=pago.id,
         orden_venta_id=orden.id,
         total=orden.total,
-        efectivo_recibido=payload.efectivo_recibido,
+        efectivo_recibido=monto_recibido,
         cambio_devuelto=cambio,
         ticket_numero=ticket_num,
         fecha=datetime.now(),
@@ -314,6 +326,82 @@ async def list_my_payments(
         .all()
     )
     return pagos
+
+
+# ==========================================
+# 4. CONFIGURACIÓN DE QR DE PAGO EN MOSTRADOR
+# ==========================================
+
+@router.get("/config-qr", response_model=QRConfigResponse, summary="Obtener configuración del QR de cobro")
+async def get_qr_config(
+    db: Session = Depends(get_db),
+):
+    """Retorna la imagen y datos del QR de cobro vigente para mostrador y pagos."""
+    config = db.query(QRPagoConfig).filter(QRPagoConfig.activo == True).order_by(QRPagoConfig.updated_at.desc()).first()
+    if not config:
+        return QRConfigResponse(
+            id=None,
+            imagen_url=None,
+            banco_destino="QR Simple BNB / BCP / Banco Unión",
+            titular="StyleStore Bolivia",
+            activo=False,
+            updated_at=None,
+        )
+    return QRConfigResponse(
+        id=config.id,
+        imagen_url=config.imagen_url,
+        banco_destino=config.banco_destino,
+        titular=config.titular,
+        activo=config.activo,
+        updated_at=config.updated_at.isoformat() if config.updated_at else None,
+    )
+
+
+@router.post("/config-qr", response_model=QRConfigResponse, summary="Actualizar QR de cobro en mostrador")
+async def update_qr_config(
+    payload: QRConfigDTO,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Permite al encargado o administrador subir o actualizar la imagen del QR para cobro."""
+    config = db.query(QRPagoConfig).filter(QRPagoConfig.activo == True).order_by(QRPagoConfig.updated_at.desc()).first()
+    if not config:
+        config = QRPagoConfig(
+            imagen_url=payload.imagen_url,
+            banco_destino=payload.banco_destino or "QR Simple BNB / BCP / Banco Unión",
+            titular=payload.titular or "StyleStore Bolivia",
+            sucursal_id=payload.sucursal_id,
+            activo=True,
+        )
+        db.add(config)
+    else:
+        config.imagen_url = payload.imagen_url
+        if payload.banco_destino:
+            config.banco_destino = payload.banco_destino
+        if payload.titular:
+            config.titular = payload.titular
+        if payload.sucursal_id:
+            config.sucursal_id = payload.sucursal_id
+        config.activo = True
+
+    db.commit()
+    db.refresh(config)
+
+    BitacoraService.registrar(
+        db=db,
+        user=current_user,
+        action=f"Actualizó la imagen del código QR de cobro ({config.banco_destino})",
+        module="pagos",
+    )
+
+    return QRConfigResponse(
+        id=config.id,
+        imagen_url=config.imagen_url,
+        banco_destino=config.banco_destino,
+        titular=config.titular,
+        activo=config.activo,
+        updated_at=config.updated_at.isoformat() if config.updated_at else None,
+    )
 
 
 @router.get("/{pago_id}", summary="Obtener recibo / nota de venta")

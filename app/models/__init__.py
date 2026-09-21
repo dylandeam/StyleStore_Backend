@@ -35,6 +35,7 @@ from app.models.notificacion import Notificacion, SuscripcionProximamente, Suscr
 from app.models.cambio_devolucion import CambioDevolucion
 from app.models.compra import Compra, DetalleCompra
 from app.models.outfit import Outfit, OutfitItem
+from app.models.qr_pago_config import QRPagoConfig
 
 __all__ = [
     "Role",
@@ -79,4 +80,5 @@ __all__ = [
     "DetalleCompra",
     "Outfit",
     "OutfitItem",
+    "QRPagoConfig",
 ]

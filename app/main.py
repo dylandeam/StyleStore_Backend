@@ -86,6 +86,8 @@ async def serve_uploaded_file(folder: str, filename: str, db: Session = Depends(
 uploads_dir = os.path.join(os.getcwd(), "uploads")
 os.makedirs(os.path.join(uploads_dir, "productos"), exist_ok=True)
 os.makedirs(os.path.join(uploads_dir, "empleados"), exist_ok=True)
+os.makedirs(os.path.join(uploads_dir, "pagos"), exist_ok=True)
+os.makedirs(os.path.join(uploads_dir, "qr"), exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 
 

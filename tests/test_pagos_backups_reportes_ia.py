@@ -161,6 +161,55 @@ def test_caja_pos_y_paypal_flow(client: TestClient, admin_token: str, db_session
     assert pago_cap["estado"] == "aprobado"
 
 
+def test_qr_pago_config_y_cobro_qr(client: TestClient, admin_token: str, db_session):
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    cli = _ensure_cliente(db_session, "CLI-QR-TEST")
+
+    # 1. Obtener QR config (debe responder aun si no hay imagen configurada)
+    res_get = client.get("/api/v1/pagos/config-qr")
+    assert res_get.status_code == 200
+    cfg_init = res_get.json()
+    assert "banco_destino" in cfg_init
+
+    # 2. Actualizar QR config como admin/encargado
+    payload_qr = {
+        "imagen_url": "/uploads/qr/qr_mostrador_test.png",
+        "banco_destino": "Banco Nacional de Bolivia - BNB QR Simple",
+        "titular": "StyleStore SRL",
+    }
+    res_post = client.post("/api/v1/pagos/config-qr", json=payload_qr, headers=headers)
+    assert res_post.status_code == 200
+    cfg_updated = res_post.json()
+    assert cfg_updated["imagen_url"] == "/uploads/qr/qr_mostrador_test.png"
+    assert cfg_updated["banco_destino"] == "Banco Nacional de Bolivia - BNB QR Simple"
+    assert cfg_updated["activo"] is True
+
+    # 3. Verificar que get retorne el QR actualizado
+    res_get2 = client.get("/api/v1/pagos/config-qr")
+    assert res_get2.status_code == 200
+    assert res_get2.json()["imagen_url"] == "/uploads/qr/qr_mostrador_test.png"
+
+    # 4. Cobrar una orden con método QR en caja
+    orden_qr = OrdenVenta(
+        codigo_cliente=cli.codigo,
+        total=Decimal("89.90"),
+        estado="pendiente",
+        tipo_venta="presencial",
+    )
+    db_session.add(orden_qr)
+    db_session.commit()
+
+    res_caja_qr = client.post(
+        "/api/v1/pagos/caja",
+        json={"orden_venta_id": orden_qr.id, "efectivo_recibido": 89.90, "metodo_pago": "qr"},
+        headers=headers,
+    )
+    assert res_caja_qr.status_code == 200
+    data_qr = res_caja_qr.json()
+    assert float(data_qr["cambio_devuelto"]) == 0.0
+    assert "TKT-" in data_qr["ticket_numero"]
+
+
 def test_backups_sha256_flow(client: TestClient, admin_token: str):
     headers = {"Authorization": f"Bearer {admin_token}"}
 
