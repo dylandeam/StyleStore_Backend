@@ -20,6 +20,7 @@ class MensajeChatbotRequest(BaseModel):
 
 
 @router.post("/mensaje", summary="Enviar mensaje al chatbot local y recibir respuesta con chips de navegación")
+@router.post("/conversar", summary="Enviar mensaje al chatbot local (alias)", include_in_schema=False)
 async def enviar_mensaje_chatbot(
     payload: MensajeChatbotRequest,
     current_user: Optional[User] = Depends(get_optional_current_user),
