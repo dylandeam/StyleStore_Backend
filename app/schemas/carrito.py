@@ -49,3 +49,16 @@ class ConfirmarCarritoRequest(BaseModel):
     direccion_envio: str | None = None
     despacho_delivery: bool | None = False
     despacho_yango: bool | None = False
+
+
+class CheckoutRequest(BaseModel):
+    metodo_pago: str = "efectivo"
+    distancia_km: float | None = None
+    direccion_envio: str | None = None
+    latitud_destino: float | None = None
+    longitud_destino: float | None = None
+    ubicacion_url: str | None = None
+    ciudad: str | None = None
+    referencia: str | None = None
+    sucursal_id: int | None = None
+

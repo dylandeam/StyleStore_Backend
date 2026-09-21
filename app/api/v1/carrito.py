@@ -18,6 +18,7 @@ from app.schemas.carrito import (
     DetalleCarritoCreate,
     DetalleCarritoUpdate,
     ConfirmarCarritoRequest,
+    CheckoutRequest,
 )
 from app.api.deps import get_current_user, require_permission
 from app.core.exceptions import NotFoundException, BadRequestException
@@ -388,6 +389,217 @@ async def confirm_cart(
         raise HTTPException(
             status_code=400,
             detail=f"Error al procesar la orden: {str(e)}",
+        )
+
+
+@router.post("/checkout", summary="Checkout integral con Delivery StyleStore para Web y Móvil")
+async def checkout_cart(
+    payload: CheckoutRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Checkout integral para Web y Mobile:
+    1. Confirma el carrito activo y descuenta stock atómicamente.
+    2. Genera OrdenVenta y DetalleVenta.
+    3. Si hay datos de entrega, crea el Envio con las coordenadas reales (casita) y token de tracking.
+    """
+    import uuid
+    from app.models.envio import Envio
+    from app.models.sucursal import Sucursal
+    from app.core.geo import (
+        extraer_coordenadas_de_url,
+        geocodificar_aproximado,
+        cotizar_costo_envio,
+        calcular_distancia_haversine,
+    )
+
+    try:
+        cliente = _get_or_create_cliente(current_user, db)
+        carrito = (
+            db.query(Carrito)
+            .filter(Carrito.codigo_cliente == cliente.codigo, Carrito.estado == "activo")
+            .first()
+        )
+        if not carrito or not carrito.items:
+            raise BadRequestException("El carrito está vacío o ya fue confirmado.")
+
+        now = datetime.now()
+        total_prendas = Decimal("0.00")
+        detalles_orden = []
+        sucursal_id_desde_stock = None
+
+        for item in carrito.items:
+            stock = (
+                db.query(StockInventario)
+                .filter(StockInventario.id == item.stock_inventario_id)
+                .with_for_update(of=StockInventario)
+                .first()
+            )
+            if not stock:
+                db.rollback()
+                raise NotFoundException(f"Inventario para el ítem #{item.id} no encontrado.")
+
+            if stock.cantidad < item.cantidad:
+                db.rollback()
+                prod_name = stock.producto_color.producto.nombre if (stock.producto_color and stock.producto_color.producto) else "Producto"
+                raise BadRequestException(f"Stock insuficiente para '{prod_name}'. Requerido: {item.cantidad}, Disponible: {stock.cantidad}")
+
+            if stock.sucursal_id and not sucursal_id_desde_stock:
+                sucursal_id_desde_stock = stock.sucursal_id
+
+            stock.cantidad -= item.cantidad
+            subtotal = item.precio_unitario * item.cantidad
+            total_prendas += subtotal
+
+            prod_nom = "Prenda"
+            col_nom = None
+            talla_nom = None
+            if stock.producto_color:
+                col_nom = stock.producto_color.color.nombre if stock.producto_color.color else None
+                if stock.producto_color.producto:
+                    prod_nom = stock.producto_color.producto.nombre
+            if stock.talla:
+                talla_nom = stock.talla.nombre
+
+            detalles_orden.append({
+                "stock_inventario_id": stock.id,
+                "producto_nombre": prod_nom,
+                "color_nombre": col_nom,
+                "talla_nombre": talla_nom,
+                "cantidad": item.cantidad,
+                "precio_unitario": item.precio_unitario,
+                "subtotal": subtotal,
+            })
+
+        sucursal_final = sucursal_id_desde_stock or payload.sucursal_id
+        if not sucursal_final:
+            first_suc = db.query(Sucursal).filter(Sucursal.active == True).first()
+            if first_suc:
+                sucursal_final = first_suc.id
+
+        metodo = (payload.metodo_pago or "EFECTIVO").upper()
+        orden = OrdenVenta(
+            fecha=now.date(),
+            estado="pendiente_pago",
+            total=total_prendas,
+            tipo_venta="en linea",
+            codigo_cliente=cliente.codigo,
+            sucursal_id=sucursal_final,
+            carrito_id=carrito.id,
+            metodo_pago=metodo,
+        )
+        db.add(orden)
+        db.flush()
+
+        for d in detalles_orden:
+            dv = DetalleVenta(
+                orden_venta_id=orden.id,
+                stock_inventario_id=d["stock_inventario_id"],
+                producto_nombre=d["producto_nombre"],
+                color_nombre=d["color_nombre"],
+                talla_nombre=d["talla_nombre"],
+                cantidad=d["cantidad"],
+                precio_unitario=d["precio_unitario"],
+                subtotal=d["subtotal"],
+            )
+            db.add(dv)
+
+        carrito.estado = "confirmado"
+
+        # Procesar despacho con Delivery StyleStore si se especificó dirección o distancia
+        token_seg = None
+        costo_envio = Decimal("0.00")
+        envio_creado = None
+
+        tiene_despacho = bool(payload.direccion_envio or payload.ubicacion_url or payload.distancia_km)
+        if tiene_despacho:
+            ub_url = payload.ubicacion_url.strip() if payload.ubicacion_url else None
+            dir_env = payload.direccion_envio.strip() if payload.direccion_envio else (ub_url or "Entrega a domicilio")
+
+            dest_lat = payload.latitud_destino
+            dest_lon = payload.longitud_destino
+
+            if dest_lat is None or dest_lon is None:
+                if ub_url:
+                    dest_lat, dest_lon = extraer_coordenadas_de_url(ub_url)
+                elif dir_env:
+                    dest_lat, dest_lon = extraer_coordenadas_de_url(dir_env)
+
+            if dest_lat is None or dest_lon is None:
+                texto_busqueda = f"{dir_env} {payload.referencia or ''} {payload.ciudad or ''}"
+                dest_lat, dest_lon = geocodificar_aproximado(texto_busqueda)
+
+            # Sucursal origen
+            suc = db.query(Sucursal).filter(Sucursal.id == sucursal_final).first()
+            orig_lat = float(suc.latitud) if (suc and suc.latitud) else None
+            orig_lon = float(suc.longitud) if (suc and suc.longitud) else None
+            if (orig_lat is None or orig_lon is None) and suc and suc.maps_url:
+                orig_lat, orig_lon = extraer_coordenadas_de_url(suc.maps_url)
+            if orig_lat is None or orig_lon is None:
+                orig_lat, orig_lon = geocodificar_aproximado(suc.ciudad if suc else (payload.ciudad or "Santa Cruz"))
+
+            dist_calc = payload.distancia_km
+            if dist_calc is None and dest_lat is not None and dest_lon is not None and orig_lat is not None and orig_lon is not None:
+                dist_calc = calcular_distancia_haversine(orig_lat, orig_lon, dest_lat, dest_lon)
+            if dist_calc is None:
+                dist_calc = 3.5
+
+            costo_envio = cotizar_costo_envio(dist_calc)
+            orden.total = total_prendas + costo_envio
+
+            token_seg = f"TRK-{uuid.uuid4().hex[:10].upper()}"
+            envio_creado = Envio(
+                orden_venta_id=orden.id,
+                direccion=dir_env,
+                ciudad=payload.ciudad.strip() if payload.ciudad else (suc.ciudad if suc else "Santa Cruz"),
+                referencia=payload.referencia.strip() if payload.referencia else None,
+                ubicacion_url=ub_url or (f"https://www.google.com/maps?q={dest_lat},{dest_lon}" if dest_lat and dest_lon else None),
+                latitud_destino=Decimal(str(round(dest_lat, 6))) if dest_lat is not None else None,
+                longitud_destino=Decimal(str(round(dest_lon, 6))) if dest_lon is not None else None,
+                distancia_km=Decimal(str(round(dist_calc, 2))),
+                minutos_estimados=max(15, int(dist_calc * 2.5) + 15),
+                costo=costo_envio,
+                estado="pendiente",
+                fecha=now.date(),
+                token_seguimiento=token_seg,
+                tracking_activo=True,
+                delivery_conductor="Repartidor StyleStore",
+            )
+            db.add(envio_creado)
+
+        db.commit()
+        db.refresh(orden)
+
+        try:
+            BitacoraService.registrar(
+                db=db,
+                user=current_user,
+                action=f"Checkout exitoso de Orden #{orden.id} (Total: Bs {orden.total}, Delivery: Bs {costo_envio})",
+                module="carrito",
+            )
+        except Exception:
+            pass
+
+        return {
+            "message": "Pedido confirmado exitosamente.",
+            "orden_venta_id": orden.id,
+            "total": float(orden.total),
+            "estado": orden.estado,
+            "costo_envio": float(costo_envio),
+            "token_seguimiento": token_seg,
+            "tracking_url": f"/delivery/rastreo/{token_seg}" if token_seg else None,
+        }
+    except (BadRequestException, NotFoundException, HTTPException):
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=400,
+            detail=f"Error al procesar el checkout: {str(e)}",
         )
 
 

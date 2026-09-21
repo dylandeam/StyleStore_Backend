@@ -121,33 +121,48 @@ def estimar_tiempo_entrega(distancia_km: float) -> int:
 
 
 import re
+import urllib.parse
 import urllib.request
 
 
 def _parse_coords_from_text(text: str) -> Tuple[float | None, float | None]:
-    """Extrae coordenadas usando patrones de Google Maps y Apple Maps."""
+    """Extrae coordenadas usando patrones de Google Maps, Apple Maps, WhatsApp y texto plano."""
     if not text:
         return None, None
     try:
-        # Formato 1: /@-17.783321,-63.182134
-        m1 = re.search(r"@(-?\d+\.\d+),(-?\d+\.\d+)", text)
-        if m1:
-            return float(m1.group(1)), float(m1.group(2))
+        # Decodificar caracteres percent-encoded (%40 -> @, %2C -> ,, %3A -> :, etc.)
+        unquoted = urllib.parse.unquote(text)
+        candidates = [unquoted, text]
 
-        # Formato 2: ?q=-17.783321,-63.182134 o ll= o query= o daddr=
-        m2 = re.search(r"[?&](?:q|ll|query|daddr|destination|saddr)=(-?\d+\.\d+),(-?\d+\.\d+)", text)
-        if m2:
-            return float(m2.group(1)), float(m2.group(2))
+        for target in candidates:
+            # Formato 1: /@-17.783321,-63.182134
+            m1 = re.search(r"@(-?\d+\.\d+),(-?\d+\.\d+)", target)
+            if m1:
+                return float(m1.group(1)), float(m1.group(2))
 
-        # Formato 3: /place/(-17.xxxx)[,+](-63.xxxx)
-        m3 = re.search(r"/place/(-?\d+\.\d+)[,+](-?\d+\.\d+)", text)
-        if m3:
-            return float(m3.group(1)), float(m3.group(2))
+            # Formato 2: Google Maps internal place / embed (!3d-17.783321!4d-63.182134)
+            m_embed = re.search(r"!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)", target)
+            if m_embed:
+                return float(m_embed.group(1)), float(m_embed.group(2))
 
-        # Formato 4: dos números decimales consecutivos tipo -17.xxxx, -63.xxxx
-        m4 = re.search(r"(-?\d{1,2}\.\d{3,}),\s*(-?\d{1,3}\.\d{3,})", text)
-        if m4:
-            return float(m4.group(1)), float(m4.group(2))
+            # Formato 3: Parámetros de consulta (?q=loc:-17.xxx,-63.xxx, ?q=-17.xxx,-63.xxx, ?ll=, ?sll=, ?query=, etc.)
+            m2 = re.search(r"[?&](?:q|ll|sll|query|center|daddr|destination|saddr)=(?:loc:)?(-?\d+\.\d+),(-?\d+\.\d+)", target, re.IGNORECASE)
+            if m2:
+                return float(m2.group(1)), float(m2.group(2))
+
+            # Formato 4: /place/(-17.xxxx)[,+](-63.xxxx)
+            m3 = re.search(r"/place/(-?\d+\.\d+)[,+](-?\d+\.\d+)", target)
+            if m3:
+                return float(m3.group(1)), float(m3.group(2))
+
+            # Formato 5: Coordenadas explícitas consecutivas (ej: -17.783321, -63.182134)
+            m4 = re.search(r"(-?\d{1,2}\.\d{3,})\s*[,; ]\s*(-?\d{1,3}\.\d{3,})", target)
+            if m4:
+                lat_c = float(m4.group(1))
+                lon_c = float(m4.group(2))
+                # Validar rango razonable de latitud y longitud
+                if -90.0 <= lat_c <= 90.0 and -180.0 <= lon_c <= 180.0:
+                    return lat_c, lon_c
     except Exception:
         pass
     return None, None
@@ -156,7 +171,7 @@ def _parse_coords_from_text(text: str) -> Tuple[float | None, float | None]:
 def extraer_coordenadas_de_url(url: str | None) -> Tuple[float | None, float | None]:
     """
     Extrae latitud y longitud a partir de un enlace de Google Maps o Apple Maps.
-    Soporta URLs directas y enlaces cortos con redirección (maps.app.goo.gl, goo.gl/maps).
+    Soporta URLs directas, WhatsApp live locations, y enlaces cortos con redirección (maps.app.goo.gl, goo.gl/maps).
     """
     if not url:
         return None, None
@@ -168,20 +183,35 @@ def extraer_coordenadas_de_url(url: str | None) -> Tuple[float | None, float | N
         return lat, lon
 
     # 2. Si es enlace de Google Maps (incluyendo acortados como maps.app.goo.gl o goo.gl), resolver redirect
-    if any(k in url_clean.lower() for k in ["maps.app.goo.gl", "goo.gl/maps", "google.com/maps", "maps.google"]):
+    if any(k in url_clean.lower() for k in ["maps.app.goo.gl", "goo.gl/maps", "google.com/maps", "maps.google", "apple.com"]):
         try:
             req = urllib.request.Request(
                 url_clean,
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Accept-Language": "es-419,es;q=0.9,en;q=0.8",
+                }
             )
-            with urllib.request.urlopen(req, timeout=2.5) as resp:
+            # Usar handler con timeout seguro
+            opener = urllib.request.build_opener(urllib.request.HTTPRedirectHandler)
+            with opener.open(req, timeout=3.5) as resp:
                 final_url = resp.geturl()
                 lat_f, lon_f = _parse_coords_from_text(final_url)
                 if lat_f is not None and lon_f is not None:
                     return lat_f, lon_f
 
-                # Si no está en la URL final, buscar en el HTML inicial
-                html_snippet = resp.read(4096).decode("utf-8", errors="ignore")
+                # Si Google redirigió a consent.google.com, verificar parámetro 'continue'
+                if "consent.google" in final_url and "continue=" in final_url:
+                    parsed = urllib.parse.urlparse(final_url)
+                    qs = urllib.parse.parse_qs(parsed.query)
+                    cont_url = qs.get("continue", [None])[0]
+                    if cont_url:
+                        lat_c, lon_c = _parse_coords_from_text(cont_url)
+                        if lat_c is not None and lon_c is not None:
+                            return lat_c, lon_c
+
+                # Si no está en la URL final, buscar en el HTML inicial (meta tags, app links)
+                html_snippet = resp.read(6144).decode("utf-8", errors="ignore")
                 lat_h, lon_h = _parse_coords_from_text(html_snippet)
                 if lat_h is not None and lon_h is not None:
                     return lat_h, lon_h

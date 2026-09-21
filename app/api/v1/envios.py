@@ -106,7 +106,16 @@ async def create_envio(
     if not dir_val and ub_url:
         dir_val = "Ubicación GPS (Ver enlace)"
 
-    dest_lat, dest_lon = extraer_coordenadas_de_url(ub_url)
+    dest_lat = payload.latitud_destino
+    dest_lon = payload.longitud_destino
+
+    if dest_lat is None or dest_lon is None:
+        if ub_url:
+            dest_lat, dest_lon = extraer_coordenadas_de_url(ub_url)
+
+    if dest_lat is None or dest_lon is None:
+        texto_busqueda = f"{dir_val} {payload.referencia or ''} {payload.ciudad or ''}"
+        dest_lat, dest_lon = geocodificar_aproximado(texto_busqueda)
 
     # Obtener sucursal de la orden para cálculo de origen
     sucursal = None
@@ -119,6 +128,8 @@ async def create_envio(
     orig_lon = float(sucursal.longitud) if sucursal and sucursal.longitud else None
     if (orig_lat is None or orig_lon is None) and sucursal and sucursal.maps_url:
         orig_lat, orig_lon = extraer_coordenadas_de_url(sucursal.maps_url)
+    if orig_lat is None or orig_lon is None:
+        orig_lat, orig_lon = geocodificar_aproximado(sucursal.ciudad if sucursal else "Santa Cruz")
 
     dist_calc = payload.distancia_km
     if dist_calc is None and dest_lat is not None and dest_lon is not None and orig_lat is not None and orig_lon is not None:
@@ -353,11 +364,34 @@ async def get_rastreo_cliente(token: str, db: Session = Depends(get_db)):
     if sucursal and sucursal.latitud and sucursal.longitud:
         orig_lat = float(sucursal.latitud)
         orig_lon = float(sucursal.longitud)
+    elif sucursal and sucursal.maps_url:
+        orig_lat, orig_lon = extraer_coordenadas_de_url(sucursal.maps_url)
     else:
-        orig_lat, orig_lon = geocodificar_aproximado(sucursal.ciudad if sucursal else envio.ciudad)
+        orig_lat, orig_lon = None, None
 
-    dest_lat = float(envio.latitud_destino) if envio.latitud_destino else orig_lat + 0.015
-    dest_lon = float(envio.longitud_destino) if envio.longitud_destino else orig_lon + 0.015
+    if orig_lat is None or orig_lon is None:
+        orig_lat, orig_lon = geocodificar_aproximado(sucursal.ciudad if sucursal else (envio.ciudad or "Santa Cruz"))
+
+    dest_lat = float(envio.latitud_destino) if envio.latitud_destino else None
+    dest_lon = float(envio.longitud_destino) if envio.longitud_destino else None
+
+    # Si no tiene coordenadas de destino guardadas en la BD, extraerlas de la URL o geocodificar por dirección
+    if dest_lat is None or dest_lon is None:
+        if envio.ubicacion_url:
+            dest_lat, dest_lon = extraer_coordenadas_de_url(envio.ubicacion_url)
+        if dest_lat is None or dest_lon is None:
+            texto_busqueda = f"{envio.direccion or ''} {envio.referencia or ''} {envio.ciudad or ''}"
+            dest_lat, dest_lon = geocodificar_aproximado(texto_busqueda)
+
+        # Persistir las coordenadas recuperadas para futuros accesos
+        if dest_lat is not None and dest_lon is not None:
+            envio.latitud_destino = Decimal(str(round(dest_lat, 6)))
+            envio.longitud_destino = Decimal(str(round(dest_lon, 6)))
+            db.commit()
+
+    # Fallback seguro absoluto garantizando siempre coordenadas válidas
+    if dest_lat is None or dest_lon is None:
+        dest_lat, dest_lon = geocodificar_aproximado(envio.ciudad or "Santa Cruz")
 
     rep_pos = None
     distancia_actual = float(envio.distancia_km) if envio.distancia_km else 3.5

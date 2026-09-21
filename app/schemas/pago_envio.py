@@ -67,6 +67,8 @@ class EnvioCreateRequest(BaseModel):
     ubicacion_url: str | None = Field(None, max_length=500, description="Enlace de Google Maps o Mapas de iOS")
     distancia_km: float | None = Field(None, ge=0)
     costo: Decimal | None = None
+    latitud_destino: float | None = None
+    longitud_destino: float | None = None
 
 
 class EnvioUpdateRequest(BaseModel):
@@ -76,6 +78,8 @@ class EnvioUpdateRequest(BaseModel):
     ubicacion_url: str | None = None
     costo: Decimal | None = None
     estado: str | None = None
+    latitud_destino: float | None = None
+    longitud_destino: float | None = None
     yango_tracking_code: str | None = None
     yango_tracking_url: str | None = None
     tracking_code: str | None = None
