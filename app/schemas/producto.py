@@ -17,6 +17,10 @@ class ProductoCreate(BaseModel):
     nombre: str = Field(..., min_length=2, max_length=150)
     descripcion: str | None = None
     foto: str | None = None
+    foto_trasera: str | None = None
+    foto_vestidor_frontal: str | None = None
+    foto_vestidor_trasera: str | None = None
+    tipo_prenda: str = Field("superior", description="superior, inferior, cuerpo_entero, accesorio")
     precio: Decimal = Field(..., gt=Decimal("0"))
     categoria_id: int
     temporada_id: int
@@ -32,6 +36,10 @@ class ProductoUpdate(BaseModel):
     nombre: str | None = None
     descripcion: str | None = None
     foto: str | None = None
+    foto_trasera: str | None = None
+    foto_vestidor_frontal: str | None = None
+    foto_vestidor_trasera: str | None = None
+    tipo_prenda: str | None = None
     precio: Decimal | None = Field(None, gt=Decimal("0"))
     categoria_id: int | None = None
     temporada_id: int | None = None
@@ -48,6 +56,10 @@ class ProductoResponse(BaseModel):
     nombre: str
     descripcion: str | None = None
     foto: str | None = None
+    foto_trasera: str | None = None
+    foto_vestidor_frontal: str | None = None
+    foto_vestidor_trasera: str | None = None
+    tipo_prenda: str = "superior"
     precio: Decimal
     categoria_id: int
     categoria_nombre: str | None = None

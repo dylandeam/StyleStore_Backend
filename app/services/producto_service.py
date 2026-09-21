@@ -58,6 +58,10 @@ class ProductoService:
             nombre=prod.nombre,
             descripcion=prod.descripcion,
             foto=prod.foto,
+            foto_trasera=getattr(prod, "foto_trasera", None),
+            foto_vestidor_frontal=getattr(prod, "foto_vestidor_frontal", None),
+            foto_vestidor_trasera=getattr(prod, "foto_vestidor_trasera", None),
+            tipo_prenda=getattr(prod, "tipo_prenda", "superior") or "superior",
             precio=prod.precio,
             categoria_id=prod.categoria_id,
             categoria_nombre=prod.categoria.nombre if prod.categoria else None,
@@ -131,6 +135,10 @@ class ProductoService:
             nombre=req.nombre.strip(),
             descripcion=req.descripcion,
             foto=req.foto,
+            foto_trasera=req.foto_trasera,
+            foto_vestidor_frontal=req.foto_vestidor_frontal,
+            foto_vestidor_trasera=req.foto_vestidor_trasera,
+            tipo_prenda=req.tipo_prenda or "superior",
             precio=req.precio,
             categoria_id=req.categoria_id,
             temporada_id=req.temporada_id,
@@ -192,6 +200,14 @@ class ProductoService:
             prod.descripcion = req.descripcion
         if req.foto is not None:
             prod.foto = req.foto
+        if req.foto_trasera is not None:
+            prod.foto_trasera = req.foto_trasera
+        if req.foto_vestidor_frontal is not None:
+            prod.foto_vestidor_frontal = req.foto_vestidor_frontal
+        if req.foto_vestidor_trasera is not None:
+            prod.foto_vestidor_trasera = req.foto_vestidor_trasera
+        if req.tipo_prenda is not None:
+            prod.tipo_prenda = req.tipo_prenda
         if req.precio is not None:
             prod.precio = req.precio
         if req.active is not None:

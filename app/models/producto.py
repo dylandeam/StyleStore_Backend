@@ -21,6 +21,10 @@ class Producto(Base):
     nombre: Mapped[str] = mapped_column(String(150), index=True, nullable=False)
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
     foto: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    foto_trasera: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    foto_vestidor_frontal: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    foto_vestidor_trasera: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    tipo_prenda: Mapped[str] = mapped_column(String(30), default="superior", nullable=False)
     precio: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
 
     categoria_id: Mapped[int] = mapped_column(
