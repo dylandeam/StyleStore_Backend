@@ -67,6 +67,7 @@ def _run_column_migrations(db: Session):
         "ALTER TABLE productos ADD COLUMN IF NOT EXISTS foto_vestidor_frontal VARCHAR(255)",
         "ALTER TABLE productos ADD COLUMN IF NOT EXISTS foto_vestidor_trasera VARCHAR(255)",
         "ALTER TABLE productos ADD COLUMN IF NOT EXISTS tipo_prenda VARCHAR(30) DEFAULT 'superior'",
+        "ALTER TABLE productos ADD COLUMN IF NOT EXISTS puntos_clave_ia TEXT",
     ]
     for stmt in statements:
         try:

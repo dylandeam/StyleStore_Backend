@@ -62,6 +62,7 @@ class ProductoService:
             foto_vestidor_frontal=getattr(prod, "foto_vestidor_frontal", None),
             foto_vestidor_trasera=getattr(prod, "foto_vestidor_trasera", None),
             tipo_prenda=getattr(prod, "tipo_prenda", "superior") or "superior",
+            puntos_clave_ia=getattr(prod, "puntos_clave_ia", None),
             precio=prod.precio,
             categoria_id=prod.categoria_id,
             categoria_nombre=prod.categoria.nombre if prod.categoria else None,
@@ -139,6 +140,7 @@ class ProductoService:
             foto_vestidor_frontal=req.foto_vestidor_frontal,
             foto_vestidor_trasera=req.foto_vestidor_trasera,
             tipo_prenda=req.tipo_prenda or "superior",
+            puntos_clave_ia=req.puntos_clave_ia,
             precio=req.precio,
             categoria_id=req.categoria_id,
             temporada_id=req.temporada_id,
@@ -208,6 +210,8 @@ class ProductoService:
             prod.foto_vestidor_trasera = req.foto_vestidor_trasera
         if req.tipo_prenda is not None:
             prod.tipo_prenda = req.tipo_prenda
+        if req.puntos_clave_ia is not None:
+            prod.puntos_clave_ia = req.puntos_clave_ia
         if req.precio is not None:
             prod.precio = req.precio
         if req.active is not None:
@@ -272,3 +276,47 @@ class ProductoService:
             )
 
         return {"message": f"Producto '{codigo}' eliminado exitosamente."}
+
+    def analizar_y_guardar_puntos_clave(
+        self, codigo: str, current_user: User | None = None
+    ) -> ProductoResponse:
+        """Analiza la foto de la prenda con IA, calcula los puntos clave y los almacena."""
+        import json
+        import os
+        from app.services.garment_ai_service import GarmentAIService
+
+        prod = self.db.query(Producto).filter(Producto.codigo == codigo).first()
+        if not prod:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Producto con código '{codigo}' no encontrado.",
+            )
+
+        img_rel_path = prod.foto_vestidor_frontal or prod.foto
+        if not img_rel_path:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El producto no cuenta con foto frontal para analizar.",
+            )
+
+        clean_path = img_rel_path.lstrip("/")
+        if not clean_path.startswith("uploads"):
+            clean_path = os.path.join("uploads", clean_path)
+        disk_path = os.path.join(os.getcwd(), clean_path)
+
+        resultado = GarmentAIService.analyze_garment_image(
+            disk_path, tipo_prenda=prod.tipo_prenda or "superior"
+        )
+        prod.puntos_clave_ia = json.dumps(resultado, ensure_ascii=False)
+        self.db.commit()
+        self.db.refresh(prod)
+
+        if current_user:
+            self.bitacora.registrar_accion(
+                user_id=current_user.id,
+                user_snapshot=f"{current_user.name} ({current_user.email})",
+                action=f"Calibró puntos anatómicos IA para prenda '{prod.codigo}' ({resultado.get('tipo_manga')})",
+                module="productos",
+            )
+
+        return self._to_response(prod)

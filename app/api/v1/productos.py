@@ -137,3 +137,43 @@ async def update_producto_stock(
 ):
     service = StockService(db)
     return service.update_stock_bulk(codigo, request, current_user=current_user)
+
+
+@router.post(
+    "/{codigo}/analizar-prenda-ia",
+    response_model=ProductoResponse,
+    summary="Analizar y calibrar puntos clave de la prenda con IA",
+    description="Analiza la imagen frontal de la prenda para detectar cuello, hombros, sisas, puños y tipo de manga.",
+)
+async def analizar_prenda_ia(
+    codigo: str,
+    current_user: User = Depends(require_permission("productos.editar")),
+    db: Session = Depends(get_db),
+):
+    service = ProductoService(db)
+    return service.analizar_y_guardar_puntos_clave(codigo, current_user=current_user)
+
+
+@router.post(
+    "/analizar-imagen-ia",
+    summary="Analizar imagen de prenda temporal con IA",
+    description="Analiza una imagen recién subida por URL relativa para previsualizar puntos anatómicos y tipo de manga.",
+)
+async def analizar_imagen_ia(
+    payload: dict,
+    current_user: User = Depends(require_permission("productos.crear")),
+):
+    import os
+    from app.services.garment_ai_service import GarmentAIService
+
+    img_rel_path = payload.get("foto") or payload.get("foto_vestidor_frontal")
+    tipo_prenda = payload.get("tipo_prenda", "superior")
+    if not img_rel_path:
+        return GarmentAIService.get_fallback_landmarks(tipo_prenda)
+
+    clean_path = img_rel_path.lstrip("/")
+    if not clean_path.startswith("uploads"):
+        clean_path = os.path.join("uploads", clean_path)
+    disk_path = os.path.join(os.getcwd(), clean_path)
+
+    return GarmentAIService.analyze_garment_image(disk_path, tipo_prenda=tipo_prenda)

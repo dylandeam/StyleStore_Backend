@@ -21,6 +21,7 @@ class ProductoCreate(BaseModel):
     foto_vestidor_frontal: str | None = None
     foto_vestidor_trasera: str | None = None
     tipo_prenda: str = Field("superior", description="superior, inferior, cuerpo_entero, accesorio")
+    puntos_clave_ia: str | None = Field(None, description="JSON con puntos clave y configuración de manga/entalle IA")
     precio: Decimal = Field(..., gt=Decimal("0"))
     categoria_id: int
     temporada_id: int
@@ -40,6 +41,7 @@ class ProductoUpdate(BaseModel):
     foto_vestidor_frontal: str | None = None
     foto_vestidor_trasera: str | None = None
     tipo_prenda: str | None = None
+    puntos_clave_ia: str | None = None
     precio: Decimal | None = Field(None, gt=Decimal("0"))
     categoria_id: int | None = None
     temporada_id: int | None = None
@@ -60,6 +62,7 @@ class ProductoResponse(BaseModel):
     foto_vestidor_frontal: str | None = None
     foto_vestidor_trasera: str | None = None
     tipo_prenda: str = "superior"
+    puntos_clave_ia: str | None = None
     precio: Decimal
     categoria_id: int
     categoria_nombre: str | None = None

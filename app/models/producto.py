@@ -25,6 +25,7 @@ class Producto(Base):
     foto_vestidor_frontal: Mapped[str | None] = mapped_column(String(255), nullable=True)
     foto_vestidor_trasera: Mapped[str | None] = mapped_column(String(255), nullable=True)
     tipo_prenda: Mapped[str] = mapped_column(String(30), default="superior", nullable=False)
+    puntos_clave_ia: Mapped[str | None] = mapped_column(Text, nullable=True)
     precio: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
 
     categoria_id: Mapped[int] = mapped_column(
