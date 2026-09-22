@@ -36,6 +36,8 @@ from app.models.cambio_devolucion import CambioDevolucion
 from app.models.compra import Compra, DetalleCompra
 from app.models.outfit import Outfit, OutfitItem
 from app.models.qr_pago_config import QRPagoConfig
+from app.models.producto_landmark import ProductoLandmark
+from app.models.prueba_virtual import PruebaVirtual
 
 __all__ = [
     "Role",

@@ -15,6 +15,7 @@ class Categoria(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     nombre: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
+    tipo_ar: Mapped[str | None] = mapped_column(String(30), default="superior", nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
