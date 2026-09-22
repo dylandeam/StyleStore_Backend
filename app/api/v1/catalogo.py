@@ -82,6 +82,10 @@ async def get_catalogo(
         if sucursal_id is not None and stock_total <= 0:
             continue
 
+        en_promo = getattr(p, "en_promocion", False) or False
+        pct_desc = getattr(p, "porcentaje_descuento", 0) or 0
+        precio_desc = float(p.precio_descuento) if en_promo and getattr(p, "precio_descuento", None) else None
+
         result.append({
             "codigo": p.codigo,
             "nombre": p.nombre,
@@ -99,6 +103,10 @@ async def get_catalogo(
             "temporada_nombre": p.temporada.nombre if p.temporada else None,
             "coleccion_id": p.coleccion_id,
             "coleccion_nombre": p.coleccion.nombre if p.coleccion else None,
+            "en_promocion": en_promo,
+            "porcentaje_descuento": pct_desc,
+            "precio_descuento": precio_desc,
+            "titulo_promocion": getattr(p, "titulo_promocion", None),
             "variantes": variantes,
             "stock_total": stock_total,
         })
@@ -185,6 +193,10 @@ async def get_producto_detalle(
             "existencias": [],
         })
 
+    en_promo_det = getattr(p, "en_promocion", False) or False
+    pct_desc_det = getattr(p, "porcentaje_descuento", 0) or 0
+    precio_desc_det = float(p.precio_descuento) if en_promo_det and getattr(p, "precio_descuento", None) else None
+
     return {
         "codigo": p.codigo,
         "nombre": p.nombre,
@@ -202,6 +214,10 @@ async def get_producto_detalle(
         "temporada_nombre": p.temporada.nombre if p.temporada else None,
         "coleccion_id": p.coleccion_id,
         "coleccion_nombre": p.coleccion.nombre if p.coleccion else None,
+        "en_promocion": en_promo_det,
+        "porcentaje_descuento": pct_desc_det,
+        "precio_descuento": precio_desc_det,
+        "titulo_promocion": getattr(p, "titulo_promocion", None),
         "variantes": variantes,
         "stock_total": stock_total,
     }

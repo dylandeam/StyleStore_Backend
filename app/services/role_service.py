@@ -116,6 +116,10 @@ BASE_PERMISSIONS = [
     {"code": "inventario.ver", "module": "inventario", "description": "Visualizar inventario global y por sucursal"},
     {"code": "inventario.editar", "module": "inventario", "description": "Ajustar o registrar stock de inventario"},
 
+    # Promociones y Descuentos
+    {"code": "promociones.ver", "module": "promociones", "description": "Visualizar prendas en promoción y ofertas especiales"},
+    {"code": "promociones.gestionar", "module": "promociones", "description": "Crear, editar y gestionar descuentos y promociones de catálogo"},
+
     # Auditoria
     {"code": "bitacora.ver", "module": "bitacora", "description": "Visualizar historial de auditoría y bitácora"},
 ]
@@ -200,7 +204,7 @@ class RoleService:
         # Encargado de Sucursal
         if encargado_role:
             for perm in all_perms:
-                if perm.module in ["productos", "categorias", "colores", "tallas", "temporadas", "colecciones", "proximamente", "reservas", "inventario", "catalogo"] or perm.code in ["sucursales.ver", "usuarios.ver"]:
+                if perm.module in ["productos", "categorias", "colores", "tallas", "temporadas", "colecciones", "proximamente", "reservas", "inventario", "catalogo", "promociones"] or perm.code in ["sucursales.ver", "usuarios.ver"]:
                     exists = (
                         self.db.query(RolePermission)
                         .filter((RolePermission.role_id == encargado_role.id) | (RolePermission.role == "encargado_sucursal"))
@@ -216,7 +220,7 @@ class RoleService:
                 if perm.code in [
                     "productos.ver", "catalogo.ver", "sucursales.ver", "categorias.ver",
                     "colores.ver", "tallas.ver", "temporadas.ver", "colecciones.ver",
-                    "clientes.ver", "ventas.ver", "reservas.ver", "inventario.ver"
+                    "clientes.ver", "ventas.ver", "reservas.ver", "inventario.ver", "promociones.ver"
                 ]:
                     exists = (
                         self.db.query(RolePermission)
@@ -233,7 +237,7 @@ class RoleService:
                 if perm.code in [
                     "catalogo.ver", "productos.ver", "sucursales.ver",
                     "categorias.ver", "colores.ver", "tallas.ver", "temporadas.ver",
-                    "colecciones.ver", "proximamente.ver", "reservas.crear"
+                    "colecciones.ver", "proximamente.ver", "reservas.crear", "promociones.ver"
                 ]:
                     exists = (
                         self.db.query(RolePermission)

@@ -29,6 +29,10 @@ class ProductoCreate(BaseModel):
     color_ids: list[int] = Field(default_factory=list, description="IDs de colores habilitados")
     active: bool = True
     visible_en_catalogo: bool = True
+    en_promocion: bool = False
+    porcentaje_descuento: int = Field(0, ge=0, le=90)
+    precio_descuento: Decimal | None = None
+    titulo_promocion: str | None = None
 
 
 class ProductoUpdate(BaseModel):
@@ -49,6 +53,18 @@ class ProductoUpdate(BaseModel):
     color_ids: list[int] | None = None
     active: bool | None = None
     visible_en_catalogo: bool | None = None
+    en_promocion: bool | None = None
+    porcentaje_descuento: int | None = Field(None, ge=0, le=90)
+    precio_descuento: Decimal | None = None
+    titulo_promocion: str | None = None
+
+
+class PromocionUpdate(BaseModel):
+    """Schema para actualizar la promoción de un producto."""
+
+    en_promocion: bool
+    porcentaje_descuento: int = Field(0, ge=0, le=90)
+    titulo_promocion: str | None = Field(None, max_length=100)
 
 
 class ProductoResponse(BaseModel):
@@ -73,6 +89,12 @@ class ProductoResponse(BaseModel):
     active: bool
     visible_en_catalogo: bool = True
 
+    # Descuentos y Promociones
+    en_promocion: bool = False
+    porcentaje_descuento: int = 0
+    precio_descuento: Decimal | None = None
+    titulo_promocion: str | None = None
+
     colores: list[ColorResponse] = Field(default_factory=list)
     stock_total: int = 0
 
@@ -80,3 +102,4 @@ class ProductoResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+

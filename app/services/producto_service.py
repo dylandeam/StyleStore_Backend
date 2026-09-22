@@ -15,7 +15,7 @@ from app.models.temporada import Temporada
 from app.models.coleccion import Coleccion
 from app.models.stock_inventario import StockInventario
 from app.models.user import User
-from app.schemas.producto import ProductoCreate, ProductoUpdate, ProductoResponse
+from app.schemas.producto import ProductoCreate, ProductoUpdate, ProductoResponse, PromocionUpdate
 from app.schemas.color import ColorResponse
 from app.services.bitacora_service import BitacoraService
 
@@ -53,6 +53,16 @@ class ProductoService:
             sum_res = stock_q.scalar()
             total_stock = int(sum_res or 0)
 
+        # Promoción y Descuentos
+        en_promocion = getattr(prod, "en_promocion", False) or False
+        porcentaje_descuento = getattr(prod, "porcentaje_descuento", 0) or 0
+        titulo_promocion = getattr(prod, "titulo_promocion", None)
+        precio_descuento = getattr(prod, "precio_descuento", None)
+        if en_promocion and porcentaje_descuento > 0 and prod.precio:
+            from decimal import Decimal
+            desc = (prod.precio * Decimal(porcentaje_descuento)) / Decimal(100)
+            precio_descuento = round(prod.precio - desc, 2)
+
         return ProductoResponse(
             codigo=prod.codigo,
             nombre=prod.nombre,
@@ -72,6 +82,10 @@ class ProductoService:
             coleccion_nombre=prod.coleccion.nombre if prod.coleccion else None,
             active=prod.active,
             visible_en_catalogo=prod.visible_en_catalogo,
+            en_promocion=en_promocion,
+            porcentaje_descuento=porcentaje_descuento,
+            precio_descuento=precio_descuento,
+            titulo_promocion=titulo_promocion,
             colores=colores_resp,
             stock_total=total_stock,
             created_at=prod.created_at,
@@ -106,6 +120,48 @@ class ProductoService:
         prods = query.order_by(Producto.nombre.asc()).all()
         return [self._to_response(p, sucursal_id=sucursal_id) for p in prods]
 
+    def list_promociones(self, solo_en_promocion: bool = True) -> list[ProductoResponse]:
+        query = self.db.query(Producto).filter(Producto.active.is_(True))
+        if solo_en_promocion:
+            query = query.filter(Producto.en_promocion.is_(True))
+        prods = query.order_by(Producto.nombre.asc()).all()
+        return [self._to_response(p) for p in prods]
+
+    def update_promocion(
+        self, codigo: str, req: PromocionUpdate, current_user: User | None = None
+    ) -> ProductoResponse:
+        from decimal import Decimal
+        prod = self.db.query(Producto).filter(Producto.codigo == codigo).first()
+        if not prod:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Producto con código '{codigo}' no encontrado.",
+            )
+
+        prod.en_promocion = req.en_promocion
+        prod.porcentaje_descuento = req.porcentaje_descuento if req.en_promocion else 0
+        prod.titulo_promocion = req.titulo_promocion.strip() if req.en_promocion and req.titulo_promocion else None
+
+        if prod.en_promocion and prod.porcentaje_descuento > 0 and prod.precio:
+            desc = (prod.precio * Decimal(prod.porcentaje_descuento)) / Decimal(100)
+            prod.precio_descuento = round(prod.precio - desc, 2)
+        else:
+            prod.precio_descuento = None
+
+        self.db.commit()
+        self.db.refresh(prod)
+
+        if current_user:
+            estado_str = f"Promoción {prod.porcentaje_descuento}% OFF ({prod.titulo_promocion or 'Oferta Especial'})" if prod.en_promocion else "Promoción desactivada"
+            self.bitacora.registrar_accion(
+                user_id=current_user.id,
+                user_snapshot=f"{current_user.name} ({current_user.email})",
+                action=f"Actualizó promoción de producto '{prod.codigo}': {estado_str}",
+                module="promociones",
+            )
+
+        return self._to_response(prod)
+
     def get_producto_by_codigo(self, codigo: str) -> ProductoResponse:
         prod = self.db.query(Producto).filter(Producto.codigo == codigo).first()
         if not prod:
@@ -131,6 +187,13 @@ class ProductoService:
                 detail=f"Ya existe un producto con el código '{codigo}'.",
             )
 
+        # Calcular precio descuento inicial si aplica
+        precio_desc = req.precio_descuento
+        if req.en_promocion and req.porcentaje_descuento > 0 and req.precio:
+            from decimal import Decimal
+            desc = (req.precio * Decimal(req.porcentaje_descuento)) / Decimal(100)
+            precio_desc = round(req.precio - desc, 2)
+
         prod = Producto(
             codigo=codigo,
             nombre=req.nombre.strip(),
@@ -147,6 +210,10 @@ class ProductoService:
             coleccion_id=req.coleccion_id,
             active=req.active,
             visible_en_catalogo=req.visible_en_catalogo,
+            en_promocion=req.en_promocion,
+            porcentaje_descuento=req.porcentaje_descuento,
+            precio_descuento=precio_desc,
+            titulo_promocion=req.titulo_promocion,
         )
         self.db.add(prod)
         self.db.flush()
@@ -218,6 +285,20 @@ class ProductoService:
             prod.active = req.active
         if req.visible_en_catalogo is not None:
             prod.visible_en_catalogo = req.visible_en_catalogo
+        if req.en_promocion is not None:
+            prod.en_promocion = req.en_promocion
+        if req.porcentaje_descuento is not None:
+            prod.porcentaje_descuento = req.porcentaje_descuento
+        if req.titulo_promocion is not None:
+            prod.titulo_promocion = req.titulo_promocion
+
+        # Recalcular precio_descuento
+        if prod.en_promocion and prod.porcentaje_descuento > 0 and prod.precio:
+            from decimal import Decimal
+            desc = (prod.precio * Decimal(prod.porcentaje_descuento)) / Decimal(100)
+            prod.precio_descuento = round(prod.precio - desc, 2)
+        else:
+            prod.precio_descuento = None
 
         # Sincronizar colores si se envían
         if req.color_ids is not None:

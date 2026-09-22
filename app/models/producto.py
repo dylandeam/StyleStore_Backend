@@ -40,6 +40,12 @@ class Producto(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     visible_en_catalogo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
+    # Promociones y Descuentos
+    en_promocion: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    porcentaje_descuento: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    precio_descuento: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    titulo_promocion: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
