@@ -50,6 +50,16 @@ class CambioService:
 
         # 3. Validar los 7 días de límite
         fecha_compra = orden.fecha
+        if isinstance(fecha_compra, datetime):
+            fecha_compra = fecha_compra.date()
+        elif isinstance(fecha_compra, str):
+            try:
+                fecha_compra = date.fromisoformat(fecha_compra[:10])
+            except Exception:
+                fecha_compra = date.today()
+        elif fecha_compra is None:
+            fecha_compra = date.today()
+
         limite = fecha_compra + timedelta(days=7)
         if date.today() > limite:
             raise HTTPException(
