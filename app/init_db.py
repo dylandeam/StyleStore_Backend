@@ -62,6 +62,8 @@ def _run_column_migrations(db: Session):
         "ALTER TABLE envios ADD COLUMN IF NOT EXISTS ubicacion_url VARCHAR(500)",
         # Backup Logs
         "ALTER TABLE backup_logs ADD COLUMN IF NOT EXISTS contenido_json TEXT",
+        # Categorías (Vestidor Virtual RA - v8)
+        "ALTER TABLE categorias ADD COLUMN IF NOT EXISTS tipo_ar VARCHAR(30) DEFAULT 'superior'",
         # Productos (Vestidor Virtual, Fotos y Promociones)
         "ALTER TABLE productos ADD COLUMN IF NOT EXISTS foto_trasera VARCHAR(255)",
         "ALTER TABLE productos ADD COLUMN IF NOT EXISTS foto_vestidor_frontal VARCHAR(255)",
@@ -71,6 +73,29 @@ def _run_column_migrations(db: Session):
         "ALTER TABLE productos ADD COLUMN IF NOT EXISTS porcentaje_descuento INTEGER DEFAULT 0",
         "ALTER TABLE productos ADD COLUMN IF NOT EXISTS precio_descuento NUMERIC(10, 2)",
         "ALTER TABLE productos ADD COLUMN IF NOT EXISTS titulo_promocion VARCHAR(100)",
+        # Producto Landmarks (v8)
+        """
+        CREATE TABLE IF NOT EXISTS producto_landmarks (
+            producto_codigo VARCHAR(50) PRIMARY KEY,
+            tipo_ar VARCHAR(30) NOT NULL DEFAULT 'superior',
+            landmarks JSON NOT NULL,
+            calibrado_por INTEGER,
+            calibrado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        # Pruebas Virtuales (v8)
+        """
+        CREATE TABLE IF NOT EXISTS pruebas_virtuales (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            producto_codigo VARCHAR(50) NOT NULL,
+            foto_persona_url VARCHAR(500) NOT NULL,
+            foto_resultado_url VARCHAR(500),
+            estado VARCHAR(20) DEFAULT 'procesando',
+            mensaje_error VARCHAR(255),
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
         # Pagos
         "ALTER TABLE pagos ADD COLUMN IF NOT EXISTS metodo_pago VARCHAR(30)",
         # QR Pago Config

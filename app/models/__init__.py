@@ -83,4 +83,6 @@ __all__ = [
     "Outfit",
     "OutfitItem",
     "QRPagoConfig",
+    "ProductoLandmark",
+    "PruebaVirtual",
 ]
