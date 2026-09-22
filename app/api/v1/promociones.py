@@ -8,7 +8,7 @@ from app.database import get_db
 from app.models.user import User
 from app.schemas.producto import ProductoResponse, PromocionUpdate
 from app.services.producto_service import ProductoService
-from app.api.deps import get_current_user, get_current_active_user, check_permission
+from app.api.deps import get_current_user, require_permission
 
 router = APIRouter(prefix="/promociones", tags=["promociones"])
 
@@ -23,7 +23,7 @@ def get_promociones_activas(db: Session = Depends(get_db)):
 @router.get("/todas", response_model=list[ProductoResponse])
 def get_todas_las_promociones(
     db: Session = Depends(get_db),
-    current_user: User = Depends(check_permission("promociones.gestionar")),
+    current_user: User = Depends(require_permission("promociones.gestionar")),
 ):
     """Retorna todos los productos para la consola de gestión de promociones de administración."""
     service = ProductoService(db)
@@ -35,8 +35,9 @@ def actualizar_promocion_producto(
     codigo: str,
     req: PromocionUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(check_permission("promociones.gestionar")),
+    current_user: User = Depends(require_permission("promociones.gestionar")),
 ):
     """Actualiza la promoción o descuento de una prenda del catálogo."""
     service = ProductoService(db)
     return service.update_promocion(codigo=codigo, req=req, current_user=current_user)
+
