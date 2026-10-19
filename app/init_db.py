@@ -69,6 +69,7 @@ def _run_column_migrations(db: Session):
         "ALTER TABLE productos ADD COLUMN IF NOT EXISTS foto_vestidor_frontal VARCHAR(255)",
         "ALTER TABLE productos ADD COLUMN IF NOT EXISTS foto_vestidor_trasera VARCHAR(255)",
         "ALTER TABLE productos ADD COLUMN IF NOT EXISTS tipo_prenda VARCHAR(30) DEFAULT 'superior'",
+        "ALTER TABLE productos ADD COLUMN IF NOT EXISTS puntos_clave_ia TEXT",
         "ALTER TABLE productos ADD COLUMN IF NOT EXISTS en_promocion BOOLEAN DEFAULT FALSE",
         "ALTER TABLE productos ADD COLUMN IF NOT EXISTS porcentaje_descuento INTEGER DEFAULT 0",
         "ALTER TABLE productos ADD COLUMN IF NOT EXISTS precio_descuento NUMERIC(10, 2)",
