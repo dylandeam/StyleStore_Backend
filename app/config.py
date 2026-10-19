@@ -12,11 +12,13 @@ if env_path.exists():
 
 
 def _format_db_url(url: str | None) -> str:
-    """Ensure database URL starts with postgresql:// instead of postgres://"""
+    """Normalize PostgreSQL URLs to the installed psycopg2 driver."""
     if not url:
         return "postgresql://postgres:021405@localhost:5432/stylestore_db"
+    if url.startswith("postgresql+psycopg://"):
+        return url.replace("postgresql+psycopg://", "postgresql+psycopg2://", 1)
     if url.startswith("postgres://"):
-        return url.replace("postgres://", "postgresql://", 1)
+        return url.replace("postgres://", "postgresql+psycopg2://", 1)
     return url
 
 
