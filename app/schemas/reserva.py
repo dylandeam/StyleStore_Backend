@@ -26,6 +26,10 @@ class DetalleReservaResponse(BaseModel):
 class ReservaCreate(BaseModel):
     sucursal_id: int
     fecha_limite: date | None = None
+    hora_retiro: time | None = Field(
+        None,
+        description="Hora elegida para recoger; clientes antiguos usan la apertura de la sucursal",
+    )
     items: list[DetalleReservaCreate] = Field(..., min_length=1)
 
 

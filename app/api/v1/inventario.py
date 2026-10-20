@@ -16,6 +16,7 @@ from app.models.producto import Producto
 from app.api.deps import require_permission
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.bitacora_service import BitacoraService
+from app.services.tenant_scope import get_scoped_sucursal, scope_by_sucursal
 
 router = APIRouter(prefix="/inventario", tags=["Inventario"])
 
@@ -41,7 +42,10 @@ async def get_inventario_global(
     Vista de inventario global consolidado de todas las sucursales.
     Agrupa existencias por producto, color, talla, temporada y colección.
     """
-    stocks = db.query(StockInventario).all()
+    stocks_query = scope_by_sucursal(
+        db.query(StockInventario), db, current_user, StockInventario.sucursal_id
+    )
+    stocks = stocks_query.all()
     result = []
     for s in stocks:
         p_nom = None
@@ -114,6 +118,7 @@ async def get_inventario_sucursal(
     db: Session = Depends(get_db),
 ):
     """Obtiene el inventario detallado para una sucursal específica."""
+    get_scoped_sucursal(db, current_user, sucursal_id)
     stocks = db.query(StockInventario).filter(StockInventario.sucursal_id == sucursal_id).all()
     result = []
     for s in stocks:
@@ -182,11 +187,15 @@ async def ajustar_stock(
     """Crea o actualiza la existencia de stock para una combinación producto-color-talla-sucursal."""
     stock = None
     if payload.stock_inventario_id:
-        stock = db.query(StockInventario).filter(StockInventario.id == payload.stock_inventario_id).first()
+        stock_query = db.query(StockInventario).filter(StockInventario.id == payload.stock_inventario_id)
+        stock = scope_by_sucursal(
+            stock_query, db, current_user, StockInventario.sucursal_id
+        ).first()
         if not stock:
             raise NotFoundException("Registro de inventario no encontrado.")
         stock.cantidad = payload.cantidad
     elif payload.producto_color_id and payload.talla_id and payload.sucursal_id:
+        get_scoped_sucursal(db, current_user, payload.sucursal_id)
         stock = (
             db.query(StockInventario)
             .filter(

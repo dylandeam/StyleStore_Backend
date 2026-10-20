@@ -61,8 +61,8 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-055 | EN_CURSO | Cambios/devoluciones existen; falta sector y efectos completos |
 | REQ-056 | PENDIENTE | Email idempotente por pago confirmado no comprobado |
 | REQ-057 | EN_CURSO | Notificaciones existen; falta evento de pago con deduplicación |
-| REQ-058 | EN_CURSO | Reservas cliente/staff existen; falta cierre de permisos tenant |
-| REQ-059 | PENDIENTE | Franjas libres/ocupadas no implementadas |
+| REQ-058 | EN_CURSO | Reservas cliente/staff y límite de 3 días existen; falta cierre tenant integral |
+| REQ-059 | EN_PRUEBAS | Horario configurable por sucursal y hora de retiro validados en API/web/móvil; faltan franjas libres/ocupadas y E2E |
 | REQ-060 | PENDIENTE | Precio por talla no implementado |
 | REQ-061 | PENDIENTE | Medidas de prenda/variante no implementadas |
 | REQ-062 | PENDIENTE | Traspasos entre sucursales no implementados |
@@ -79,6 +79,6 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 
 ## Decisiones bloqueadas explícitamente
 
-- El nombre, precio, límites y capacidades del tercer plan no están definidos por el enunciado. REQ-018–022 no se cerrarán inventándolos.
-- “Horario de reserva” debe definirse como recogida, cita o ventana antes de cerrar REQ-059.
+- Los tres planes serán configurables desde administración; el tercer plan no tendrá beneficios inventados y recibirá sus valores mediante configuración administrativa.
+- “Horario de reserva” queda definido como fecha y hora de recogida dentro del horario de atención de la sucursal, con máximo de 3 días. Falta completar franjas libres/ocupadas antes de cerrar REQ-059.
 - Un commit local no demuestra despliegue: REQ-048/053 necesitan push, pipeline y comprobación de URL/APK.

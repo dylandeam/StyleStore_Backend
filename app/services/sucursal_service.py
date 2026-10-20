@@ -76,6 +76,8 @@ class SucursalService:
             latitud=lat,
             longitud=lon,
             active=data.active,
+            hora_apertura=data.hora_apertura,
+            hora_cierre=data.hora_cierre,
         )
         self.db.add(sucursal)
         self.db.commit()
@@ -116,6 +118,13 @@ class SucursalService:
             sucursal.phone = data.phone
         if data.active is not None:
             sucursal.active = data.active
+        nueva_apertura = data.hora_apertura or sucursal.hora_apertura
+        nuevo_cierre = data.hora_cierre or sucursal.hora_cierre
+        if nueva_apertura >= nuevo_cierre:
+            from app.core.exceptions import BadRequestException
+            raise BadRequestException("La hora de apertura debe ser anterior a la hora de cierre.")
+        sucursal.hora_apertura = nueva_apertura
+        sucursal.hora_cierre = nuevo_cierre
 
         if hasattr(data, "maps_url") and data.maps_url is not None:
             sucursal.maps_url = data.maps_url.strip() if data.maps_url else None

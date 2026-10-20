@@ -30,15 +30,23 @@ class ClienteService:
         cuatro_digitos = ci_digitos[:4].ljust(4, "0")
         return f"{letra_ap}{letra_nom}{cuatro_digitos}"
 
-    def _sync_orphan_cliente_users(self):
+    def _scope_query(self, current_user: User):
+        query = self.db.query(Cliente).join(User, Cliente.user_id == User.id)
+        if not current_user.is_platform_admin:
+            query = query.filter(User.empresa_id == current_user.empresa_id)
+        return query
+
+    def _sync_orphan_cliente_users(self, current_user: User):
         """Asegura que todos los usuarios con rol 'cliente' tengan su registro en la tabla Cliente."""
-        orphan_users = (
+        orphan_query = (
             self.db.query(User)
             .filter(User.role == "cliente")
             .outerjoin(Cliente, Cliente.user_id == User.id)
             .filter(Cliente.codigo == None)
-            .all()
         )
+        if not current_user.is_platform_admin:
+            orphan_query = orphan_query.filter(User.empresa_id == current_user.empresa_id)
+        orphan_users = orphan_query.all()
         if not orphan_users:
             return
 
@@ -72,9 +80,9 @@ class ClienteService:
             n = n[:-len(a)].strip()
         return n, a
 
-    def list_clientes(self) -> list[ClienteResponse]:
-        self._sync_orphan_cliente_users()
-        clientes = self.db.query(Cliente).all()
+    def list_clientes(self, current_user: User) -> list[ClienteResponse]:
+        self._sync_orphan_cliente_users(current_user)
+        clientes = self._scope_query(current_user).all()
         result = []
         needs_commit = False
         for cli in clientes:
@@ -107,8 +115,8 @@ class ClienteService:
             self.db.commit()
         return result
 
-    def get_cliente_by_codigo(self, codigo: str) -> ClienteResponse:
-        cli = self.db.query(Cliente).filter(Cliente.codigo == codigo).first()
+    def get_cliente_by_codigo(self, codigo: str, current_user: User) -> ClienteResponse:
+        cli = self._scope_query(current_user).filter(Cliente.codigo == codigo).first()
         if not cli:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -137,7 +145,7 @@ class ClienteService:
             updated_at=cli.updated_at,
         )
 
-    def create_cliente(self, req: ClienteCreate, current_user: User | None = None) -> ClienteResponse:
+    def create_cliente(self, req: ClienteCreate, current_user: User) -> ClienteResponse:
         if self.db.query(User).filter(User.email == req.email).first():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -160,6 +168,7 @@ class ClienteService:
             hashed_password=get_password_hash(req.password),
             role="cliente",
             is_active=True,
+            empresa_id=current_user.empresa_id,
         )
         self.db.add(nuevo_user)
         self.db.flush()
@@ -182,12 +191,12 @@ class ClienteService:
                 module="clientes",
             )
 
-        return self.get_cliente_by_codigo(codigo)
+        return self.get_cliente_by_codigo(codigo, current_user)
 
     def update_cliente(
-        self, codigo: str, req: ClienteUpdate, current_user: User | None = None
+        self, codigo: str, req: ClienteUpdate, current_user: User
     ) -> ClienteResponse:
-        cli = self.db.query(Cliente).filter(Cliente.codigo == codigo).first()
+        cli = self._scope_query(current_user).filter(Cliente.codigo == codigo).first()
         if not cli:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -219,10 +228,10 @@ class ClienteService:
                 module="clientes",
             )
 
-        return self.get_cliente_by_codigo(codigo)
+        return self.get_cliente_by_codigo(codigo, current_user)
 
-    def delete_cliente(self, codigo: str, current_user: User | None = None) -> dict:
-        cli = self.db.query(Cliente).filter(Cliente.codigo == codigo).first()
+    def delete_cliente(self, codigo: str, current_user: User) -> dict:
+        cli = self._scope_query(current_user).filter(Cliente.codigo == codigo).first()
         if not cli:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

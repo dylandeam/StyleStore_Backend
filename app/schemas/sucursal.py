@@ -1,9 +1,9 @@
 """
 Pydantic schemas for Sucursales (Store Branches).
 """
-from datetime import datetime
+from datetime import datetime, time
 import re
-from pydantic import BaseModel, Field, field_validator, computed_field
+from pydantic import BaseModel, Field, field_validator, model_validator, computed_field
 
 
 class SucursalBase(BaseModel):
@@ -17,6 +17,8 @@ class SucursalBase(BaseModel):
     latitud: float | None = None
     longitud: float | None = None
     active: bool = Field(default=True, description="Whether branch is operational")
+    hora_apertura: time = Field(default=time(9, 0), description="Inicio del horario de atencion")
+    hora_cierre: time = Field(default=time(18, 0), description="Fin del horario de atencion")
 
     @field_validator("phone")
     @classmethod
@@ -24,6 +26,12 @@ class SucursalBase(BaseModel):
         if not re.match(r"^[0-9+\-\s]{7,20}$", v):
             raise ValueError("El teléfono solo debe contener dígitos, espacios, o símbolos '+' y '-' (entre 7 y 20 caracteres).")
         return v.strip()
+
+    @model_validator(mode="after")
+    def validate_business_hours(self):
+        if self.hora_apertura >= self.hora_cierre:
+            raise ValueError("La hora de apertura debe ser anterior a la hora de cierre")
+        return self
 
 
 class SucursalCreate(SucursalBase):
@@ -42,6 +50,8 @@ class SucursalUpdate(BaseModel):
     latitud: float | None = None
     longitud: float | None = None
     active: bool | None = None
+    hora_apertura: time | None = None
+    hora_cierre: time | None = None
 
     @field_validator("phone")
     @classmethod

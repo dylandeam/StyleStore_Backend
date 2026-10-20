@@ -21,6 +21,7 @@ from app.schemas.reserva import (
 from app.api.deps import get_current_user, require_permission
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.bitacora_service import BitacoraService
+from app.services.tenant_scope import get_scoped_sucursal, scope_by_sucursal
 
 router = APIRouter(prefix="/reservas", tags=["Reservas"])
 
@@ -85,6 +86,7 @@ async def list_reservas(
         if not cliente:
             return []
         q = db.query(Reserva).filter(Reserva.codigo_cliente == cliente.codigo)
+        q = scope_by_sucursal(q, db, current_user, Reserva.sucursal_id)
         if estado:
             q = q.filter(Reserva.estado == estado)
         if sucursal_id:
@@ -92,7 +94,7 @@ async def list_reservas(
         reservas = q.order_by(Reserva.created_at.desc()).all()
         return [_serialize_reserva(r) for r in reservas]
 
-    q = db.query(Reserva)
+    q = scope_by_sucursal(db.query(Reserva), db, current_user, Reserva.sucursal_id)
     if sucursal_id:
         q = q.filter(Reserva.sucursal_id == sucursal_id)
     if estado:
@@ -134,12 +136,10 @@ async def list_my_reservas(
         for c in db.query(Cliente).filter(Cliente.ci == current_user.ci).all():
             codigos.add(c.codigo)
 
-    reservas = (
-        db.query(Reserva)
-        .filter(Reserva.codigo_cliente.in_(list(codigos)))
-        .order_by(Reserva.created_at.desc())
-        .all()
-    )
+    reservas_query = db.query(Reserva).filter(Reserva.codigo_cliente.in_(list(codigos)))
+    reservas = scope_by_sucursal(
+        reservas_query, db, current_user, Reserva.sucursal_id
+    ).order_by(Reserva.created_at.desc()).all()
     return [_serialize_reserva(r) for r in reservas]
 
 
@@ -234,19 +234,29 @@ async def create_reserva(
                 "Solo los clientes con al menos 1 compra previa pagada pueden reservar prendas. ¡Realiza tu primera compra para desbloquear reservas exclusivas!"
             )
 
-    # Validar duración máxima de 7 días
+    sucursal = get_scoped_sucursal(db, current_user, payload.sucursal_id)
+
+    # La recogida puede programarse desde hoy hasta un máximo de 3 días.
     hoy = date.today()
-    max_fecha = hoy + timedelta(days=7)
+    max_fecha = hoy + timedelta(days=3)
     fecha_reserva = payload.fecha_limite or max_fecha
     if fecha_reserva < hoy or fecha_reserva > max_fecha:
         raise BadRequestException(
-            f"La fecha de reserva no puede ser anterior a hoy ni superar el plazo máximo de 7 días ({max_fecha.strftime('%d/%m/%Y')})."
+            f"La fecha de retiro no puede ser anterior a hoy ni superar el plazo máximo de 3 días ({max_fecha.strftime('%d/%m/%Y')})."
         )
 
-    now = datetime.now()
+    hora_retiro = payload.hora_retiro or sucursal.hora_apertura
+    if hora_retiro < sucursal.hora_apertura or hora_retiro > sucursal.hora_cierre:
+        raise BadRequestException(
+            "La hora de retiro debe estar dentro del horario de atención de la sucursal "
+            f"({sucursal.hora_apertura.strftime('%H:%M')} - {sucursal.hora_cierre.strftime('%H:%M')})."
+        )
+    if fecha_reserva == hoy and hora_retiro <= datetime.now().time():
+        raise BadRequestException("La hora de retiro debe ser posterior a la hora actual.")
+
     reserva = Reserva(
         fecha=fecha_reserva,
-        hora=now.time(),
+        hora=hora_retiro,
         estado="pendiente",
         codigo_cliente=cliente.codigo,
         sucursal_id=payload.sucursal_id,
@@ -265,6 +275,12 @@ async def create_reserva(
         if not stock:
             db.rollback()
             raise NotFoundException(f"Inventario con ID {item.stock_inventario_id} no encontrado.")
+
+        if stock.sucursal_id != payload.sucursal_id:
+            db.rollback()
+            raise BadRequestException(
+                "Todos los artículos de la reserva deben pertenecer a la sucursal elegida."
+            )
 
         if stock.cantidad < item.cantidad:
             db.rollback()
@@ -311,7 +327,10 @@ async def cancelar_reserva(
     db: Session = Depends(get_db),
 ):
     """Cancela una reserva y devuelve automáticamente el stock reservado a inventario."""
-    reserva = db.query(Reserva).filter(Reserva.id == reserva_id).first()
+    reserva_query = db.query(Reserva).filter(Reserva.id == reserva_id)
+    reserva = scope_by_sucursal(
+        reserva_query, db, current_user, Reserva.sucursal_id
+    ).first()
     if not reserva:
         raise NotFoundException(f"Reserva con ID {reserva_id} no encontrada.")
 
@@ -375,7 +394,10 @@ async def update_reserva_estado(
     db: Session = Depends(get_db),
 ):
     """Actualiza el estado de una reserva (ej. pendiente -> completada o cancelada)."""
-    reserva = db.query(Reserva).filter(Reserva.id == reserva_id).first()
+    reserva_query = db.query(Reserva).filter(Reserva.id == reserva_id)
+    reserva = scope_by_sucursal(
+        reserva_query, db, current_user, Reserva.sucursal_id
+    ).first()
     if not reserva:
         raise NotFoundException(f"Reserva con ID {reserva_id} no encontrada.")
 
@@ -407,7 +429,10 @@ async def delete_reserva(
     db: Session = Depends(get_db),
 ):
     """Elimina o cancela una reserva y restituye el stock si estaba pendiente."""
-    reserva = db.query(Reserva).filter(Reserva.id == reserva_id).first()
+    reserva_query = db.query(Reserva).filter(Reserva.id == reserva_id)
+    reserva = scope_by_sucursal(
+        reserva_query, db, current_user, Reserva.sucursal_id
+    ).first()
     if not reserva:
         raise NotFoundException(f"Reserva con ID {reserva_id} no encontrada.")
 
@@ -436,4 +461,3 @@ async def delete_reserva(
     )
 
     return {"message": f"Reserva #{reserva_id} eliminada exitosamente."}
-

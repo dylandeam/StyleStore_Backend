@@ -20,7 +20,7 @@ async def list_empleados(
     db: Session = Depends(get_db),
 ):
     service = EmpleadoService(db)
-    return service.list_empleados()
+    return service.list_empleados(current_user)
 
 
 @router.get("/{codigo}", response_model=EmpleadoResponse, summary="Obtener empleado por código")
@@ -30,7 +30,7 @@ async def get_empleado(
     db: Session = Depends(get_db),
 ):
     service = EmpleadoService(db)
-    return service.get_empleado_by_codigo(codigo)
+    return service.get_empleado_by_codigo(codigo, current_user)
 
 
 @router.post("", response_model=EmpleadoResponse, status_code=status.HTTP_201_CREATED, summary="Crear empleado")

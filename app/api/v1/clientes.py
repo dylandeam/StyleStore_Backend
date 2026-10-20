@@ -20,7 +20,7 @@ async def list_clientes(
     db: Session = Depends(get_db),
 ):
     service = ClienteService(db)
-    return service.list_clientes()
+    return service.list_clientes(current_user)
 
 
 @router.get("/{codigo}", response_model=ClienteResponse, summary="Obtener cliente por código")
@@ -30,7 +30,7 @@ async def get_cliente(
     db: Session = Depends(get_db),
 ):
     service = ClienteService(db)
-    return service.get_cliente_by_codigo(codigo)
+    return service.get_cliente_by_codigo(codigo, current_user)
 
 
 @router.post("", response_model=ClienteResponse, status_code=status.HTTP_201_CREATED, summary="Crear cliente")

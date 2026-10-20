@@ -282,6 +282,71 @@ def test_regla_reserva_elegibilidad(client: TestClient, auth_tokens, sample_inve
     assert res_re_cancelar.status_code == 400
 
 
+def test_reserva_respeta_horario_y_maximo_tres_dias(client: TestClient, auth_tokens, sample_inventory, db_session):
+    client_headers = {"Authorization": f"Bearer {auth_tokens['client_token']}"}
+    admin_headers = {"Authorization": f"Bearer {auth_tokens['admin_token']}"}
+    sucursal_id = sample_inventory["sucursal"].id
+    stock_id = sample_inventory["stock"].id
+
+    update_branch = client.put(
+        f"/api/v1/sucursales/{sucursal_id}",
+        headers=admin_headers,
+        json={"hora_apertura": "10:00:00", "hora_cierre": "16:00:00"},
+    )
+    assert update_branch.status_code == 200, update_branch.text
+
+    db_session.add(
+        OrdenVenta(
+            fecha=date.today() - timedelta(days=1),
+            estado="pagada",
+            total=Decimal("100.00"),
+            tipo_venta="presencial",
+            codigo_cliente=auth_tokens["client_profile"].codigo,
+            sucursal_id=sucursal_id,
+        )
+    )
+    db_session.commit()
+
+    too_late = client.post(
+        "/api/v1/reservas",
+        headers=client_headers,
+        json={
+            "sucursal_id": sucursal_id,
+            "fecha_limite": (date.today() + timedelta(days=4)).isoformat(),
+            "hora_retiro": "11:00:00",
+            "items": [{"stock_inventario_id": stock_id, "cantidad": 1}],
+        },
+    )
+    assert too_late.status_code == 400
+    assert "3 días" in too_late.json()["detail"]
+
+    outside_hours = client.post(
+        "/api/v1/reservas",
+        headers=client_headers,
+        json={
+            "sucursal_id": sucursal_id,
+            "fecha_limite": (date.today() + timedelta(days=1)).isoformat(),
+            "hora_retiro": "09:30:00",
+            "items": [{"stock_inventario_id": stock_id, "cantidad": 1}],
+        },
+    )
+    assert outside_hours.status_code == 400
+    assert "horario de atención" in outside_hours.json()["detail"]
+
+    valid = client.post(
+        "/api/v1/reservas",
+        headers=client_headers,
+        json={
+            "sucursal_id": sucursal_id,
+            "fecha_limite": (date.today() + timedelta(days=1)).isoformat(),
+            "hora_retiro": "11:30:00",
+            "items": [{"stock_inventario_id": stock_id, "cantidad": 1}],
+        },
+    )
+    assert valid.status_code == 201, valid.text
+    assert valid.json()["hora"] == "11:30:00"
+
+
 
 def test_venta_presencial_efectivo_y_qr(client: TestClient, auth_tokens, sample_inventory):
     headers = {"Authorization": f"Bearer {auth_tokens['admin_token']}"}
@@ -453,5 +518,4 @@ def test_asistente_ia_reportes(client: TestClient, auth_tokens):
     assert "respuesta" in data
     assert "kpis" in data
     assert isinstance(data["kpis"], list)
-
 

@@ -12,6 +12,7 @@ from app.models.sucursal import Sucursal
 from app.schemas.empleado import EmpleadoCreate, EmpleadoUpdate, EmpleadoResponse
 from app.services.bitacora_service import BitacoraService
 from app.core.security import get_password_hash
+from app.services.tenant_scope import get_scoped_sucursal
 
 
 class EmpleadoService:
@@ -31,25 +32,44 @@ class EmpleadoService:
         cuatro_digitos = ci_digitos[:4].ljust(4, "0")
         return f"{letra_ap}{letra_nom}{cuatro_digitos}"
 
-    def _sync_orphan_staff_users(self):
+    def _scope_query(self, current_user: User):
+        query = self.db.query(Empleado).join(User, Empleado.user_id == User.id)
+        if not current_user.is_platform_admin:
+            query = query.filter(User.empresa_id == current_user.empresa_id)
+        return query
+
+    def _sync_orphan_staff_users(self, current_user: User):
         """Asegura que todos los usuarios con roles de empleado/staff tengan su registro en Empleado."""
-        orphan_users = (
+        orphan_query = (
             self.db.query(User)
             .filter(User.role.in_(["administrador", "encargado_sucursal", "cajero"]))
             .outerjoin(Empleado, Empleado.user_id == User.id)
             .filter(Empleado.codigo == None)
-            .all()
         )
+        if not current_user.is_platform_admin:
+            orphan_query = orphan_query.filter(User.empresa_id == current_user.empresa_id)
+        orphan_users = orphan_query.all()
         if not orphan_users:
             return
 
-        default_sucursal = self.db.query(Sucursal).first()
-        if not default_sucursal:
-            default_sucursal = Sucursal(name="Sucursal Central", city="Santa Cruz", address="Av. Principal #100")
-            self.db.add(default_sucursal)
-            self.db.flush()
-
         for u in orphan_users:
+            default_sucursal = (
+                self.db.query(Sucursal)
+                .filter(Sucursal.empresa_id == u.empresa_id)
+                .order_by(Sucursal.id)
+                .first()
+            )
+            if not default_sucursal:
+                default_sucursal = Sucursal(
+                    empresa_id=u.empresa_id,
+                    name="Sucursal Central",
+                    city="Santa Cruz",
+                    address="Av. Principal #100",
+                    phone="70000000",
+                )
+                self.db.add(default_sucursal)
+                self.db.flush()
+
             base_codigo = self.generar_codigo(u.apellido or "Staff", u.name or "User", u.ci or "1000")
             codigo = base_codigo
             counter = 1
@@ -70,9 +90,9 @@ class EmpleadoService:
             self.db.add(new_emp)
         self.db.commit()
 
-    def list_empleados(self) -> list[EmpleadoResponse]:
-        self._sync_orphan_staff_users()
-        empleados = self.db.query(Empleado).all()
+    def list_empleados(self, current_user: User) -> list[EmpleadoResponse]:
+        self._sync_orphan_staff_users(current_user)
+        empleados = self._scope_query(current_user).all()
         result = []
         for emp in empleados:
             result.append(
@@ -97,8 +117,8 @@ class EmpleadoService:
             )
         return result
 
-    def get_empleado_by_codigo(self, codigo: str) -> EmpleadoResponse:
-        emp = self.db.query(Empleado).filter(Empleado.codigo == codigo).first()
+    def get_empleado_by_codigo(self, codigo: str, current_user: User) -> EmpleadoResponse:
+        emp = self._scope_query(current_user).filter(Empleado.codigo == codigo).first()
         if not emp:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -123,7 +143,7 @@ class EmpleadoService:
             updated_at=emp.updated_at,
         )
 
-    def create_empleado(self, req: EmpleadoCreate, current_user: User | None = None) -> EmpleadoResponse:
+    def create_empleado(self, req: EmpleadoCreate, current_user: User) -> EmpleadoResponse:
         # Verificar email único
         if self.db.query(User).filter(User.email == req.email).first():
             raise HTTPException(
@@ -132,12 +152,7 @@ class EmpleadoService:
             )
 
         # Verificar sucursal existente
-        sucursal = self.db.query(Sucursal).filter(Sucursal.id == req.sucursal_id).first()
-        if not sucursal:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"La sucursal con ID {req.sucursal_id} no existe.",
-            )
+        sucursal = get_scoped_sucursal(self.db, current_user, req.sucursal_id)
 
         # Generar código
         base_codigo = self.generar_codigo(req.apellido, req.nombre, req.ci)
@@ -156,6 +171,7 @@ class EmpleadoService:
             hashed_password=get_password_hash(req.password),
             role=req.role,
             is_active=True,
+            empresa_id=sucursal.empresa_id,
         )
         self.db.add(nuevo_user)
         self.db.flush()
@@ -183,12 +199,12 @@ class EmpleadoService:
                 module="empleados",
             )
 
-        return self.get_empleado_by_codigo(codigo)
+        return self.get_empleado_by_codigo(codigo, current_user)
 
     def update_empleado(
-        self, codigo: str, req: EmpleadoUpdate, current_user: User | None = None
+        self, codigo: str, req: EmpleadoUpdate, current_user: User
     ) -> EmpleadoResponse:
-        emp = self.db.query(Empleado).filter(Empleado.codigo == codigo).first()
+        emp = self._scope_query(current_user).filter(Empleado.codigo == codigo).first()
         if not emp:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -196,11 +212,7 @@ class EmpleadoService:
             )
 
         if req.sucursal_id is not None:
-            if not self.db.query(Sucursal).filter(Sucursal.id == req.sucursal_id).first():
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Sucursal con ID {req.sucursal_id} no existe.",
-                )
+            get_scoped_sucursal(self.db, current_user, req.sucursal_id)
             emp.sucursal_id = req.sucursal_id
 
         if req.edad is not None:
@@ -236,10 +248,10 @@ class EmpleadoService:
                 module="empleados",
             )
 
-        return self.get_empleado_by_codigo(codigo)
+        return self.get_empleado_by_codigo(codigo, current_user)
 
-    def delete_empleado(self, codigo: str, current_user: User | None = None) -> dict:
-        emp = self.db.query(Empleado).filter(Empleado.codigo == codigo).first()
+    def delete_empleado(self, codigo: str, current_user: User) -> dict:
+        emp = self._scope_query(current_user).filter(Empleado.codigo == codigo).first()
         if not emp:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
