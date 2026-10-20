@@ -86,3 +86,26 @@ def test_tenant_admin_cannot_list_or_create_companies(client, db_session, admin_
         },
     )
     assert response.status_code == 403
+
+
+def test_legacy_registration_defaults_to_stylestore_when_other_tenants_exist(client, db_session, admin_token):
+    platform_admin = db_session.query(User).filter(User.email == "admin_test@stylestore.com").one()
+    platform_admin.is_platform_admin = True
+    db_session.commit()
+    _create_empresa(client, admin_token, "tenant-d", "admin-d@tenant.example.com")
+
+    response = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "legacy-client@example.com",
+            "password": "ClientPass2026!",
+            "name": "Cliente Legado",
+        },
+    )
+    assert response.status_code == 201, response.text
+    stylestore_id = response.json()["empresa_id"]
+    assert stylestore_id is not None
+    assert stylestore_id != client.get(
+        "/api/v1/empresas/mia",
+        headers={"Authorization": f"Bearer {_login(client, 'admin-d@tenant.example.com')}"},
+    ).json()["id"]

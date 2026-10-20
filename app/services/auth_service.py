@@ -46,14 +46,12 @@ class AuthService:
             if not empresa:
                 raise BadRequestException("El código de empresa no existe o está inactivo.")
         else:
-            active_empresas = self.db.query(Empresa).filter(Empresa.active == True).all()
-            if not active_empresas:
+            empresa = self.db.query(Empresa).filter(Empresa.codigo == "stylestore", Empresa.active == True).first()
+            if not empresa and self.db.query(Empresa).filter(Empresa.active == True).count() == 0:
                 empresa = Empresa(codigo="stylestore", nombre="StyleStore", active=True)
                 self.db.add(empresa)
                 self.db.flush()
-            elif len(active_empresas) == 1:
-                empresa = active_empresas[0]
-            else:
+            elif not empresa:
                 raise BadRequestException("Debe indicar el código de empresa para registrarse.")
 
         # Check if user already exists by email
