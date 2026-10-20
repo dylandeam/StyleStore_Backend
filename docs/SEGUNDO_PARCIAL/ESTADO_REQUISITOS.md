@@ -32,9 +32,9 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-026 | EN_PRUEBAS | Reserva offline persiste con UUID, comprobante provisional y sincronización; falta E2E de cierre/reapertura |
 | REQ-027 | EN_PRUEBAS | POS guarda venta de contado con detalle/importes y bloquea QR offline; falta E2E de comprobante impreso |
 | REQ-028 | EN_PRUEBAS | Pantalla PWA muestra cola y estados pendiente/confirmada/rechazada/conflicto con motivo; falta evidencia visual E2E |
-| REQ-029 | PENDIENTE | Flutter no incluye SQLite |
-| REQ-030 | PENDIENTE | Esquema SQLite local no implementado |
-| REQ-031 | PENDIENTE | Operaciones Flutter offline no implementadas |
+| REQ-029 | EN_PRUEBAS | Flutter conserva Provider/secure storage e integra SQLite con claves foráneas; falta prueba en dispositivo de cierre/reapertura |
+| REQ-030 | EN_CURSO | Esquema local incluye catálogo, sucursales, clientes, ventas/detalles, reservas/detalles y cola; falta conectar todos los flujos |
+| REQ-031 | EN_CURSO | Consulta móvil de catálogo y sucursales cae a SQLite por ámbito; faltan reservas y ventas de contado offline |
 | REQ-032 | PENDIENTE | UI y recuperación sync Flutter no implementadas |
 | REQ-033 | EN_CURSO | Cola web persistente implementa UUID y transiciones sin borrar fallos; falta cola SQLite móvil |
 | REQ-034 | EN_CURSO | PWA reintenta al reconectar y backend confirma idempotentemente ventas/reservas; falta paridad móvil y prueba de timeout E2E |
