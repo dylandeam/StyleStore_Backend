@@ -18,12 +18,16 @@ from app.models.user import User
 from app.schemas.producto import ProductoCreate, ProductoUpdate, ProductoResponse, PromocionUpdate
 from app.schemas.color import ColorResponse
 from app.services.bitacora_service import BitacoraService
+from app.services.tenant_scope import scope_by_empresa
 
 
 class ProductoService:
     def __init__(self, db: Session):
         self.db = db
         self.bitacora = BitacoraService(db)
+
+    def _query(self, current_user: User):
+        return scope_by_empresa(self.db.query(Producto), current_user, Producto.empresa_id)
 
     def _generar_codigo_siguiente(self) -> str:
         """Autogenera código PROD-0001 incremental como fallback si no se especifica."""
@@ -100,8 +104,11 @@ class ProductoService:
         coleccion_id: int | None = None,
         sucursal_id: int | None = None,
         search: str | None = None,
+        current_user: User | None = None,
     ) -> list[ProductoResponse]:
         query = self.db.query(Producto)
+        if current_user is not None:
+            query = scope_by_empresa(query, current_user, Producto.empresa_id)
         if active_only:
             query = query.filter(Producto.active.is_(True))
         if categoria_id:
@@ -120,18 +127,27 @@ class ProductoService:
         prods = query.order_by(Producto.nombre.asc()).all()
         return [self._to_response(p, sucursal_id=sucursal_id) for p in prods]
 
-    def list_promociones(self, solo_en_promocion: bool = True) -> list[ProductoResponse]:
+    def list_promociones(
+        self,
+        solo_en_promocion: bool = True,
+        current_user: User | None = None,
+        empresa_id: int | None = None,
+    ) -> list[ProductoResponse]:
         query = self.db.query(Producto).filter(Producto.active.is_(True))
+        if current_user is not None:
+            query = scope_by_empresa(query, current_user, Producto.empresa_id)
+        elif empresa_id is not None:
+            query = query.filter(Producto.empresa_id == empresa_id)
         if solo_en_promocion:
             query = query.filter(Producto.en_promocion.is_(True))
         prods = query.order_by(Producto.nombre.asc()).all()
         return [self._to_response(p) for p in prods]
 
     def update_promocion(
-        self, codigo: str, req: PromocionUpdate, current_user: User | None = None
+        self, codigo: str, req: PromocionUpdate, current_user: User
     ) -> ProductoResponse:
         from decimal import Decimal
-        prod = self.db.query(Producto).filter(Producto.codigo == codigo).first()
+        prod = self._query(current_user).filter(Producto.codigo == codigo).first()
         if not prod:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -162,8 +178,8 @@ class ProductoService:
 
         return self._to_response(prod)
 
-    def get_producto_by_codigo(self, codigo: str) -> ProductoResponse:
-        prod = self.db.query(Producto).filter(Producto.codigo == codigo).first()
+    def get_producto_by_codigo(self, codigo: str, current_user: User) -> ProductoResponse:
+        prod = self._query(current_user).filter(Producto.codigo == codigo).first()
         if not prod:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -171,13 +187,13 @@ class ProductoService:
             )
         return self._to_response(prod)
 
-    def create_producto(self, req: ProductoCreate, current_user: User | None = None) -> ProductoResponse:
+    def create_producto(self, req: ProductoCreate, current_user: User) -> ProductoResponse:
         # Validar categoria, temporada y coleccion
-        if not self.db.query(Categoria).filter(Categoria.id == req.categoria_id).first():
+        if not scope_by_empresa(self.db.query(Categoria), current_user, Categoria.empresa_id).filter(Categoria.id == req.categoria_id).first():
             raise HTTPException(status_code=404, detail=f"Categoría ID {req.categoria_id} no existe.")
-        if not self.db.query(Temporada).filter(Temporada.id == req.temporada_id).first():
+        if not scope_by_empresa(self.db.query(Temporada), current_user, Temporada.empresa_id).filter(Temporada.id == req.temporada_id).first():
             raise HTTPException(status_code=404, detail=f"Temporada ID {req.temporada_id} no existe.")
-        if req.coleccion_id is not None and not self.db.query(Coleccion).filter(Coleccion.id == req.coleccion_id).first():
+        if req.coleccion_id is not None and not scope_by_empresa(self.db.query(Coleccion), current_user, Coleccion.empresa_id).filter(Coleccion.id == req.coleccion_id).first():
             raise HTTPException(status_code=404, detail=f"Colección ID {req.coleccion_id} no existe.")
 
         codigo = req.codigo.strip() if req.codigo and req.codigo.strip() else self._generar_codigo_siguiente()
@@ -196,6 +212,7 @@ class ProductoService:
 
         prod = Producto(
             codigo=codigo,
+            empresa_id=current_user.empresa_id,
             nombre=req.nombre.strip(),
             descripcion=req.descripcion,
             foto=req.foto,
@@ -221,7 +238,7 @@ class ProductoService:
         # Asignar colores habilitados
         if req.color_ids:
             for c_id in set(req.color_ids):
-                if self.db.query(Color).filter(Color.id == c_id).first():
+                if scope_by_empresa(self.db.query(Color), current_user, Color.empresa_id).filter(Color.id == c_id).first():
                     pc = ProductoColor(producto_codigo=prod.codigo, color_id=c_id)
                     self.db.add(pc)
 
@@ -239,9 +256,9 @@ class ProductoService:
         return self._to_response(prod)
 
     def update_producto(
-        self, codigo: str, req: ProductoUpdate, current_user: User | None = None
+        self, codigo: str, req: ProductoUpdate, current_user: User
     ) -> ProductoResponse:
-        prod = self.db.query(Producto).filter(Producto.codigo == codigo).first()
+        prod = self._query(current_user).filter(Producto.codigo == codigo).first()
         if not prod:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -249,17 +266,17 @@ class ProductoService:
             )
 
         if req.categoria_id is not None:
-            if not self.db.query(Categoria).filter(Categoria.id == req.categoria_id).first():
+            if not scope_by_empresa(self.db.query(Categoria), current_user, Categoria.empresa_id).filter(Categoria.id == req.categoria_id).first():
                 raise HTTPException(status_code=404, detail=f"Categoría ID {req.categoria_id} no existe.")
             prod.categoria_id = req.categoria_id
 
         if req.temporada_id is not None:
-            if not self.db.query(Temporada).filter(Temporada.id == req.temporada_id).first():
+            if not scope_by_empresa(self.db.query(Temporada), current_user, Temporada.empresa_id).filter(Temporada.id == req.temporada_id).first():
                 raise HTTPException(status_code=404, detail=f"Temporada ID {req.temporada_id} no existe.")
             prod.temporada_id = req.temporada_id
 
         if req.coleccion_id is not None:
-            if not self.db.query(Coleccion).filter(Coleccion.id == req.coleccion_id).first():
+            if not scope_by_empresa(self.db.query(Coleccion), current_user, Coleccion.empresa_id).filter(Coleccion.id == req.coleccion_id).first():
                 raise HTTPException(status_code=404, detail=f"Colección ID {req.coleccion_id} no existe.")
             prod.coleccion_id = req.coleccion_id
 
@@ -319,7 +336,7 @@ class ProductoService:
 
             # Agregar nuevos
             for cid in new_color_ids:
-                if cid not in existing_pcs and self.db.query(Color).filter(Color.id == cid).first():
+                if cid not in existing_pcs and scope_by_empresa(self.db.query(Color), current_user, Color.empresa_id).filter(Color.id == cid).first():
                     new_pc = ProductoColor(producto_codigo=prod.codigo, color_id=cid)
                     self.db.add(new_pc)
 
@@ -336,8 +353,8 @@ class ProductoService:
 
         return self._to_response(prod)
 
-    def delete_producto(self, codigo: str, current_user: User | None = None) -> dict:
-        prod = self.db.query(Producto).filter(Producto.codigo == codigo).first()
+    def delete_producto(self, codigo: str, current_user: User) -> dict:
+        prod = self._query(current_user).filter(Producto.codigo == codigo).first()
         if not prod:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -359,14 +376,14 @@ class ProductoService:
         return {"message": f"Producto '{codigo}' eliminado exitosamente."}
 
     def analizar_y_guardar_puntos_clave(
-        self, codigo: str, current_user: User | None = None
+        self, codigo: str, current_user: User
     ) -> ProductoResponse:
         """Analiza la foto de la prenda con IA, calcula los puntos clave y los almacena."""
         import json
         import os
         from app.services.garment_ai_service import GarmentAIService
 
-        prod = self.db.query(Producto).filter(Producto.codigo == codigo).first()
+        prod = self._query(current_user).filter(Producto.codigo == codigo).first()
         if not prod:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

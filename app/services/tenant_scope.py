@@ -21,6 +21,13 @@ def scope_by_sucursal(query: Query, db: Session, current_user: User, column):
     return query.filter(column.in_(scoped_sucursal_ids(db, current_user)))
 
 
+def scope_by_empresa(query: Query, current_user: User, column):
+    """Apply tenant scope to a resource that owns an empresa_id column."""
+    if current_user.is_platform_admin:
+        return query
+    return query.filter(column == current_user.empresa_id)
+
+
 def get_scoped_sucursal(db: Session, current_user: User, sucursal_id: int) -> Sucursal:
     """Resolve a branch without revealing whether a foreign tenant branch exists."""
     query = db.query(Sucursal).filter(Sucursal.id == sucursal_id)

@@ -9,6 +9,7 @@ from app.models.producto import Producto
 from app.models.user import User
 from app.schemas.categoria import CategoriaCreate, CategoriaUpdate, CategoriaResponse
 from app.services.bitacora_service import BitacoraService
+from app.services.tenant_scope import scope_by_empresa
 
 
 class CategoriaService:
@@ -16,12 +17,15 @@ class CategoriaService:
         self.db = db
         self.bitacora = BitacoraService(db)
 
-    def list_categorias(self) -> list[CategoriaResponse]:
-        cats = self.db.query(Categoria).order_by(Categoria.nombre.asc()).all()
+    def _query(self, current_user: User):
+        return scope_by_empresa(self.db.query(Categoria), current_user, Categoria.empresa_id)
+
+    def list_categorias(self, current_user: User) -> list[CategoriaResponse]:
+        cats = self._query(current_user).order_by(Categoria.nombre.asc()).all()
         return [CategoriaResponse.model_validate(c) for c in cats]
 
-    def get_categoria_by_id(self, cat_id: int) -> CategoriaResponse:
-        cat = self.db.query(Categoria).filter(Categoria.id == cat_id).first()
+    def get_categoria_by_id(self, cat_id: int, current_user: User) -> CategoriaResponse:
+        cat = self._query(current_user).filter(Categoria.id == cat_id).first()
         if not cat:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -29,14 +33,14 @@ class CategoriaService:
             )
         return CategoriaResponse.model_validate(cat)
 
-    def create_categoria(self, req: CategoriaCreate, current_user: User | None = None) -> CategoriaResponse:
+    def create_categoria(self, req: CategoriaCreate, current_user: User) -> CategoriaResponse:
         nombre_clean = req.nombre.strip()
-        if self.db.query(Categoria).filter(Categoria.nombre.ilike(nombre_clean)).first():
+        if self._query(current_user).filter(Categoria.nombre.ilike(nombre_clean)).first():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Ya existe una categoría con el nombre '{nombre_clean}'.",
             )
-        cat = Categoria(nombre=nombre_clean)
+        cat = Categoria(empresa_id=current_user.empresa_id, nombre=nombre_clean)
         self.db.add(cat)
         self.db.commit()
         self.db.refresh(cat)
@@ -50,8 +54,8 @@ class CategoriaService:
             )
         return CategoriaResponse.model_validate(cat)
 
-    def update_categoria(self, cat_id: int, req: CategoriaUpdate, current_user: User | None = None) -> CategoriaResponse:
-        cat = self.db.query(Categoria).filter(Categoria.id == cat_id).first()
+    def update_categoria(self, cat_id: int, req: CategoriaUpdate, current_user: User) -> CategoriaResponse:
+        cat = self._query(current_user).filter(Categoria.id == cat_id).first()
         if not cat:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -59,7 +63,7 @@ class CategoriaService:
             )
         nombre_clean = req.nombre.strip()
         existente = (
-            self.db.query(Categoria)
+            self._query(current_user)
             .filter(Categoria.nombre.ilike(nombre_clean), Categoria.id != cat_id)
             .first()
         )
@@ -81,15 +85,17 @@ class CategoriaService:
             )
         return CategoriaResponse.model_validate(cat)
 
-    def delete_categoria(self, cat_id: int, current_user: User | None = None) -> dict:
-        cat = self.db.query(Categoria).filter(Categoria.id == cat_id).first()
+    def delete_categoria(self, cat_id: int, current_user: User) -> dict:
+        cat = self._query(current_user).filter(Categoria.id == cat_id).first()
         if not cat:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Categoría con ID {cat_id} no encontrada.",
             )
         # Validación de integridad referencial
-        tiene_prods = self.db.query(Producto).filter(Producto.categoria_id == cat_id).first()
+        tiene_prods = scope_by_empresa(
+            self.db.query(Producto), current_user, Producto.empresa_id
+        ).filter(Producto.categoria_id == cat_id).first()
         if tiene_prods:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

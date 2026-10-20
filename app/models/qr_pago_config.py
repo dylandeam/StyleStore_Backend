@@ -3,7 +3,7 @@ Modelo QRPagoConfig.
 Almacena la imagen y configuración del QR de cobro presencial en mostrador (QR Simple).
 """
 from datetime import datetime
-from sqlalchemy import String, Boolean, DateTime, Integer, func
+from sqlalchemy import String, Boolean, DateTime, Integer, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -15,6 +15,9 @@ class QRPagoConfig(Base):
     __tablename__ = "qr_pago_config"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    empresa_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("empresas.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
     imagen_url: Mapped[str] = mapped_column(String(500), nullable=False)
     banco_destino: Mapped[str | None] = mapped_column(String(100), nullable=True, default="QR Simple BNB / BCP / Banco Unión")
     titular: Mapped[str | None] = mapped_column(String(150), nullable=True, default="StyleStore Bolivia")

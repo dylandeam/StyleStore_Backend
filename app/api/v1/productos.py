@@ -8,12 +8,14 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User
-from app.api.deps import require_permission
+from app.api.deps import get_optional_current_user, require_permission
 from app.schemas.producto import ProductoCreate, ProductoUpdate, ProductoResponse
 from app.schemas.stock_inventario import StockBulkUpdateRequest, StockInventarioResponse
 from app.schemas.common import MessageResponse
 from app.services.producto_service import ProductoService
 from app.services.stock_service import StockService
+from app.services.bitacora_service import BitacoraService
+from app.core.exceptions import NotFoundException
 
 router = APIRouter(prefix="/productos", tags=["Productos"])
 
@@ -40,6 +42,7 @@ async def list_productos(
         temporada_id=temporada_id,
         sucursal_id=sucursal_id,
         search=search,
+        current_user=current_user,
     )
 
 
@@ -55,7 +58,7 @@ async def get_producto(
     db: Session = Depends(get_db),
 ):
     service = ProductoService(db)
-    return service.get_producto_by_codigo(codigo)
+    return service.get_producto_by_codigo(codigo, current_user)
 
 
 @router.post(
@@ -120,7 +123,7 @@ async def get_producto_stock(
     db: Session = Depends(get_db),
 ):
     service = StockService(db)
-    return service.get_stock_by_producto(codigo)
+    return service.get_stock_by_producto(codigo, current_user)
 
 
 @router.post(
@@ -188,12 +191,26 @@ async def analizar_imagen_ia(
 )
 async def get_producto_landmarks(
     codigo: str,
+    current_user: User | None = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
 ):
     from app.models.producto_landmark import ProductoLandmark
     from app.models.producto import Producto
+    from app.models.empresa import Empresa
 
-    calibrated = db.query(ProductoLandmark).filter(ProductoLandmark.producto_codigo == codigo).first()
+    product_query = db.query(Producto).filter(Producto.codigo == codigo)
+    if current_user is not None and not current_user.is_platform_admin:
+        product_query = product_query.filter(Producto.empresa_id == current_user.empresa_id)
+    elif current_user is None:
+        empresa = db.query(Empresa).filter(Empresa.codigo == "stylestore").first()
+        product_query = product_query.filter(
+            Producto.empresa_id == (empresa.id if empresa else None)
+        )
+    prod = product_query.first()
+    if not prod:
+        raise NotFoundException(f"Producto con código '{codigo}' no encontrado.")
+
+    calibrated = db.query(ProductoLandmark).filter(ProductoLandmark.producto_codigo == prod.codigo).first()
     if calibrated:
         return {
             "producto_codigo": calibrated.producto_codigo,
@@ -204,16 +221,14 @@ async def get_producto_landmarks(
         }
 
     # Si no existe calibración manual, generar landmarks por defecto según la categoría del producto
-    prod = db.query(Producto).filter(Producto.codigo == codigo).first()
     tipo_ar = "superior"
-    if prod:
-        tipo = (prod.tipo_prenda or "").lower()
-        if tipo in ["inferior", "pantalon", "falda"]:
-            tipo_ar = "inferior"
-        elif tipo in ["cuerpo_entero", "vestido"]:
-            tipo_ar = "vestido_completo"
-        elif tipo in ["accesorio", "gorra", "lentes"]:
-            tipo_ar = "accesorio"
+    tipo = (prod.tipo_prenda or "").lower()
+    if tipo in ["inferior", "pantalon", "falda"]:
+        tipo_ar = "inferior"
+    elif tipo in ["cuerpo_entero", "vestido"]:
+        tipo_ar = "vestido_completo"
+    elif tipo in ["accesorio", "gorra", "lentes"]:
+        tipo_ar = "accesorio"
 
     default_landmarks = {}
     if tipo_ar == "superior":
@@ -271,7 +286,8 @@ async def save_producto_landmarks(
     db: Session = Depends(get_db),
 ):
     from app.models.producto_landmark import ProductoLandmark
-    from app.models.bitacora import Bitacora
+
+    ProductoService.get_by_codigo(db, codigo, current_user)
 
     tipo_ar = payload.get("tipo_ar", "superior")
     landmarks = payload.get("landmarks", {})
@@ -290,13 +306,15 @@ async def save_producto_landmarks(
         )
         db.add(existing)
 
-    bitacora = Bitacora(
-        user_id=current_user.id,
-        accion=f"Calibró la prenda {codigo} para vestidor virtual AR",
-    )
-    db.add(bitacora)
     db.commit()
     db.refresh(existing)
+
+    BitacoraService.registrar(
+        db=db,
+        user=current_user,
+        action=f"Calibró la prenda {codigo} para vestidor virtual AR",
+        module="productos",
+    )
 
     return {
         "producto_codigo": existing.producto_codigo,
@@ -305,4 +323,3 @@ async def save_producto_landmarks(
         "calibrado": True,
         "calibrado_en": existing.calibrado_en.isoformat() if existing.calibrado_en else None,
     }
-

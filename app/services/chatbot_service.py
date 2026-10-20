@@ -19,6 +19,8 @@ from app.models.reserva import Reserva
 from app.models.orden_venta import OrdenVenta
 from app.models.cliente import Cliente
 from app.models.user import User
+from app.models.empresa import Empresa
+from app.models.stock_inventario import StockInventario
 from app.config import settings
 
 
@@ -46,6 +48,30 @@ class ChatbotService:
     def __init__(self, db: Session):
         self.db = db
 
+    def _empresa_id(self, user: Optional[User]) -> Optional[int]:
+        if user and user.is_platform_admin:
+            return None
+        if user:
+            return user.empresa_id
+        empresa = self.db.query(Empresa).filter(
+            Empresa.codigo == "stylestore", Empresa.active.is_(True)
+        ).first()
+        return empresa.id if empresa else -1
+
+    def _scope_empresa(self, query, user: Optional[User], column):
+        empresa_id = self._empresa_id(user)
+        return query if empresa_id is None else query.filter(column == empresa_id)
+
+    def _scope_stock(self, query, user: Optional[User]):
+        empresa_id = self._empresa_id(user)
+        if empresa_id is None:
+            return query
+        return query.filter(
+            StockInventario.sucursal_id.in_(
+                self.db.query(Sucursal.id).filter(Sucursal.empresa_id == empresa_id)
+            )
+        )
+
     def _consultar_groq(self, mensaje: str, user: Optional[User] = None) -> Optional[Dict[str, Any]]:
         """Consulta el motor de IA Groq (LLM) enriquecido con contexto de sucursales y catálogo en tiempo real."""
         if not settings.GROQ_API_KEY:
@@ -55,12 +81,16 @@ class ChatbotService:
             import httpx
 
             # 1. Sucursales en vivo
-            sucursales = self.db.query(Sucursal).filter(Sucursal.active == True).all()
+            sucursales = self._scope_empresa(
+                self.db.query(Sucursal), user, Sucursal.empresa_id
+            ).filter(Sucursal.active == True).all()
             suc_info = [f"• {s.nombre} (Dirección: {s.direccion}, Tel: {s.telefono or 'N/A'}, Ciudad: {s.ciudad})" for s in sucursales]
             suc_str = "\n".join(suc_info) if suc_info else "Sucursales activas en Santa Cruz y principales avenidas."
 
             # 2. Catálogo de productos y precios en vivo (muestra de hasta 80 prendas activas)
-            productos = self.db.query(Producto).filter(Producto.active == True).limit(80).all()
+            productos = self._scope_empresa(
+                self.db.query(Producto), user, Producto.empresa_id
+            ).filter(Producto.active == True).limit(80).all()
             prods_info = [f"• {p.nombre} (Ref: {p.codigo}, Precio: Bs. {float(p.precio):.2f})" for p in productos]
             prods_str = "\n".join(prods_info) if prods_info else "Variedad exclusiva en ropa de moda masculina y femenina."
 
@@ -80,7 +110,7 @@ INFORMACIÓN EN TIEMPO REAL DE STYLESTORE:
 3. POLÍTICAS Y SERVICIOS DISPONIBLES:
 - Envíos y Delivery: Servicio 'Delivery StyleStore' con rastreo GPS en tiempo real (Delivery Tracker en vivo), donde el repartidor comparte su ubicación y el cliente visualiza distancia, tiempo estimado y el mapa de su pedido.
 - Métodos de Pago: QR Simple en línea, Tarjetas de Débito/Crédito, Efectivo contra entrega y PayPal Oficial (con conversión automática de USD a BOB).
-- Reservas en Tienda: Reserva por 48 horas sin costo en la sucursal de tu preferencia para probarte la ropa.
+- Reservas en Tienda: Reserva hasta por 3 días; el cliente elige la hora de recojo dentro del horario de la sucursal.
 - Cambios y Devoluciones: Hasta 7 días calendario para solicitar cambios desde la sección 'Mis Compras'.
 
 REGLAS DE RESPUESTA:
@@ -170,7 +200,9 @@ Rutas disponibles:
             if cantidad < 1:
                 cantidad = 1
 
-            prods = self.db.query(Producto).filter(Producto.active == True).all()
+            prods = self._scope_empresa(
+                self.db.query(Producto), user, Producto.empresa_id
+            ).filter(Producto.active == True).all()
             matched_prod = None
             for p in prods:
                 p_norm = _normalize(p.nombre)
@@ -188,7 +220,7 @@ Rutas disponibles:
 
                 stk = None
                 if pc:
-                    stk = self.db.query(StockInventario).filter(
+                    stk = self._scope_stock(self.db.query(StockInventario), user).filter(
                         StockInventario.producto_color_id == pc.id,
                         StockInventario.cantidad > 0
                     ).first()
@@ -259,7 +291,9 @@ Rutas disponibles:
 
         # 4. Fallback Local: Sucursales / Ubicaciones / Horarios
         if any(w in norm for w in ["sucursal", "sucursales", "donde estan", "ubicacion", "direccion", "tienda fisica", "horario"]):
-            sucursales = self.db.query(Sucursal).filter(Sucursal.active == True).all()
+            sucursales = self._scope_empresa(
+                self.db.query(Sucursal), user, Sucursal.empresa_id
+            ).filter(Sucursal.active == True).all()
             if not sucursales:
                 return {
                     "respuesta": "Actualmente estamos actualizando la información de nuestras sucursales físicas.",
@@ -310,8 +344,8 @@ Rutas disponibles:
             return {
                 "respuesta": "🔖 **Políticas de Reserva de Prendas:**\n\n"
                              "• Para reservar una prenda sin costo inicial, debes contar con **al menos 1 compra previa pagada** en StyleStore.\n"
-                             "• Las reservas tienen una vigencia máxima de **hasta 7 días calendario**.\n"
-                             "• Debes seleccionar la sucursal física en la que pasarás a probarte y retirar la prenda.",
+                             "• Las reservas tienen una vigencia máxima de **3 días calendario**.\n"
+                             "• Puedes reservar en cualquier momento y debes elegir el recojo dentro del horario de atención de la sucursal.",
                 "chips": [
                     {"label": "🔖 Mis Reservas", "action": "navigate", "route": "/reservas"},
                     {"label": "👗 Catálogo para Reservar", "action": "navigate", "route": "/catalogo"},
@@ -333,8 +367,12 @@ Rutas disponibles:
 
         # 7. Temporadas y Colecciones
         if any(w in norm for w in ["temporada", "coleccion", "colecciones", "verano", "invierno", "otono", "primavera"]):
-            colecciones = self.db.query(Coleccion).filter(Coleccion.active == True).limit(5).all()
-            temporadas = self.db.query(Temporada).limit(5).all()
+            colecciones = self._scope_empresa(
+                self.db.query(Coleccion), user, Coleccion.empresa_id
+            ).filter(Coleccion.active == True).limit(5).all()
+            temporadas = self._scope_empresa(
+                self.db.query(Temporada), user, Temporada.empresa_id
+            ).limit(5).all()
 
             col_names = ", ".join([c.nombre for c in colecciones]) if colecciones else "Colección Actual"
             temp_names = ", ".join([t.nombre for t in temporadas]) if temporadas else "Temporada Actual"
@@ -389,7 +427,9 @@ Rutas disponibles:
 
         # 9. Consulta general de ropa / catálogo ("que ropa tienen", "que prendas hay", etc.)
         if any(f in norm for f in ["que ropa", "que prendas", "que tienen", "que venden", "ver ropa", "mostrar ropa", "que hay"]):
-            prods = self.db.query(Producto).filter(Producto.active == True).limit(5).all()
+            prods = self._scope_empresa(
+                self.db.query(Producto), user, Producto.empresa_id
+            ).filter(Producto.active == True).limit(5).all()
             if prods:
                 lineas = ["👗 **¡En StyleStore contamos con variadas prendas de moda y temporada!**\n\nAlgunas de nuestras prendas destacadas son:\n"]
                 for p in prods:
@@ -424,7 +464,9 @@ Rutas disponibles:
                 filtro_or.append(Producto.nombre.ilike(f"%{t}%"))
                 filtro_or.append(Producto.descripcion.ilike(f"%{t}%"))
 
-            productos = self.db.query(Producto).filter(or_(*filtro_or)).limit(4).all()
+            productos = self._scope_empresa(
+                self.db.query(Producto), user, Producto.empresa_id
+            ).filter(or_(*filtro_or)).limit(4).all()
 
             if productos:
                 lineas = ["👗 **¡Sí! Tenemos disponibles prendas que coinciden con tu búsqueda:**\n"]

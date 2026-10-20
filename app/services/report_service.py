@@ -35,6 +35,7 @@ from app.models.categoria import Categoria
 from app.models.pago import Pago
 from app.models.temporada import Temporada
 from app.models.bitacora import Bitacora
+from app.services.tenant_scope import scope_by_empresa, scope_by_sucursal
 
 
 def clean_sheet_title(title: str) -> str:
@@ -81,8 +82,12 @@ def _get_sucursal_nombre(sucursal) -> str:
 class ReportService:
     """Generador de reportes en Excel y PDF con estética StyleStore."""
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, current_user: User):
         self.db = db
+        self.current_user = current_user
+
+    def _scope_branch(self, query, column):
+        return scope_by_sucursal(query, self.db, self.current_user, column)
 
     # ==========================================
     # 1. REPORTES DE VENTAS
@@ -101,6 +106,7 @@ class ReportService:
             joinedload(OrdenVenta.sucursal),
             joinedload(OrdenVenta.detalles),
         )
+        query = self._scope_branch(query, OrdenVenta.sucursal_id)
         if fecha_inicio:
             query = query.filter(OrdenVenta.fecha >= fecha_inicio)
         if fecha_fin:
@@ -308,6 +314,7 @@ class ReportService:
             joinedload(StockInventario.producto_color).joinedload(ProductoColor.producto),
             joinedload(StockInventario.producto_color).joinedload(ProductoColor.color),
         )
+        query = self._scope_branch(query, StockInventario.sucursal_id)
         if sucursal_id:
             query = query.filter(StockInventario.sucursal_id == sucursal_id)
         if solo_bajo_stock:
@@ -528,6 +535,10 @@ class ReportService:
                 func.sum(DetalleVenta.cantidad).label("unidades"),
                 func.sum(DetalleVenta.subtotal).label("monto"),
             )
+            .join(OrdenVenta, DetalleVenta.orden_venta_id == OrdenVenta.id)
+        )
+        q = (
+            self._scope_branch(q, OrdenVenta.sucursal_id)
             .group_by(DetalleVenta.producto_nombre)
             .order_by(func.sum(DetalleVenta.cantidad).desc())
             .limit(limit)
@@ -552,6 +563,10 @@ class ReportService:
                 func.sum(DetalleVenta.cantidad).label("unidades"),
                 func.sum(DetalleVenta.subtotal).label("monto"),
             )
+            .join(OrdenVenta, DetalleVenta.orden_venta_id == OrdenVenta.id)
+        )
+        q = (
+            self._scope_branch(q, OrdenVenta.sucursal_id)
             .group_by(DetalleVenta.producto_nombre, DetalleVenta.color_nombre, DetalleVenta.talla_nombre)
             .order_by(DetalleVenta.producto_nombre.asc())
             .all()
@@ -569,12 +584,13 @@ class ReportService:
 
     # Reporte 3: Ventas por tipo (en línea vs presencial)
     def get_ventas_por_tipo_data(self) -> List[Dict[str, Any]]:
-        q = (
-            self.db.query(
+        q = self.db.query(
                 OrdenVenta.tipo_venta,
                 func.count(OrdenVenta.id).label("total_ordenes"),
                 func.sum(OrdenVenta.total).label("total_monto"),
             )
+        q = (
+            self._scope_branch(q, OrdenVenta.sucursal_id)
             .filter(OrdenVenta.estado != "anulado")
             .group_by(OrdenVenta.tipo_venta)
             .all()
@@ -590,13 +606,17 @@ class ReportService:
 
     # Reporte 4: Clientes registrados con total de compras
     def get_clientes_registrados_data(self) -> List[Dict[str, Any]]:
-        clientes = self.db.query(Cliente).options(joinedload(Cliente.user)).all()
+        clientes_q = self.db.query(Cliente).join(User, Cliente.user_id == User.id).options(joinedload(Cliente.user))
+        clientes_q = scope_by_empresa(clientes_q, self.current_user, User.empresa_id)
+        clientes = clientes_q.all()
         resultado = []
         for c in clientes:
             nom = f"{c.user.name} {c.user.apellido or ''}".strip() if (c.user and c.user.name) else (c.nombre or "-")
             email = c.user.email if (c.user and c.user.email) else "-"
             # Compras del cliente
-            compras_q = self.db.query(OrdenVenta).filter(OrdenVenta.codigo_cliente == c.codigo, OrdenVenta.estado != "anulado").all()
+            compras_q = self._scope_branch(
+                self.db.query(OrdenVenta), OrdenVenta.sucursal_id
+            ).filter(OrdenVenta.codigo_cliente == c.codigo, OrdenVenta.estado != "anulado").all()
             total_compras = len(compras_q)
             monto_gastado = sum(float(x.total) for x in compras_q)
             resultado.append({
@@ -613,6 +633,7 @@ class ReportService:
     # Reporte 5: Empleados por sucursal
     def get_empleados_por_sucursal_data(self, sucursal_id: Optional[int] = None) -> List[Dict[str, Any]]:
         q = self.db.query(Empleado).options(joinedload(Empleado.user), joinedload(Empleado.sucursal))
+        q = self._scope_branch(q, Empleado.sucursal_id)
         if sucursal_id:
             q = q.filter(Empleado.sucursal_id == sucursal_id)
         empleados = q.all()
@@ -638,6 +659,10 @@ class ReportService:
                 func.sum(DetalleVenta.cantidad).label("unidades"),
                 func.sum(DetalleVenta.subtotal).label("monto"),
             )
+            .join(OrdenVenta, DetalleVenta.orden_venta_id == OrdenVenta.id)
+        )
+        q_menos = (
+            self._scope_branch(q_menos, OrdenVenta.sucursal_id)
             .group_by(DetalleVenta.producto_nombre)
             .order_by(func.sum(DetalleVenta.cantidad).asc())
             .limit(5)
@@ -655,9 +680,10 @@ class ReportService:
 
     # Reporte 7: Reporte de envíos (Delivery StyleStore)
     def get_envios_report_data(self) -> List[Dict[str, Any]]:
-        envios = self.db.query(Envio).options(
+        envios_q = self.db.query(Envio).join(OrdenVenta, Envio.orden_venta_id == OrdenVenta.id).options(
             joinedload(Envio.orden_venta).joinedload(OrdenVenta.cliente).joinedload(Cliente.user)
-        ).order_by(Envio.id.desc()).all()
+        )
+        envios = self._scope_branch(envios_q, OrdenVenta.sucursal_id).order_by(Envio.id.desc()).all()
         res = []
         for e in envios:
             cli_nom = "Cliente General"
@@ -687,6 +713,7 @@ class ReportService:
             joinedload(CambioDevolucion.detalle_venta),
             joinedload(CambioDevolucion.sucursal),
         )
+        q = self._scope_branch(q, CambioDevolucion.sucursal_id)
         if sucursal_id:
             q = q.filter(CambioDevolucion.sucursal_id == sucursal_id)
 
@@ -712,6 +739,7 @@ class ReportService:
     # Reporte Financiero: Flujo de caja y pagos por método
     def get_financiero_report_data(self, sucursal_id: Optional[int] = None) -> List[Dict[str, Any]]:
         q = self.db.query(Pago).join(OrdenVenta, Pago.orden_venta_id == OrdenVenta.id)
+        q = self._scope_branch(q, OrdenVenta.sucursal_id)
         if sucursal_id:
             q = q.filter(OrdenVenta.sucursal_id == sucursal_id)
         pagos = q.all()
@@ -733,7 +761,10 @@ class ReportService:
     # Reporte de Caducidad / Obsolescencia y Temporadas
     def get_caducidad_report_data(self, sucursal_id: Optional[int] = None) -> List[Dict[str, Any]]:
         # Temporadas activas
-        temporadas_activas = {t.id for t in self.db.query(Temporada).filter(Temporada.activa == True).all()}
+        temporadas_q = scope_by_empresa(
+            self.db.query(Temporada), self.current_user, Temporada.empresa_id
+        )
+        temporadas_activas = {t.id for t in temporadas_q.filter(Temporada.activa == True).all()}
         
         q = (
             self.db.query(StockInventario)
@@ -745,6 +776,7 @@ class ReportService:
             )
             .filter(StockInventario.cantidad > 0)
         )
+        q = self._scope_branch(q, StockInventario.sucursal_id)
         if sucursal_id:
             q = q.filter(StockInventario.sucursal_id == sucursal_id)
 
@@ -772,8 +804,11 @@ class ReportService:
 
     # Reporte de Auditoría y Bitácora
     def get_auditoria_report_data(self, limit: int = 150) -> List[Dict[str, Any]]:
+        logs_query = scope_by_empresa(
+            self.db.query(Bitacora), self.current_user, Bitacora.empresa_id
+        )
         logs = (
-            self.db.query(Bitacora)
+            logs_query
             .options(joinedload(Bitacora.user))
             .order_by(Bitacora.created_at.desc())
             .limit(limit)
@@ -796,6 +831,7 @@ class ReportService:
         try:
             from app.models.compra import Compra
             q = self.db.query(Compra).options(joinedload(Compra.proveedor), joinedload(Compra.sucursal))
+            q = self._scope_branch(q, Compra.sucursal_id)
             if sucursal_id:
                 q = q.filter(Compra.sucursal_id == sucursal_id)
             compras = q.order_by(Compra.fecha.desc()).all()
@@ -811,4 +847,3 @@ class ReportService:
             return res
         except Exception:
             return []
-

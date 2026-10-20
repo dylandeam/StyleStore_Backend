@@ -20,7 +20,7 @@ async def list_colores(
     db: Session = Depends(get_db),
 ):
     service = ColorService(db)
-    return service.list_colores()
+    return service.list_colores(current_user)
 
 
 @router.get("/{color_id}", response_model=ColorResponse, summary="Obtener color por ID")
@@ -30,7 +30,7 @@ async def get_color(
     db: Session = Depends(get_db),
 ):
     service = ColorService(db)
-    return service.get_color_by_id(color_id)
+    return service.get_color_by_id(color_id, current_user)
 
 
 @router.post("", response_model=ColorResponse, status_code=status.HTTP_201_CREATED, summary="Crear color")

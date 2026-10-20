@@ -20,7 +20,7 @@ async def list_categorias(
     db: Session = Depends(get_db),
 ):
     service = CategoriaService(db)
-    return service.list_categorias()
+    return service.list_categorias(current_user)
 
 
 @router.get("/{cat_id}", response_model=CategoriaResponse, summary="Obtener categoría por ID")
@@ -30,7 +30,7 @@ async def get_categoria(
     db: Session = Depends(get_db),
 ):
     service = CategoriaService(db)
-    return service.get_categoria_by_id(cat_id)
+    return service.get_categoria_by_id(cat_id, current_user)
 
 
 @router.post("", response_model=CategoriaResponse, status_code=status.HTTP_201_CREATED, summary="Crear categoría")

@@ -39,6 +39,9 @@ class Proveedor(Base):
     __tablename__ = "proveedores"
 
     codigo: Mapped[str] = mapped_column(String(30), primary_key=True, index=True)
+    empresa_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("empresas.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
     nombre: Mapped[str] = mapped_column(String(100), nullable=False)
     apellido: Mapped[str] = mapped_column(String(100), nullable=False)
     ci: Mapped[str | None] = mapped_column(String(20), unique=True, index=True, nullable=True)

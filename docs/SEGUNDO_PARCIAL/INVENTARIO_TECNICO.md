@@ -1,6 +1,6 @@
 # Inventario técnico verificado — segundo parcial
 
-Fecha de corte: 19/10/2026. Fuente operativa: código de las ramas `main` de Backend, Frontend y Mobile.
+Fecha de corte: 20/10/2026. Fuente operativa: código de las ramas `main` de Backend, Frontend y Mobile.
 
 ## Resultado de auditoría
 
@@ -10,7 +10,7 @@ Fecha de corte: 19/10/2026. Fuente operativa: código de las ramas `main` de Bac
 | Datos | 40+ modelos para usuarios, catálogo, stock, carrito, ventas, pagos, reservas, delivery, cambios, notificaciones, reportes y AR | La cadena Alembic solo cubría hasta v5; varias ampliaciones posteriores dependían de DDL defensivo en `init_db.py` |
 | Web | Angular 21 standalone, guards, interceptor JWT, catálogo, administración, pagos, reportes, delivery y vestidor | No era PWA, no tenía Service Worker, Manifest comercial, IndexedDB ni cola offline |
 | Mobile | Flutter + Provider + secure storage, fallback multi-host, refresh JWT, catálogo, carrito, pedidos, PayPal, delivery, chatbot y vestidor | No tenía SQLite, cola offline ni sincronización comercial |
-| Reportes | Vista previa y exportación Excel/PDF para múltiples familias; asistente de reportes en backend/web | Falta aislamiento tenant/plan completo y evidencia de voz y cuatro escenarios multiempresa |
+| Reportes | Vista previa y exportación Excel/PDF para múltiples familias; consultas y agregados limitados al tenant | Falta autorización por plan, evidencia de voz y cuatro escenarios multiempresa completos |
 | ML | Recomendaciones heurísticas/IA y análisis de prendas | No existen dataset reproducible ni modelos supervisado/no supervisado entrenados |
 | Documentación | Guías y especificaciones históricas en la carpeta raíz | No existían artefactos ICONIX/UML del segundo parcial ni matriz viva de evidencias |
 | Despliegue | Remotos GitHub configurados; URLs Railway/Vercel declaradas en guía | El despliegue no se modifica automáticamente con un commit local; falta verificar pipeline/push y APK final |
@@ -24,8 +24,10 @@ Cadena lineal antes del segundo parcial:
 3. `c48a9e102f4a`: entidades v4, variantes y stock.
 4. `d59b0f213a5b`: roles dinámicos y entidades comerciales v5.
 5. `e7a1c4b9d210`: base aditiva empresa/tenant incorporada en este corte.
+6. `f28b6d91a043`: horarios configurables de sucursal y fecha/hora de retiro.
+7. `a41c7e9d2b65`: ámbito empresa en catálogo, proveedores, QR y bitácora.
 
-Existe una sola cabeza Alembic. La migración tenant conserva datos históricos asignándolos a la empresa legado `stylestore`.
+Existe una sola cabeza Alembic (`a41c7e9d2b65`). La generación SQL de upgrade y downgrade fue comprobada; las migraciones conservan datos históricos asignándolos a la empresa legado `stylestore`.
 
 ## Seguridad y permisos comprobados
 
@@ -33,9 +35,10 @@ Existe una sola cabeza Alembic. La migración tenant conserva datos históricos 
 - El claim `empresa_id` se contrasta con la asignación vigente del usuario.
 - Se separó administrador global de plataforma (`is_platform_admin`) y administrador de empresa.
 - La creación de empresas está reservada al administrador global.
-- Usuarios y sucursales se filtran por empresa para sesiones tenant.
-- Una lectura directa de una sucursal ajena devuelve 404.
-- Esta cobertura todavía no alcanza todos los recursos privados; por eso REQ-006/007 permanecen `EN_CURSO`.
+- Usuarios, sucursales, catálogo, proveedores, stock, carrito, ventas, compras, pagos, envíos, cambios, bitácora, dashboard y reportes se filtran por empresa o por sus sucursales.
+- Las referencias cruzadas de catálogo y las lecturas directas de recursos operativos ajenos devuelven 404.
+- Hay pruebas negativas A/B para sucursales, usuarios, personal, clientes, catálogo, proveedores, inventario, ventas, pagos, envíos, dashboard y reporte de ventas.
+- La cobertura de archivos, respaldos globales y algunos recursos secundarios aún debe cerrarse; por eso REQ-006/007 permanecen `EN_CURSO`.
 
 ## Regresiones preservadas
 
@@ -59,7 +62,7 @@ flutter test --no-pub
 
 ## Riesgos abiertos
 
-- Aislamiento tenant incompleto fuera de usuarios y sucursales.
+- Falta cerrar aislamiento de archivos, respaldos globales y recursos secundarios antes de declarar completa la frontera tenant.
 - DDL histórico en `init_db.py` debe trasladarse gradualmente a migraciones controladas.
 - Credenciales demostrativas visibles en código histórico deben salir a variables de entorno antes de producción real.
 - Faltan PWA/IndexedDB, Flutter/SQLite, sync idempotente, planes y ML.

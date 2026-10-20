@@ -13,8 +13,28 @@ from app.models.producto_color import ProductoColor
 from app.models.color import Color
 from app.models.talla import Talla
 from app.models.sucursal import Sucursal
+from app.models.empresa import Empresa
+from app.models.user import User
+from app.api.deps import get_optional_current_user
+from app.core.exceptions import NotFoundException
 
 router = APIRouter(prefix="/catalogo", tags=["Catálogo"])
+
+
+def _resolve_empresa_id(
+    db: Session, current_user: User | None, sucursal_id: int | None = None
+) -> int | None:
+    if sucursal_id is not None:
+        sucursal = db.query(Sucursal).filter(Sucursal.id == sucursal_id, Sucursal.active.is_(True)).first()
+        if not sucursal:
+            raise NotFoundException("Sucursal no encontrada.")
+        if current_user and not current_user.is_platform_admin and sucursal.empresa_id != current_user.empresa_id:
+            raise NotFoundException("Sucursal no encontrada.")
+        return sucursal.empresa_id
+    if current_user:
+        return current_user.empresa_id
+    default_empresa = db.query(Empresa).filter(Empresa.codigo == "stylestore", Empresa.active.is_(True)).first()
+    return default_empresa.id if default_empresa else None
 
 
 @router.get("", summary="Listar catálogo interactivo de productos")
@@ -24,13 +44,17 @@ async def get_catalogo(
     coleccion_id: int | None = Query(None),
     sucursal_id: int | None = Query(None),
     search: str | None = Query(None),
+    current_user: User | None = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
 ):
     """
     Obtiene los productos activos visibles en catálogo,
     incluyendo variantes de color, tallas disponibles y stock por sucursal.
     """
-    query = db.query(Producto).filter(Producto.active.is_(True), Producto.visible_en_catalogo.is_(True))
+    empresa_id = _resolve_empresa_id(db, current_user, sucursal_id)
+    query = db.query(Producto).filter(
+        Producto.active.is_(True), Producto.visible_en_catalogo.is_(True), Producto.empresa_id == empresa_id
+    )
 
     if categoria_id:
         query = query.filter(Producto.categoria_id == categoria_id)
@@ -114,10 +138,7 @@ async def get_catalogo(
     return result
 
 
-from app.core.exceptions import NotFoundException
 from app.services.recommendation_service import RecommendationService
-from app.api.deps import get_optional_current_user
-from app.models.user import User
 
 
 @router.get("/para-ti", summary="Feed de recomendaciones inteligentes Para Ti con IA local")
@@ -132,13 +153,15 @@ async def get_catalogo_para_ti(
     """
     service = RecommendationService(db)
     user_id = current_user.id if current_user else None
-    return service.get_para_ti_recommendations(user_id=user_id, limit=limit)
+    empresa_id = _resolve_empresa_id(db, current_user)
+    return service.get_para_ti_recommendations(user_id=user_id, limit=limit, empresa_id=empresa_id)
 
 
 @router.get("/{codigo}/detalle", summary="Obtener detalle completo de un producto para compra")
 async def get_producto_detalle(
     codigo: str,
     sucursal_id: int | None = Query(None),
+    current_user: User | None = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
 ):
     """
@@ -148,7 +171,10 @@ async def get_producto_detalle(
     """
     # Búsqueda insensible a mayúsculas/minúsculas y espacios
     clean_cod = codigo.strip().lower()
-    p = db.query(Producto).filter(func.lower(Producto.codigo) == clean_cod).first()
+    empresa_id = _resolve_empresa_id(db, current_user, sucursal_id)
+    p = db.query(Producto).filter(
+        func.lower(Producto.codigo) == clean_cod, Producto.empresa_id == empresa_id
+    ).first()
     if not p:
         raise NotFoundException(f"Producto con código '{codigo}' no encontrado.")
 
@@ -227,6 +253,7 @@ async def get_producto_detalle(
 async def get_producto_recomendados(
     codigo: str,
     limit: int = Query(4, ge=1, le=12),
+    current_user: User | None = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
 ):
     """
@@ -234,5 +261,5 @@ async def get_producto_recomendados(
     el motor de IA local de StyleStore.
     """
     service = RecommendationService(db)
-    return service.get_recommendations_for_product(codigo=codigo, limit=limit)
-
+    empresa_id = _resolve_empresa_id(db, current_user)
+    return service.get_recommendations_for_product(codigo=codigo, limit=limit, empresa_id=empresa_id)

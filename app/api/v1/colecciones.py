@@ -12,6 +12,7 @@ from app.schemas.coleccion import ColeccionCreate, ColeccionUpdate, ColeccionRes
 from app.api.deps import get_current_user, require_permission
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.bitacora_service import BitacoraService
+from app.services.tenant_scope import scope_by_empresa
 
 router = APIRouter(prefix="/colecciones", tags=["Colecciones"])
 
@@ -22,7 +23,9 @@ async def list_colecciones(
     db: Session = Depends(get_db),
 ):
     """Listar todas las colecciones de prendas."""
-    return db.query(Coleccion).order_by(Coleccion.nombre).all()
+    return scope_by_empresa(
+        db.query(Coleccion), current_user, Coleccion.empresa_id
+    ).order_by(Coleccion.nombre).all()
 
 
 @router.get("/{coleccion_id}/productos", summary="Listar productos de una colección")
@@ -32,12 +35,12 @@ async def get_coleccion_productos(
     db: Session = Depends(get_db),
 ):
     """Retorna los productos activos pertenecientes a una colección."""
-    item = db.query(Coleccion).filter(Coleccion.id == coleccion_id).first()
+    item = scope_by_empresa(db.query(Coleccion), current_user, Coleccion.empresa_id).filter(Coleccion.id == coleccion_id).first()
     if not item:
         raise NotFoundException(f"Colección con ID {coleccion_id} no encontrada.")
 
     prods = (
-        db.query(Producto)
+        scope_by_empresa(db.query(Producto), current_user, Producto.empresa_id)
         .filter(Producto.coleccion_id == coleccion_id, Producto.active.is_(True))
         .order_by(Producto.nombre.asc())
         .all()
@@ -70,11 +73,12 @@ async def create_coleccion(
     db: Session = Depends(get_db),
 ):
     """Crear una nueva colección con nombre único."""
-    existing = db.query(Coleccion).filter(Coleccion.nombre.ilike(payload.nombre.strip())).first()
+    existing = scope_by_empresa(db.query(Coleccion), current_user, Coleccion.empresa_id).filter(Coleccion.nombre.ilike(payload.nombre.strip())).first()
     if existing:
         raise BadRequestException(f"Ya existe una colección con el nombre '{payload.nombre.strip()}'.")
 
     item = Coleccion(
+        empresa_id=current_user.empresa_id,
         nombre=payload.nombre.strip(),
         descripcion=payload.descripcion.strip() if payload.descripcion else None,
         active=True,
@@ -99,7 +103,7 @@ async def get_coleccion(
     db: Session = Depends(get_db),
 ):
     """Obtener una colección por ID."""
-    item = db.query(Coleccion).filter(Coleccion.id == coleccion_id).first()
+    item = scope_by_empresa(db.query(Coleccion), current_user, Coleccion.empresa_id).filter(Coleccion.id == coleccion_id).first()
     if not item:
         raise NotFoundException(f"Colección con ID {coleccion_id} no encontrada.")
     return item
@@ -114,12 +118,12 @@ async def update_coleccion(
     db: Session = Depends(get_db),
 ):
     """Editar información de una colección."""
-    item = db.query(Coleccion).filter(Coleccion.id == coleccion_id).first()
+    item = scope_by_empresa(db.query(Coleccion), current_user, Coleccion.empresa_id).filter(Coleccion.id == coleccion_id).first()
     if not item:
         raise NotFoundException(f"Colección con ID {coleccion_id} no encontrada.")
 
     if payload.nombre and payload.nombre.strip() != item.nombre:
-        existing = db.query(Coleccion).filter(
+        existing = scope_by_empresa(db.query(Coleccion), current_user, Coleccion.empresa_id).filter(
             Coleccion.nombre.ilike(payload.nombre.strip()),
             Coleccion.id != coleccion_id,
         ).first()
@@ -151,11 +155,13 @@ async def delete_coleccion(
     db: Session = Depends(get_db),
 ):
     """Eliminar colección validando que no tenga productos asociados."""
-    item = db.query(Coleccion).filter(Coleccion.id == coleccion_id).first()
+    item = scope_by_empresa(db.query(Coleccion), current_user, Coleccion.empresa_id).filter(Coleccion.id == coleccion_id).first()
     if not item:
         raise NotFoundException(f"Colección con ID {coleccion_id} no encontrada.")
 
-    related_prods = db.query(Producto).filter(Producto.coleccion_id == coleccion_id).count()
+    related_prods = scope_by_empresa(
+        db.query(Producto), current_user, Producto.empresa_id
+    ).filter(Producto.coleccion_id == coleccion_id).count()
     if related_prods > 0:
         raise BadRequestException(f"No se puede eliminar la colección '{item.nombre}' porque tiene {related_prods} producto(s) asociado(s).")
 

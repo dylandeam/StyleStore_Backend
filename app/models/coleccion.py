@@ -3,7 +3,7 @@ Modelo Colección (CU15).
 Conforme a Especificación StyleStore v5.
 """
 from datetime import datetime
-from sqlalchemy import String, Boolean, DateTime, Text, func
+from sqlalchemy import String, Boolean, Integer, DateTime, Text, ForeignKey, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -13,9 +13,11 @@ class Coleccion(Base):
     """Tabla de Colecciones de prendas de StyleStore."""
 
     __tablename__ = "colecciones"
+    __table_args__ = (UniqueConstraint("empresa_id", "nombre", name="uq_colecciones_empresa_nombre"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    nombre: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
+    empresa_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("empresas.id", ondelete="RESTRICT"), nullable=True, index=True)
+    nombre: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 

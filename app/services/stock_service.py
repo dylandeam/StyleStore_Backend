@@ -14,6 +14,7 @@ from app.models.sucursal import Sucursal
 from app.models.user import User
 from app.schemas.stock_inventario import StockBulkUpdateRequest, StockInventarioResponse
 from app.services.bitacora_service import BitacoraService
+from app.services.tenant_scope import get_scoped_sucursal, scope_by_empresa, scope_by_sucursal
 
 
 class StockService:
@@ -21,8 +22,10 @@ class StockService:
         self.db = db
         self.bitacora = BitacoraService(db)
 
-    def get_stock_by_producto(self, producto_codigo: str) -> list[StockInventarioResponse]:
-        prod = self.db.query(Producto).filter(Producto.codigo == producto_codigo).first()
+    def get_stock_by_producto(self, producto_codigo: str, current_user: User) -> list[StockInventarioResponse]:
+        prod = scope_by_empresa(
+            self.db.query(Producto), current_user, Producto.empresa_id
+        ).filter(Producto.codigo == producto_codigo).first()
         if not prod:
             raise HTTPException(status_code=404, detail=f"Producto '{producto_codigo}' no existe.")
 
@@ -30,11 +33,13 @@ class StockService:
         if not pc_ids:
             return []
 
-        stocks = (
+        stocks_query = (
             self.db.query(StockInventario)
             .filter(StockInventario.producto_color_id.in_(pc_ids))
-            .all()
         )
+        stocks = scope_by_sucursal(
+            stocks_query, self.db, current_user, StockInventario.sucursal_id
+        ).all()
 
         result = []
         for s in stocks:
@@ -56,9 +61,11 @@ class StockService:
         return result
 
     def update_stock_bulk(
-        self, producto_codigo: str, req: StockBulkUpdateRequest, current_user: User | None = None
+        self, producto_codigo: str, req: StockBulkUpdateRequest, current_user: User
     ) -> list[StockInventarioResponse]:
-        prod = self.db.query(Producto).filter(Producto.codigo == producto_codigo).first()
+        prod = scope_by_empresa(
+            self.db.query(Producto), current_user, Producto.empresa_id
+        ).filter(Producto.codigo == producto_codigo).first()
         if not prod:
             raise HTTPException(status_code=404, detail=f"Producto '{producto_codigo}' no existe.")
 
@@ -75,7 +82,9 @@ class StockService:
             pc = colores_map.get(target_color_id)
             if not pc:
                 # Si el color no estaba pre-asociado al producto, lo asociamos automáticamente
-                color_entity = self.db.query(Color).filter(Color.id == target_color_id).first()
+                color_entity = scope_by_empresa(
+                    self.db.query(Color), current_user, Color.empresa_id
+                ).filter(Color.id == target_color_id).first()
                 if color_entity:
                     pc = ProductoColor(producto_codigo=prod.codigo, color_id=target_color_id)
                     self.db.add(pc)
@@ -87,10 +96,9 @@ class StockService:
                         detail=f"El color con ID {target_color_id} no existe en el sistema.",
                     )
 
-            if not self.db.query(Talla).filter(Talla.id == item.talla_id).first():
+            if not scope_by_empresa(self.db.query(Talla), current_user, Talla.empresa_id).filter(Talla.id == item.talla_id).first():
                 raise HTTPException(status_code=404, detail=f"Talla ID {item.talla_id} no existe.")
-            if not self.db.query(Sucursal).filter(Sucursal.id == item.sucursal_id).first():
-                raise HTTPException(status_code=404, detail=f"Sucursal ID {item.sucursal_id} no existe.")
+            get_scoped_sucursal(self.db, current_user, item.sucursal_id)
 
             stock_row = (
                 self.db.query(StockInventario)
@@ -123,4 +131,4 @@ class StockService:
                 module="productos",
             )
 
-        return self.get_stock_by_producto(producto_codigo)
+        return self.get_stock_by_producto(producto_codigo, current_user)

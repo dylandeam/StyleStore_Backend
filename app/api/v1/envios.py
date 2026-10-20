@@ -12,17 +12,51 @@ from app.models.user import User
 from app.models.cliente import Cliente
 from app.models.orden_venta import OrdenVenta
 from app.models.envio import Envio
+from app.models.empresa import Empresa
 from app.schemas.pago_envio import (
     EnvioCotizacionRequest,
     EnvioCreateRequest,
     EnvioUpdateRequest,
     EnvioResponse,
 )
-from app.api.deps import get_current_user, require_permission
+from app.api.deps import get_current_user, get_optional_current_user, require_permission
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.bitacora_service import BitacoraService
+from app.services.tenant_scope import get_scoped_sucursal, scope_by_empresa, scope_by_sucursal
+from app.models.sucursal import Sucursal
 
 router = APIRouter(prefix="/envios", tags=["Envíos"])
+
+
+def _envio_query(db: Session, current_user: User):
+    query = db.query(Envio).join(OrdenVenta, Envio.orden_venta_id == OrdenVenta.id)
+    query = scope_by_sucursal(query, db, current_user, OrdenVenta.sucursal_id)
+    if current_user.role == "cliente":
+        query = query.join(Cliente, OrdenVenta.codigo_cliente == Cliente.codigo).filter(
+            Cliente.user_id == current_user.id
+        )
+    return query
+
+
+def _get_scoped_envio(db: Session, current_user: User, envio_id: int) -> Envio:
+    envio = _envio_query(db, current_user).filter(Envio.id == envio_id).first()
+    if not envio:
+        raise NotFoundException(f"Envío con ID {envio_id} no encontrado.")
+    return envio
+
+
+def _get_scoped_order(db: Session, current_user: User, orden_id: int) -> OrdenVenta:
+    query = scope_by_sucursal(
+        db.query(OrdenVenta), db, current_user, OrdenVenta.sucursal_id
+    ).filter(OrdenVenta.id == orden_id)
+    if current_user.role == "cliente":
+        query = query.join(Cliente, OrdenVenta.codigo_cliente == Cliente.codigo).filter(
+            Cliente.user_id == current_user.id
+        )
+    orden = query.first()
+    if not orden:
+        raise NotFoundException(f"Orden de venta con ID {orden_id} no encontrada.")
+    return orden
 
 
 def _calcular_tarifa_escalonada(distancia_km: float) -> Decimal:
@@ -95,11 +129,7 @@ async def create_envio(
     """Crea el registro de envío asociado a una orden de venta con tarifa fija 5 Bs + 0.60 Bs/km."""
     import uuid
     from app.core.geo import cotizar_costo_envio, extraer_coordenadas_de_url, calcular_distancia_haversine
-    from app.models.sucursal import Sucursal
-
-    orden = db.query(OrdenVenta).filter(OrdenVenta.id == payload.orden_venta_id).first()
-    if not orden:
-        raise NotFoundException(f"Orden de venta con ID {payload.orden_venta_id} no encontrada.")
+    orden = _get_scoped_order(db, current_user, payload.orden_venta_id)
 
     dir_val = payload.direccion.strip() if payload.direccion else ""
     ub_url = payload.ubicacion_url.strip() if payload.ubicacion_url else None
@@ -120,9 +150,11 @@ async def create_envio(
     # Obtener sucursal de la orden para cálculo de origen
     sucursal = None
     if orden.sucursal_id:
-        sucursal = db.query(Sucursal).filter(Sucursal.id == orden.sucursal_id).first()
+        sucursal = get_scoped_sucursal(db, current_user, orden.sucursal_id)
     if not sucursal:
-        sucursal = db.query(Sucursal).first()
+        sucursal = scope_by_empresa(
+            db.query(Sucursal), current_user, Sucursal.empresa_id
+        ).first()
 
     orig_lat = float(sucursal.latitud) if sucursal and sucursal.latitud else None
     orig_lon = float(sucursal.longitud) if sucursal and sucursal.longitud else None
@@ -196,9 +228,7 @@ async def complete_envio(
     db: Session = Depends(get_db),
 ):
     """Actualiza el estado del envío a 'completado' cuando el cliente confirma recepción."""
-    envio = db.query(Envio).filter(Envio.id == envio_id).first()
-    if not envio:
-        raise NotFoundException(f"Envío con ID {envio_id} no encontrado.")
+    envio = _get_scoped_envio(db, current_user, envio_id)
 
     envio.estado = "completado"
     if envio.orden_venta:
@@ -231,9 +261,7 @@ async def update_delivery_tracking(
     Asigna repartidor, código de rastreo o actualiza estado del despacho Delivery StyleStore.
     """
     import uuid
-    envio = db.query(Envio).filter(Envio.id == envio_id).first()
-    if not envio:
-        raise NotFoundException(f"Envío con ID {envio_id} no encontrado.")
+    envio = _get_scoped_envio(db, current_user, envio_id)
 
     if not envio.token_seguimiento:
         envio.token_seguimiento = f"TRK-{uuid.uuid4().hex[:10].upper()}"
@@ -456,7 +484,8 @@ async def get_envio_by_orden(
     db: Session = Depends(get_db),
 ):
     """Permite al cliente o encargado ver el estado y tracking en vivo del envío de su orden."""
-    envio = db.query(Envio).filter(Envio.orden_venta_id == orden_id).first()
+    _get_scoped_order(db, current_user, orden_id)
+    envio = _envio_query(db, current_user).filter(Envio.orden_venta_id == orden_id).first()
     if not envio:
         raise NotFoundException(f"No hay despacho registrado para la orden #{orden_id}.")
     return _serialize_envio(envio)
@@ -472,16 +501,7 @@ async def list_envios(
         cliente = db.query(Cliente).filter(Cliente.user_id == current_user.id).first()
         if not cliente:
             return []
-        envios = (
-            db.query(Envio)
-            .join(OrdenVenta, Envio.orden_venta_id == OrdenVenta.id)
-            .filter(OrdenVenta.codigo_cliente == cliente.codigo)
-            .order_by(Envio.created_at.desc())
-            .all()
-        )
-        return [_serialize_envio(e) for e in envios]
-
-    envios = db.query(Envio).order_by(Envio.created_at.desc()).all()
+    envios = _envio_query(db, current_user).order_by(Envio.created_at.desc()).all()
     return [_serialize_envio(e) for e in envios]
 
 
@@ -493,9 +513,7 @@ async def update_envio(
     db: Session = Depends(get_db),
 ):
     """Editar detalles de un envío."""
-    envio = db.query(Envio).filter(Envio.id == envio_id).first()
-    if not envio:
-        raise NotFoundException(f"Envío con ID {envio_id} no encontrado.")
+    envio = _get_scoped_envio(db, current_user, envio_id)
 
     if payload.direccion is not None:
         envio.direccion = payload.direccion.strip()
@@ -529,9 +547,7 @@ async def delete_envio(
     db: Session = Depends(get_db),
 ):
     """Eliminar un envío."""
-    envio = db.query(Envio).filter(Envio.id == envio_id).first()
-    if not envio:
-        raise NotFoundException(f"Envío con ID {envio_id} no encontrado.")
+    envio = _get_scoped_envio(db, current_user, envio_id)
 
     db.delete(envio)
     db.commit()
@@ -552,6 +568,7 @@ async def delete_envio(
 @router.post("/cotizar-distancia", summary="Cotización de envío con distancia real Haversine")
 async def cotizar_por_distancia(
     payload: dict,
+    current_user: User | None = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
 ):
     """
@@ -565,8 +582,6 @@ async def cotizar_por_distancia(
         geocodificar_aproximado,
         extraer_coordenadas_de_url,
     )
-    from app.models.sucursal import Sucursal
-
     sucursal_id = payload.get("sucursal_id")
     sucursal_maps_url_in = payload.get("sucursal_maps_url")
     sucursal_nombre_in = payload.get("sucursal_nombre")
@@ -577,13 +592,22 @@ async def cotizar_por_distancia(
     ciudad = payload.get("ciudad", "santa cruz")
 
     # 1. Obtener sucursal de origen
+    sucursal_query = db.query(Sucursal)
+    if current_user is not None:
+        sucursal_query = scope_by_empresa(sucursal_query, current_user, Sucursal.empresa_id)
+    else:
+        empresa_default = db.query(Empresa).filter(Empresa.codigo == "stylestore").first()
+        sucursal_query = sucursal_query.filter(
+            Sucursal.empresa_id == (empresa_default.id if empresa_default else None)
+        )
+
     sucursal = None
     if sucursal_id:
-        sucursal = db.query(Sucursal).filter(Sucursal.id == sucursal_id).first()
+        sucursal = sucursal_query.filter(Sucursal.id == sucursal_id).first()
     if not sucursal and sucursal_nombre_in:
-        sucursal = db.query(Sucursal).filter(Sucursal.nombre.ilike(f"%{sucursal_nombre_in}%")).first()
+        sucursal = sucursal_query.filter(Sucursal.nombre.ilike(f"%{sucursal_nombre_in}%")).first()
     if not sucursal:
-        sucursal = db.query(Sucursal).first()
+        sucursal = sucursal_query.first()
 
     # 2. Determinar coordenadas de la Sucursal (Origen)
     lat_orig, lon_orig = None, None
@@ -679,7 +703,7 @@ async def list_envios_asignados(
     """Retorna los envíos asignados al repartidor en sesión o pendientes."""
     if current_user.role == "repartidor":
         envios = (
-            db.query(Envio)
+            _envio_query(db, current_user)
             .filter(
                 (Envio.repartidor_id == current_user.id) | (Envio.repartidor_id == None),
                 Envio.estado.in_(["pendiente", "en camino"]),
@@ -688,7 +712,7 @@ async def list_envios_asignados(
             .all()
         )
     else:
-        envios = db.query(Envio).order_by(Envio.created_at.desc()).all()
+        envios = _envio_query(db, current_user).order_by(Envio.created_at.desc()).all()
 
     return [_serialize_envio(e) for e in envios]
 
@@ -701,12 +725,13 @@ async def asignar_repartidor(
     db: Session = Depends(get_db),
 ):
     """Asigna un usuario con rol repartidor a un envío."""
-    envio = db.query(Envio).filter(Envio.id == envio_id).first()
-    if not envio:
-        raise NotFoundException(f"Envío #{envio_id} no encontrado.")
+    envio = _get_scoped_envio(db, current_user, envio_id)
 
     repartidor_id = payload.get("repartidor_id") or current_user.id
-    rep = db.query(User).filter(User.id == repartidor_id).first()
+    rep_query = db.query(User).filter(User.id == repartidor_id)
+    if not current_user.is_platform_admin:
+        rep_query = rep_query.filter(User.empresa_id == current_user.empresa_id)
+    rep = rep_query.first()
     if not rep:
         raise NotFoundException(f"Usuario repartidor #{repartidor_id} no encontrado.")
 
@@ -736,9 +761,7 @@ async def update_posicion_repartidor(
     db: Session = Depends(get_db),
 ):
     """Actualiza latitud y longitud en tiempo real del repartidor para el tracking."""
-    envio = db.query(Envio).filter(Envio.id == envio_id).first()
-    if not envio:
-        raise NotFoundException(f"Envío #{envio_id} no encontrado.")
+    envio = _get_scoped_envio(db, current_user, envio_id)
 
     lat = payload.get("lat")
     lon = payload.get("lon")
@@ -761,9 +784,7 @@ async def update_estado_despacho(
     db: Session = Depends(get_db),
 ):
     """Permite al repartidor o staff cambiar estado a 'en camino', 'entregado', etc."""
-    envio = db.query(Envio).filter(Envio.id == envio_id).first()
-    if not envio:
-        raise NotFoundException(f"Envío #{envio_id} no encontrado.")
+    envio = _get_scoped_envio(db, current_user, envio_id)
 
     nuevo_estado = payload.get("estado")
     if not nuevo_estado:
@@ -784,6 +805,7 @@ async def update_estado_despacho(
 @router.get("/{envio_id}/tracking", summary="Obtener coordenadas y puntos para mapa Leaflet")
 async def get_envio_tracking_map(
     envio_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
@@ -791,9 +813,7 @@ async def get_envio_tracking_map(
     Marcador de sucursal, marcador de destino y marcador de repartidor.
     """
     from app.core.geo import geocodificar_aproximado, calcular_distancia_haversine, estimar_tiempo_entrega
-    envio = db.query(Envio).filter(Envio.id == envio_id).first()
-    if not envio:
-        raise NotFoundException(f"Envío #{envio_id} no encontrado.")
+    envio = _get_scoped_envio(db, current_user, envio_id)
 
     orden = envio.orden_venta
     sucursal = orden.sucursal if orden else None
@@ -853,4 +873,3 @@ async def get_envio_tracking_map(
         },
         "repartidor": rep_pos,
     }
-

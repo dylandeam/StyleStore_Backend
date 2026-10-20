@@ -33,7 +33,10 @@ async def generar_prueba_virtual(
     db: Session = Depends(get_db),
 ) -> Any:
     # 1. Verificar producto
-    prod = db.query(Producto).filter(Producto.codigo == producto_codigo).first()
+    product_query = db.query(Producto).filter(Producto.codigo == producto_codigo)
+    if not current_user.is_platform_admin:
+        product_query = product_query.filter(Producto.empresa_id == current_user.empresa_id)
+    prod = product_query.first()
     if not prod:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
 

@@ -18,6 +18,9 @@ class Producto(Base):
     __tablename__ = "productos"
 
     codigo: Mapped[str] = mapped_column(String(50), primary_key=True, index=True)
+    empresa_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("empresas.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
     nombre: Mapped[str] = mapped_column(String(150), index=True, nullable=False)
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
     foto: Mapped[str | None] = mapped_column(String(255), nullable=True)

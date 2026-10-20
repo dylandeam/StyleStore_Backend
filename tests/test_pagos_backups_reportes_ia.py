@@ -11,6 +11,8 @@ from app.models.temporada import Temporada
 from app.models.orden_venta import OrdenVenta
 from app.models.envio import Envio
 from app.models.cliente import Cliente
+from app.models.empresa import Empresa
+from app.models.sucursal import Sucursal
 from app.config import settings
 
 
@@ -18,7 +20,25 @@ from app.models.user import User
 from app.core.security import hash_password
 
 
+def _default_tenant(db_session):
+    empresa = db_session.query(Empresa).filter(Empresa.codigo == "stylestore").one()
+    sucursal = db_session.query(Sucursal).filter(Sucursal.empresa_id == empresa.id).first()
+    if not sucursal:
+        sucursal = Sucursal(
+            empresa_id=empresa.id,
+            name="Sucursal Pruebas",
+            city="Santa Cruz",
+            address="Av. Pruebas 123",
+            phone="70000000",
+            active=True,
+        )
+        db_session.add(sucursal)
+        db_session.commit()
+    return empresa, sucursal
+
+
 def _ensure_cliente(db_session, codigo="CLI-9999"):
+    empresa, _ = _default_tenant(db_session)
     cli = db_session.query(Cliente).filter(Cliente.codigo == codigo).first()
     if not cli:
         # Crear usuario para el cliente
@@ -26,6 +46,7 @@ def _ensure_cliente(db_session, codigo="CLI-9999"):
         u = db_session.query(User).filter(User.email == email).first()
         if not u:
             u = User(
+                empresa_id=empresa.id,
                 email=email,
                 name="Cliente Pruebas",
                 hashed_password=hash_password("Pass123!"),
@@ -47,14 +68,15 @@ def _ensure_cliente(db_session, codigo="CLI-9999"):
 
 
 def test_catalogo_detalle_y_recomendados_ia(client: TestClient, admin_token: str, db_session):
+    empresa, _ = _default_tenant(db_session)
     # 1. Crear categoría y temporada
     cat = db_session.query(Categoria).filter(Categoria.nombre == "Pantalones y Jeans Test").first()
     if not cat:
-        cat = Categoria(nombre="Pantalones y Jeans Test")
+        cat = Categoria(nombre="Pantalones y Jeans Test", empresa_id=empresa.id)
         db_session.add(cat)
     temp = db_session.query(Temporada).filter(Temporada.nombre == "Invierno 2025 Test").first()
     if not temp:
-        temp = Temporada(nombre="Invierno 2025 Test")
+        temp = Temporada(nombre="Invierno 2025 Test", empresa_id=empresa.id)
         db_session.add(temp)
     db_session.commit()
 
@@ -63,6 +85,7 @@ def test_catalogo_detalle_y_recomendados_ia(client: TestClient, admin_token: str
     if not p1:
         p1 = Producto(
             codigo="PANT-VINT-01",
+            empresa_id=empresa.id,
             nombre="Pantalón de Tela Vintage Wide",
             descripcion="Pantalón retro clásico de tela de corte holgado",
             precio=Decimal("45.00"),
@@ -77,6 +100,7 @@ def test_catalogo_detalle_y_recomendados_ia(client: TestClient, admin_token: str
     if not p2:
         p2 = Producto(
             codigo="PANT-VINT-02",
+            empresa_id=empresa.id,
             nombre="Pantalón de Tela Clásico Recto",
             descripcion="Pantalón de vestir retro elegante de tela fina",
             precio=Decimal("48.00"),
@@ -108,6 +132,7 @@ def test_catalogo_detalle_y_recomendados_ia(client: TestClient, admin_token: str
 def test_caja_pos_y_paypal_flow(client: TestClient, admin_token: str, db_session):
     headers = {"Authorization": f"Bearer {admin_token}"}
     cli = _ensure_cliente(db_session, "CLI-9999")
+    _, sucursal = _default_tenant(db_session)
 
     # 1. Crear orden de venta
     orden = OrdenVenta(
@@ -115,6 +140,7 @@ def test_caja_pos_y_paypal_flow(client: TestClient, admin_token: str, db_session
         total=Decimal("100.00"),
         estado="pendiente",
         tipo_venta="presencial",
+        sucursal_id=sucursal.id,
     )
     db_session.add(orden)
     db_session.commit()
@@ -136,6 +162,7 @@ def test_caja_pos_y_paypal_flow(client: TestClient, admin_token: str, db_session
         total=Decimal("75.50"),
         estado="pendiente",
         tipo_venta="en_linea",
+        sucursal_id=sucursal.id,
     )
     db_session.add(orden2)
     db_session.commit()
@@ -164,6 +191,7 @@ def test_caja_pos_y_paypal_flow(client: TestClient, admin_token: str, db_session
 def test_qr_pago_config_y_cobro_qr(client: TestClient, admin_token: str, db_session):
     headers = {"Authorization": f"Bearer {admin_token}"}
     cli = _ensure_cliente(db_session, "CLI-QR-TEST")
+    _, sucursal = _default_tenant(db_session)
 
     # 1. Obtener QR config (debe responder aun si no hay imagen configurada)
     res_get = client.get("/api/v1/pagos/config-qr")
@@ -195,6 +223,7 @@ def test_qr_pago_config_y_cobro_qr(client: TestClient, admin_token: str, db_sess
         total=Decimal("89.90"),
         estado="pendiente",
         tipo_venta="presencial",
+        sucursal_id=sucursal.id,
     )
     db_session.add(orden_qr)
     db_session.commit()
@@ -319,8 +348,14 @@ def test_bitacora_verificar_llave(client: TestClient, admin_token: str):
 def test_envio_yango_tracking(client: TestClient, admin_token: str, db_session):
     headers = {"Authorization": f"Bearer {admin_token}"}
     cli = _ensure_cliente(db_session, "CLI-8888")
+    _, sucursal = _default_tenant(db_session)
 
-    orden = OrdenVenta(codigo_cliente=cli.codigo, total=Decimal("50.00"), estado="pagada")
+    orden = OrdenVenta(
+        codigo_cliente=cli.codigo,
+        total=Decimal("50.00"),
+        estado="pagada",
+        sucursal_id=sucursal.id,
+    )
     db_session.add(orden)
     db_session.commit()
 

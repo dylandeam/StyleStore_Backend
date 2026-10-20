@@ -2,7 +2,7 @@
 Bitacora (Audit Log) model for CU6.
 """
 from datetime import datetime
-from sqlalchemy import String, DateTime, ForeignKey, func
+from sqlalchemy import String, Integer, DateTime, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -14,6 +14,9 @@ class Bitacora(Base):
     __tablename__ = "bitacora"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    empresa_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("empresas.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
     user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )

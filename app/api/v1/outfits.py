@@ -19,6 +19,7 @@ from app.schemas.outfit import OutfitCreate, OutfitResponse, OutfitItemResponse
 from app.api.deps import get_current_user
 from app.api.v1.carrito import _get_or_create_cliente
 from app.services.bitacora_service import BitacoraService
+from app.services.tenant_scope import scope_by_sucursal
 
 router = APIRouter(prefix="/outfits", tags=["Outfits y Combinaciones"])
 
@@ -75,7 +76,10 @@ async def create_outfit(
     items_to_add = []
 
     for item_in in payload.items:
-        producto = db.query(Producto).filter(Producto.codigo == item_in.producto_codigo).first()
+        producto_query = db.query(Producto).filter(Producto.codigo == item_in.producto_codigo)
+        if not current_user.is_platform_admin:
+            producto_query = producto_query.filter(Producto.empresa_id == current_user.empresa_id)
+        producto = producto_query.first()
         if not producto:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -127,7 +131,9 @@ async def delete_outfit(
     db: Session = Depends(get_db),
 ):
     """Elimina un outfit guardado por el usuario."""
-    outfit = db.query(Outfit).filter(Outfit.id == outfit_id).first()
+    outfit = db.query(Outfit).filter(
+        Outfit.id == outfit_id, Outfit.user_id == current_user.id
+    ).first()
     if not outfit:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Outfit no encontrado.")
 
@@ -164,7 +170,9 @@ async def buy_outfit(
     Agrega todas las prendas del outfit al carrito activo del cliente en un solo clic.
     Selecciona automáticamente inventario disponible con stock para cada prenda.
     """
-    outfit = db.query(Outfit).filter(Outfit.id == outfit_id).first()
+    outfit = db.query(Outfit).filter(
+        Outfit.id == outfit_id, Outfit.user_id == current_user.id
+    ).first()
     if not outfit:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Outfit no encontrado.")
 
@@ -189,7 +197,9 @@ async def buy_outfit(
     for item in outfit.items:
         # Buscar stock disponible para el producto
         stock = (
-            db.query(StockInventario)
+            scope_by_sucursal(
+                db.query(StockInventario), db, current_user, StockInventario.sucursal_id
+            )
             .join(ProductoColor, StockInventario.producto_color_id == ProductoColor.id)
             .filter(
                 ProductoColor.producto_codigo == item.producto_codigo,

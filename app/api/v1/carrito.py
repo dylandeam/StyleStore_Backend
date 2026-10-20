@@ -23,8 +23,19 @@ from app.schemas.carrito import (
 from app.api.deps import get_current_user, require_permission
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.bitacora_service import BitacoraService
+from app.services.tenant_scope import get_scoped_sucursal, scope_by_empresa, scope_by_sucursal
+from app.models.sucursal import Sucursal
 
 router = APIRouter(prefix="/carrito", tags=["Carrito de Compras"])
+
+
+def _get_scoped_stock(db: Session, current_user: User, stock_id: int, *, lock: bool = False):
+    query = scope_by_sucursal(
+        db.query(StockInventario), db, current_user, StockInventario.sucursal_id
+    ).filter(StockInventario.id == stock_id)
+    if lock:
+        query = query.with_for_update(of=StockInventario)
+    return query.first()
 
 
 def _get_or_create_cliente(user: User, db: Session) -> Cliente:
@@ -149,7 +160,7 @@ async def add_item_to_cart(
         db.add(carrito)
         db.flush()
 
-    stock = db.query(StockInventario).filter(StockInventario.id == payload.stock_inventario_id).first()
+    stock = _get_scoped_stock(db, current_user, payload.stock_inventario_id)
     if not stock:
         raise NotFoundException(f"Inventario con ID {payload.stock_inventario_id} no encontrado.")
 
@@ -210,7 +221,7 @@ async def update_cart_item(
     if payload.cantidad <= 0:
         db.delete(item)
     else:
-        stock = db.query(StockInventario).filter(StockInventario.id == item.stock_inventario_id).first()
+        stock = _get_scoped_stock(db, current_user, item.stock_inventario_id)
         if stock and stock.cantidad < payload.cantidad:
             raise BadRequestException(f"Stock insuficiente. Disponible: {stock.cantidad}.")
         item.cantidad = payload.cantidad
@@ -278,12 +289,7 @@ async def confirm_cart(
 
         # Validar y descontar stock atómicamente
         for item in carrito.items:
-            stock = (
-                db.query(StockInventario)
-                .filter(StockInventario.id == item.stock_inventario_id)
-                .with_for_update(of=StockInventario)
-                .first()
-            )
+            stock = _get_scoped_stock(db, current_user, item.stock_inventario_id, lock=True)
             if not stock:
                 db.rollback()
                 raise NotFoundException(f"Inventario para el ítem #{item.id} no encontrado.")
@@ -326,10 +332,15 @@ async def confirm_cart(
         # La orden de venta se asocia directamente a la sucursal de donde procede el stock real de las prendas
         sucursal_final = sucursal_id_desde_stock or payload.sucursal_id
         if not sucursal_final:
-            from app.models.sucursal import Sucursal
-            first_suc = db.query(Sucursal).filter(Sucursal.active == True).first()
+            first_suc = scope_by_empresa(
+                db.query(Sucursal), current_user, Sucursal.empresa_id
+            ).filter(Sucursal.active == True).first()
             if first_suc:
                 sucursal_final = first_suc.id
+
+        if not sucursal_final:
+            raise BadRequestException("No existe una sucursal activa para completar la compra.")
+        get_scoped_sucursal(db, current_user, sucursal_final)
 
         # Crear Orden de Venta
         metodo = (payload.metodo_pago or "EFECTIVO").upper()
@@ -406,7 +417,6 @@ async def checkout_cart(
     """
     import uuid
     from app.models.envio import Envio
-    from app.models.sucursal import Sucursal
     from app.core.geo import (
         extraer_coordenadas_de_url,
         geocodificar_aproximado,
@@ -430,12 +440,7 @@ async def checkout_cart(
         sucursal_id_desde_stock = None
 
         for item in carrito.items:
-            stock = (
-                db.query(StockInventario)
-                .filter(StockInventario.id == item.stock_inventario_id)
-                .with_for_update(of=StockInventario)
-                .first()
-            )
+            stock = _get_scoped_stock(db, current_user, item.stock_inventario_id, lock=True)
             if not stock:
                 db.rollback()
                 raise NotFoundException(f"Inventario para el ítem #{item.id} no encontrado.")
@@ -474,9 +479,15 @@ async def checkout_cart(
 
         sucursal_final = sucursal_id_desde_stock or payload.sucursal_id
         if not sucursal_final:
-            first_suc = db.query(Sucursal).filter(Sucursal.active == True).first()
+            first_suc = scope_by_empresa(
+                db.query(Sucursal), current_user, Sucursal.empresa_id
+            ).filter(Sucursal.active == True).first()
             if first_suc:
                 sucursal_final = first_suc.id
+
+        if not sucursal_final:
+            raise BadRequestException("No existe una sucursal activa para completar la compra.")
+        get_scoped_sucursal(db, current_user, sucursal_final)
 
         metodo = (payload.metodo_pago or "EFECTIVO").upper()
         orden = OrdenVenta(
@@ -531,7 +542,7 @@ async def checkout_cart(
                 dest_lat, dest_lon = geocodificar_aproximado(texto_busqueda)
 
             # Sucursal origen
-            suc = db.query(Sucursal).filter(Sucursal.id == sucursal_final).first()
+            suc = get_scoped_sucursal(db, current_user, sucursal_final)
             orig_lat = float(suc.latitud) if (suc and suc.latitud) else None
             orig_lon = float(suc.longitud) if (suc and suc.longitud) else None
             if (orig_lat is None or orig_lon is None) and suc and suc.maps_url:
@@ -609,5 +620,12 @@ async def list_admin_carritos(
     db: Session = Depends(get_db),
 ):
     """Listado de compras por carrito para vista administrativa."""
-    carritos = db.query(Carrito).order_by(Carrito.created_at.desc()).all()
+    query = (
+        db.query(Carrito)
+        .join(Cliente, Carrito.codigo_cliente == Cliente.codigo)
+        .join(User, Cliente.user_id == User.id)
+    )
+    if not current_user.is_platform_admin:
+        query = query.filter(User.empresa_id == current_user.empresa_id)
+    carritos = query.order_by(Carrito.created_at.desc()).all()
     return [_serialize_carrito(c) for c in carritos]

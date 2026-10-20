@@ -12,6 +12,7 @@ from app.models.user import User
 from app.models.empleado import Empleado
 from app.services.cambio_service import CambioService
 from app.api.deps import get_current_user
+from app.services.tenant_scope import get_scoped_sucursal
 
 router = APIRouter(prefix="/cambios", tags=["Cambios y Devoluciones"])
 
@@ -46,7 +47,7 @@ async def solicitar_cambio(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    service = CambioService(db)
+    service = CambioService(db, current_user)
     solicitud = service.solicitar_cambio_devolucion(
         user=current_user,
         orden_venta_id=payload.orden_venta_id,
@@ -73,7 +74,7 @@ async def get_mis_solicitudes(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    service = CambioService(db)
+    service = CambioService(db, current_user)
     items = service.listar_mis_solicitudes(user=current_user)
     resultado = []
     for s in items:
@@ -123,7 +124,7 @@ async def listar_solicitudes_staff(
     if sucursal_id == 0:
         sucursal_id = None
 
-    service = CambioService(db)
+    service = CambioService(db, current_user)
     items = service.listar_solicitudes(sucursal_id=sucursal_id, estado=estado, limit=limit, offset=offset)
     resultado = []
     for s in items:
@@ -173,7 +174,7 @@ async def responder_solicitud(
     if current_user.role not in ["administrador", "encargado"]:
         raise HTTPException(status_code=403, detail="Solo administradores y encargados pueden responder solicitudes.")
 
-    service = CambioService(db)
+    service = CambioService(db, current_user)
     solicitud = service.responder_solicitud(
         solicitud_id=solicitud_id,
         nuevo_estado=payload.nuevo_estado,
@@ -192,7 +193,7 @@ async def completar_en_caja(
     if current_user.role not in ["administrador", "encargado", "vendedor"]:
         raise HTTPException(status_code=403, detail="Acceso denegado a personal de caja.")
 
-    service = CambioService(db)
+    service = CambioService(db, current_user)
     solicitud = service.completar_en_caja(
         solicitud_id=solicitud_id,
         reponer_prenda_original=payload.reponer_prenda_original,
@@ -205,6 +206,7 @@ async def completar_en_caja(
 async def get_opciones_disponibles(
     producto_codigo: str,
     sucursal_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
@@ -216,7 +218,13 @@ async def get_opciones_disponibles(
     from app.models.producto_color import ProductoColor
     from sqlalchemy import func
 
-    p = db.query(Producto).filter(func.lower(Producto.codigo) == producto_codigo.strip().lower()).first()
+    get_scoped_sucursal(db, current_user, sucursal_id)
+    product_query = db.query(Producto).filter(
+        func.lower(Producto.codigo) == producto_codigo.strip().lower()
+    )
+    if not current_user.is_platform_admin:
+        product_query = product_query.filter(Producto.empresa_id == current_user.empresa_id)
+    p = product_query.first()
     if not p:
         return {"colores": [], "tallas": []}
 
@@ -259,4 +267,3 @@ async def get_opciones_disponibles(
         "colores": colores,
         "tallas": list(tallas_map.values()),
     }
-

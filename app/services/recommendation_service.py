@@ -47,7 +47,7 @@ class RecommendationService:
         self.db = db
 
     def get_recommendations_for_product(
-        self, codigo: str, limit: int = 4
+        self, codigo: str, limit: int = 4, empresa_id: int | None = None
     ) -> List[Dict[str, Any]]:
         """
         Retorna los productos recomendados más similares al producto con el código dado.
@@ -62,6 +62,7 @@ class RecommendationService:
                 joinedload(Producto.colores_rel).joinedload(ProductoColor.color),
             )
             .filter(func.lower(Producto.codigo) == clean_cod)
+            .filter(Producto.empresa_id == empresa_id if empresa_id is not None else True)
             .first()
         )
         if not target:
@@ -79,6 +80,7 @@ class RecommendationService:
                 Producto.active.is_(True),
                 Producto.visible_en_catalogo.is_(True),
                 Producto.codigo != target.codigo,
+                Producto.empresa_id == target.empresa_id,
             )
             .all()
         )
@@ -184,7 +186,7 @@ class RecommendationService:
         return results
 
     def get_para_ti_recommendations(
-        self, user_id: int | None = None, limit: int = 6
+        self, user_id: int | None = None, limit: int = 6, empresa_id: int | None = None
     ) -> List[Dict[str, Any]]:
         """
         Genera el feed 'Para Ti' de ropa con IA local:
@@ -207,7 +209,7 @@ class RecommendationService:
                         primer_detalle = ultima_orden.detalles[0]
                         if primer_detalle.codigo_producto:
                             recs = self.get_recommendations_for_product(
-                                primer_detalle.codigo_producto, limit=limit
+                                primer_detalle.codigo_producto, limit=limit, empresa_id=empresa_id
                             )
                             for r in recs:
                                 r["razon_recomendacion"] = f"Basado en tus preferencias: {r['razon_recomendacion']}"
@@ -235,6 +237,8 @@ class RecommendationService:
                 .order_by(Producto.created_at.desc())
                 .all()
             )
+            if empresa_id is not None:
+                candidates = [p for p in candidates if p.empresa_id == empresa_id]
 
             fallback_reasons = [
                 "Tendencia destacada de temporada",
@@ -276,4 +280,3 @@ class RecommendationService:
                     break
 
         return results
-

@@ -20,7 +20,7 @@ async def list_temporadas(
     db: Session = Depends(get_db),
 ):
     service = TemporadaService(db)
-    return service.list_temporadas()
+    return service.list_temporadas(current_user)
 
 
 @router.get("/{temp_id}", response_model=TemporadaResponse, summary="Obtener temporada por ID")
@@ -30,7 +30,7 @@ async def get_temporada(
     db: Session = Depends(get_db),
 ):
     service = TemporadaService(db)
-    return service.get_temporada_by_id(temp_id)
+    return service.get_temporada_by_id(temp_id, current_user)
 
 
 @router.post("", response_model=TemporadaResponse, status_code=status.HTTP_201_CREATED, summary="Crear temporada")

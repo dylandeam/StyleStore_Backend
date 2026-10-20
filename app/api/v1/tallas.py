@@ -20,7 +20,7 @@ async def list_tallas(
     db: Session = Depends(get_db),
 ):
     service = TallaService(db)
-    return service.list_tallas()
+    return service.list_tallas(current_user)
 
 
 @router.get("/{talla_id}", response_model=TallaResponse, summary="Obtener talla por ID")
@@ -30,7 +30,7 @@ async def get_talla(
     db: Session = Depends(get_db),
 ):
     service = TallaService(db)
-    return service.get_talla_by_id(talla_id)
+    return service.get_talla_by_id(talla_id, current_user)
 
 
 @router.post("", response_model=TallaResponse, status_code=status.HTTP_201_CREATED, summary="Crear talla")

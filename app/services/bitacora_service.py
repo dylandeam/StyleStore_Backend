@@ -30,14 +30,18 @@ class BitacoraService:
         user_id = None
         if isinstance(user, User):
             user_id = user.id
+            empresa_id = user.empresa_id
             user_snapshot = f"{user.name} ({user.email})"
         elif isinstance(user, str):
             user_snapshot = user
         else:
             user_snapshot = "Sistema"
+        if not isinstance(user, User):
+            empresa_id = None
 
         log_entry = Bitacora(
             user_id=user_id,
+            empresa_id=empresa_id,
             user_snapshot=user_snapshot,
             action=action,
             module=module,
@@ -66,8 +70,13 @@ class BitacoraService:
         if user is not None:
             return self.registrar(db=target_db, user=user, action=action, module=module, ip_address=ip_address)
 
+        empresa_id = None
+        if user_id is not None:
+            owner = target_db.query(User).filter(User.id == user_id).first()
+            empresa_id = owner.empresa_id if owner else None
         log_entry = Bitacora(
             user_id=user_id,
+            empresa_id=empresa_id,
             user_snapshot=user_snapshot or "Sistema",
             action=action,
             module=module,
@@ -87,9 +96,12 @@ class BitacoraService:
         module: str | None = None,
         page: int = 1,
         size: int = 20,
+        current_user: User | None = None,
     ) -> dict:
         """Retrieve paginated audit logs with optional filters."""
         query = db.query(Bitacora)
+        if current_user is not None and not current_user.is_platform_admin:
+            query = query.filter(Bitacora.empresa_id == current_user.empresa_id)
 
         if user_query:
             query = query.filter(Bitacora.user_snapshot.ilike(f"%{user_query}%"))

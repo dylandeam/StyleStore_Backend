@@ -22,7 +22,7 @@ async def list_proveedores(
     db: Session = Depends(get_db),
 ):
     service = ProveedorService(db)
-    return service.list_proveedores()
+    return service.list_proveedores(current_user)
 
 
 @router.get("/{codigo}", response_model=ProveedorResponse, summary="Obtener proveedor por código")
@@ -32,7 +32,7 @@ async def get_proveedor(
     db: Session = Depends(get_db),
 ):
     service = ProveedorService(db)
-    return service.get_proveedor_by_codigo(codigo)
+    return service.get_proveedor_by_codigo(codigo, current_user)
 
 
 @router.post("", response_model=ProveedorResponse, status_code=status.HTTP_201_CREATED, summary="Crear proveedor")

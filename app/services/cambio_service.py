@@ -14,11 +14,16 @@ from app.models.producto_color import ProductoColor
 from app.models.cliente import Cliente
 from app.models.user import User
 from app.services.notificacion_service import NotificacionService
+from app.services.tenant_scope import get_scoped_sucursal, scope_by_sucursal
 
 
 class CambioService:
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, current_user: User):
         self.db = db
+        self.current_user = current_user
+
+    def _scope_branch(self, query, column):
+        return scope_by_sucursal(query, self.db, self.current_user, column)
 
     def solicitar_cambio_devolucion(
         self,
@@ -47,6 +52,7 @@ class CambioService:
         ).first()
         if not orden:
             raise HTTPException(status_code=404, detail="Orden de venta no encontrada o no pertenece a este usuario.")
+        get_scoped_sucursal(self.db, user, sucursal_id)
 
         # 3. Validar los 7 días de límite
         fecha_compra = orden.fecha
@@ -122,6 +128,7 @@ class CambioService:
             joinedload(CambioDevolucion.talla_nueva),
             joinedload(CambioDevolucion.color_nuevo),
         )
+        q = self._scope_branch(q, CambioDevolucion.sucursal_id)
         if sucursal_id:
             q = q.filter(CambioDevolucion.sucursal_id == sucursal_id)
         if estado:
@@ -158,8 +165,11 @@ class CambioService:
         respuesta_encargado: str,
     ) -> CambioDevolucion:
         """El encargado o administrador aprueba o rechaza la solicitud y notifica al cliente."""
-        solicitud = self.db.query(CambioDevolucion).options(
+        solicitud_query = self.db.query(CambioDevolucion).options(
             joinedload(CambioDevolucion.orden_venta).joinedload(OrdenVenta.cliente).joinedload(Cliente.user)
+        )
+        solicitud = self._scope_branch(
+            solicitud_query, CambioDevolucion.sucursal_id
         ).filter(CambioDevolucion.id == solicitud_id).first()
         if not solicitud:
             raise HTTPException(status_code=404, detail="Solicitud no encontrada.")
@@ -196,15 +206,18 @@ class CambioService:
         Ajusta inventario: si reponer_prenda_original es True, incrementa stock devuelto.
         Si se entrega nueva prenda, descuenta su stock.
         """
-        solicitud = self.db.query(CambioDevolucion).options(
+        solicitud_query = self.db.query(CambioDevolucion).options(
             joinedload(CambioDevolucion.detalle_venta)
+        )
+        solicitud = self._scope_branch(
+            solicitud_query, CambioDevolucion.sucursal_id
         ).filter(CambioDevolucion.id == solicitud_id).first()
         if not solicitud:
             raise HTTPException(status_code=404, detail="Solicitud no encontrada.")
 
         # 1. Reposición de prenda original (si no está dañada)
         if reponer_prenda_original and solicitud.detalle_venta and solicitud.detalle_venta.stock_inventario_id:
-            stk = self.db.query(StockInventario).filter(
+            stk = self._scope_branch(self.db.query(StockInventario), StockInventario.sucursal_id).filter(
                 StockInventario.id == solicitud.detalle_venta.stock_inventario_id
             ).first()
             if stk:
@@ -212,7 +225,7 @@ class CambioService:
 
         # 2. Descuento de nueva prenda si fue cambio
         if solicitud.tipo == "cambio" and nuevo_stock_inventario_id:
-            nuevo_stk = self.db.query(StockInventario).filter(
+            nuevo_stk = self._scope_branch(self.db.query(StockInventario), StockInventario.sucursal_id).filter(
                 StockInventario.id == nuevo_stock_inventario_id
             ).first()
             if nuevo_stk and nuevo_stk.cantidad > 0:

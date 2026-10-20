@@ -7,10 +7,10 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-001 | TERMINADO_VERIFICADO | Inventario técnico versionado y contraste de los tres repositorios |
 | REQ-002 | EN_PRUEBAS | Se extendió el proyecto existente; regresión automatizada completa, falta E2E desplegado |
 | REQ-003 | EN_CURSO | Entidad `Empresa` y frontera tenant inicial; falta cubrir todo el dominio |
-| REQ-004 | EN_CURSO | Migración aditiva e índices para empresa, usuarios y sucursales; faltan recursos restantes |
+| REQ-004 | EN_CURSO | Migraciones aditivas para empresa, usuarios, sucursales y raíces de catálogo; ida/vuelta SQL comprobada, faltan recursos secundarios |
 | REQ-005 | EN_CURSO | Empresa y sucursal son entidades separadas en backend; faltan UI web/móvil |
-| REQ-006 | EN_CURSO | Usuarios y sucursales aislados; productos, ventas, pagos y demás aún pendientes |
-| REQ-007 | EN_CURSO | Tenant derivado del JWT y pruebas A/B para sucursales/usuarios; falta cobertura integral |
+| REQ-006 | EN_CURSO | Aislamiento aplicado a usuarios, clientes, catálogo, stock, compras, ventas, pagos, carrito, envíos, cambios, bitácora y reportes; faltan recursos secundarios/archivos |
+| REQ-007 | EN_CURSO | Tenant derivado del JWT y regresiones A/B para IDs directos, operaciones y exportables; falta auditoría completa de archivos/sync |
 | REQ-008 | EN_PRUEBAS | JWT/refresh/blacklist/guards conservados; falta prueba manual de caída de red |
 | REQ-009 | EN_PRUEBAS | Migración Alembic aditiva con una cabeza; falta aplicar/verificar en PostgreSQL desplegado |
 | REQ-010 | PENDIENTE | Existe variante talla/color/sucursal, faltan precio por talla y medidas |
@@ -40,9 +40,9 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-034 | PENDIENTE | Replay idempotente general no implementado |
 | REQ-035 | PENDIENTE | Resolución de conflicto offline no implementada |
 | REQ-036 | PENDIENTE | Caches/sync todavía no existen para probar aislamiento |
-| REQ-037 | EN_CURSO | Reportes escritos existen; falta voz y autorización por plan/tenant |
-| REQ-038 | EN_CURSO | Hay filtros controlados y datos reales; falta tenant integral |
-| REQ-039 | EN_CURSO | Tablas/exportación Excel/PDF existen; falta evidencia tenant/gráficos completa |
+| REQ-037 | EN_CURSO | Reportes escritos y aislamiento tenant existen; falta voz y autorización por plan |
+| REQ-038 | EN_CURSO | Filtros controlados, datos reales y ámbito tenant aplicados; falta autorización por plan y validación E2E |
+| REQ-039 | EN_CURSO | Tablas/exportación Excel/PDF y prueba negativa A/B existen; faltan gráficos y evidencia E2E completa |
 | REQ-040 | EN_PRUEBAS | Existen más de cuatro familias de reporte; falta escenario reproducible multiempresa |
 | REQ-041 | PENDIENTE | Falta restricción por tenant y plan para IA |
 | REQ-042 | PENDIENTE | Dataset sintético ML reproducible no implementado |
@@ -54,7 +54,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-048 | EN_PRUEBAS | URLs/remotos declarados; falta verificar despliegue posterior a estos commits |
 | REQ-049 | PENDIENTE | Artefactos ICONIX/UML 2.5+ del segundo parcial no creados |
 | REQ-050 | PENDIENTE | Documento final capítulos I–VI no disponible |
-| REQ-051 | EN_CURSO | Suite funcional actual y pruebas tenant iniciales; faltan offline/sync/planes |
+| REQ-051 | EN_CURSO | 56 pruebas backend y regresiones tenant A/B aprobadas; faltan offline/sync/planes y E2E desplegado |
 | REQ-052 | EN_CURSO | Matriz iniciada; paquetes/capturas de entregas pendientes |
 | REQ-053 | PENDIENTE | QR y enlaces finales verificados no preparados |
 | REQ-054 | EN_CURSO | Solicitudes de cambio existen; falta nueva nota vinculada completa |

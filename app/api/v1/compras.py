@@ -21,6 +21,7 @@ from app.schemas.compra import CompraCreate, CompraResponse, DetalleCompraRespon
 from app.api.deps import get_current_user
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.bitacora_service import BitacoraService
+from app.services.tenant_scope import get_scoped_sucursal, scope_by_empresa, scope_by_sucursal
 
 router = APIRouter(prefix="/compras", tags=["Compras a Proveedores"])
 
@@ -68,7 +69,7 @@ async def list_compras(
     db: Session = Depends(get_db),
 ):
     """Retorna listado de compras realizadas a proveedores."""
-    q = db.query(Compra)
+    q = scope_by_sucursal(db.query(Compra), db, current_user, Compra.sucursal_id)
     if sucursal_id:
         q = q.filter(Compra.sucursal_id == sucursal_id)
     if proveedor_codigo:
@@ -87,7 +88,9 @@ async def get_compra(
     db: Session = Depends(get_db),
 ):
     """Devuelve el detalle de una compra específica con todos sus productos."""
-    compra = db.query(Compra).filter(Compra.id == compra_id).first()
+    compra = scope_by_sucursal(
+        db.query(Compra), db, current_user, Compra.sucursal_id
+    ).filter(Compra.id == compra_id).first()
     if not compra:
         raise NotFoundException(f"Compra con ID {compra_id} no encontrada.")
     return _formatear_compra(compra)
@@ -103,13 +106,13 @@ async def create_compra(
     Registra una nueva compra a proveedor y actualiza automáticamente
     el stock en la sucursal de destino seleccionada (Stock_Inventario).
     """
-    proveedor = db.query(Proveedor).filter(Proveedor.codigo == payload.proveedor_codigo).first()
+    proveedor = scope_by_empresa(
+        db.query(Proveedor), current_user, Proveedor.empresa_id
+    ).filter(Proveedor.codigo == payload.proveedor_codigo).first()
     if not proveedor:
         raise NotFoundException(f"Proveedor con código '{payload.proveedor_codigo}' no encontrado.")
 
-    sucursal = db.query(Sucursal).filter(Sucursal.id == payload.sucursal_id).first()
-    if not sucursal:
-        raise NotFoundException(f"Sucursal de destino con ID {payload.sucursal_id} no encontrada.")
+    sucursal = get_scoped_sucursal(db, current_user, payload.sucursal_id)
 
     total_calculado = Decimal("0.00")
 
@@ -125,15 +128,15 @@ async def create_compra(
     db.flush()
 
     for item in payload.items:
-        prod = db.query(Producto).filter(Producto.codigo == item.producto_codigo).first()
+        prod = scope_by_empresa(db.query(Producto), current_user, Producto.empresa_id).filter(Producto.codigo == item.producto_codigo).first()
         if not prod:
             raise NotFoundException(f"Producto con código '{item.producto_codigo}' no existe.")
 
-        color = db.query(Color).filter(Color.id == item.color_id).first()
+        color = scope_by_empresa(db.query(Color), current_user, Color.empresa_id).filter(Color.id == item.color_id).first()
         if not color:
             raise NotFoundException(f"Color con ID {item.color_id} no existe.")
 
-        talla = db.query(Talla).filter(Talla.id == item.talla_id).first()
+        talla = scope_by_empresa(db.query(Talla), current_user, Talla.empresa_id).filter(Talla.id == item.talla_id).first()
         if not talla:
             raise NotFoundException(f"Talla con ID {item.talla_id} no existe.")
 
@@ -209,7 +212,9 @@ async def anular_compra(
     Anula una compra registrada previamente y descuenta el stock que se había
     incorporado a la sucursal de destino.
     """
-    compra = db.query(Compra).filter(Compra.id == compra_id).first()
+    compra = scope_by_sucursal(
+        db.query(Compra), db, current_user, Compra.sucursal_id
+    ).filter(Compra.id == compra_id).first()
     if not compra:
         raise NotFoundException(f"Compra con ID {compra_id} no encontrada.")
 

@@ -26,7 +26,7 @@ async def export_ventas_excel(
     db: Session = Depends(get_db),
 ):
     """Genera y descarga el archivo Excel de ventas filtradas."""
-    service = ReportService(db)
+    service = ReportService(db, current_user)
     buffer = service.generate_ventas_excel(fecha_inicio, fecha_fin, sucursal_id, metodo_pago)
 
     BitacoraService.registrar(
@@ -54,7 +54,7 @@ async def export_ventas_pdf(
     db: Session = Depends(get_db),
 ):
     """Genera y descarga el archivo PDF de ventas."""
-    service = ReportService(db)
+    service = ReportService(db, current_user)
     buffer = service.generate_ventas_pdf(fecha_inicio, fecha_fin, sucursal_id, metodo_pago)
 
     BitacoraService.registrar(
@@ -80,7 +80,7 @@ async def export_inventario_excel(
     db: Session = Depends(get_db),
 ):
     """Genera y descarga el archivo Excel de inventario."""
-    service = ReportService(db)
+    service = ReportService(db, current_user)
     buffer = service.generate_inventario_excel(sucursal_id, solo_bajo_stock)
 
     BitacoraService.registrar(
@@ -106,7 +106,7 @@ async def export_inventario_pdf(
     db: Session = Depends(get_db),
 ):
     """Genera y descarga el archivo PDF de inventario."""
-    service = ReportService(db)
+    service = ReportService(db, current_user)
     buffer = service.generate_inventario_pdf(sucursal_id, solo_bajo_stock)
 
     BitacoraService.registrar(
@@ -134,7 +134,7 @@ async def preview_ventas(
     db: Session = Depends(get_db),
 ):
     """Retorna los datos estructurados en JSON para la previsualización interactiva de ventas."""
-    service = ReportService(db)
+    service = ReportService(db, current_user)
     ventas = service.get_ventas_data(fecha_inicio, fecha_fin, sucursal_id, metodo_pago)
     total_monto = sum(float(v.total) for v in ventas)
     from app.services.report_service import _get_cliente_nombre, _get_cliente_email, _get_sucursal_nombre
@@ -168,7 +168,7 @@ async def preview_inventario(
     db: Session = Depends(get_db),
 ):
     """Retorna los datos estructurados en JSON para la previsualización interactiva de inventario."""
-    service = ReportService(db)
+    service = ReportService(db, current_user)
     items_raw = service.get_inventario_data(sucursal_id, solo_bajo_stock)
     from app.services.report_service import _get_sucursal_nombre
     items = []
@@ -219,7 +219,7 @@ async def get_dashboard_stats(
     if sucursal_id == 0:
         sucursal_id = None
 
-    service = DashboardService(db)
+    service = DashboardService(db, current_user)
     return service.get_dashboard_stats(sucursal_id=sucursal_id)
 
 
@@ -230,13 +230,13 @@ async def get_dashboard_stats(
 # 1. Más vendidos
 @router.get("/mas-vendidos/preview")
 async def preview_mas_vendidos(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_mas_vendidos_data()
     return {"total_registros": len(data), "items": data}
 
 @router.get("/mas-vendidos/excel")
 async def excel_mas_vendidos(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_mas_vendidos_data()
     headers = ["Producto", "Unidades Vendidas", "Total Recaudado (Bs.)"]
     rows = [[d["producto"], d["unidades_vendidas"], d["total_recaudado"]] for d in data]
@@ -245,7 +245,7 @@ async def excel_mas_vendidos(current_user: User = Depends(get_current_user), db:
 
 @router.get("/mas-vendidos/pdf")
 async def pdf_mas_vendidos(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_mas_vendidos_data()
     headers = ["Producto", "Unidades", "Total (Bs.)"]
     rows = [[d["producto"], d["unidades_vendidas"], f"Bs. {d['total_recaudado']:.2f}"] for d in data]
@@ -255,13 +255,13 @@ async def pdf_mas_vendidos(current_user: User = Depends(get_current_user), db: S
 # 2. Ventas por producto
 @router.get("/ventas-producto/preview")
 async def preview_ventas_producto(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_ventas_por_producto_data()
     return {"total_registros": len(data), "items": data}
 
 @router.get("/ventas-producto/excel")
 async def excel_ventas_producto(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_ventas_por_producto_data()
     headers = ["Producto", "Color", "Talla", "Unidades", "Subtotal (Bs.)"]
     rows = [[d["producto"], d["color"], d["talla"], d["unidades"], d["subtotal"]] for d in data]
@@ -270,7 +270,7 @@ async def excel_ventas_producto(current_user: User = Depends(get_current_user), 
 
 @router.get("/ventas-producto/pdf")
 async def pdf_ventas_producto(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_ventas_por_producto_data()
     headers = ["Producto", "Color", "Talla", "Unidades", "Subtotal (Bs.)"]
     rows = [[d["producto"][:22], d["color"][:10], d["talla"], d["unidades"], f"Bs. {d['subtotal']:.2f}"] for d in data]
@@ -280,13 +280,13 @@ async def pdf_ventas_producto(current_user: User = Depends(get_current_user), db
 # 3. Ventas por tipo
 @router.get("/ventas-tipo/preview")
 async def preview_ventas_tipo(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_ventas_por_tipo_data()
     return {"total_registros": len(data), "items": data}
 
 @router.get("/ventas-tipo/excel")
 async def excel_ventas_tipo(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_ventas_por_tipo_data()
     headers = ["Canal / Tipo de Venta", "Cantidad de Órdenes", "Monto Total (Bs.)"]
     rows = [[d["tipo_venta"], d["total_ordenes"], d["total_monto"]] for d in data]
@@ -295,7 +295,7 @@ async def excel_ventas_tipo(current_user: User = Depends(get_current_user), db: 
 
 @router.get("/ventas-tipo/pdf")
 async def pdf_ventas_tipo(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_ventas_por_tipo_data()
     headers = ["Canal de Venta", "Total Órdenes", "Recaudación (Bs.)"]
     rows = [[d["tipo_venta"], d["total_ordenes"], f"Bs. {d['total_monto']:.2f}"] for d in data]
@@ -305,13 +305,13 @@ async def pdf_ventas_tipo(current_user: User = Depends(get_current_user), db: Se
 # 4. Clientes registrados
 @router.get("/clientes/preview")
 async def preview_clientes(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_clientes_registrados_data()
     return {"total_registros": len(data), "items": data}
 
 @router.get("/clientes/excel")
 async def excel_clientes(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_clientes_registrados_data()
     headers = ["Código", "Nombre", "Correo Electrónico", "Teléfono", "Total Compras", "Gasto Total (Bs.)"]
     rows = [[d["codigo"], d["nombre"], d["email"], d["telefono"], d["total_compras"], d["monto_gastado"]] for d in data]
@@ -320,7 +320,7 @@ async def excel_clientes(current_user: User = Depends(get_current_user), db: Ses
 
 @router.get("/clientes/pdf")
 async def pdf_clientes(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_clientes_registrados_data()
     headers = ["Código", "Nombre / Correo", "Teléfono", "Compras", "Total (Bs.)"]
     rows = [[d["codigo"], f"{d['nombre']}\n{d['email']}", d["telefono"], d["total_compras"], f"Bs. {d['monto_gastado']:.2f}"] for d in data]
@@ -330,13 +330,13 @@ async def pdf_clientes(current_user: User = Depends(get_current_user), db: Sessi
 # 5. Empleados por sucursal
 @router.get("/empleados/preview")
 async def preview_empleados(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_empleados_por_sucursal_data(sucursal_id)
     return {"total_registros": len(data), "items": data}
 
 @router.get("/empleados/excel")
 async def excel_empleados(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_empleados_por_sucursal_data(sucursal_id)
     headers = ["Código", "Nombre", "Correo", "Sucursal", "Teléfono", "Sueldo (Bs.)"]
     rows = [[d["codigo"], d["nombre"], d["email"], d["sucursal"], d["telefono"], d["sueldo"]] for d in data]
@@ -345,7 +345,7 @@ async def excel_empleados(sucursal_id: Optional[int] = None, current_user: User 
 
 @router.get("/empleados/pdf")
 async def pdf_empleados(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_empleados_por_sucursal_data(sucursal_id)
     headers = ["Código", "Nombre", "Sucursal", "Teléfono", "Sueldo (Bs.)"]
     rows = [[d["codigo"], d["nombre"][:20], d["sucursal"], d["telefono"], f"Bs. {d['sueldo']:.2f}"] for d in data]
@@ -355,13 +355,13 @@ async def pdf_empleados(sucursal_id: Optional[int] = None, current_user: User = 
 # 6. Rotación de prendas
 @router.get("/rotacion/preview")
 async def preview_rotacion(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_rotacion_prendas_data()
     return data
 
 @router.get("/rotacion/excel")
 async def excel_rotacion(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_rotacion_prendas_data()
     headers = ["Categoría", "Prenda", "Unidades Vendidas", "Total (Bs.)"]
     rows = []
@@ -374,7 +374,7 @@ async def excel_rotacion(current_user: User = Depends(get_current_user), db: Ses
 
 @router.get("/rotacion/pdf")
 async def pdf_rotacion(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_rotacion_prendas_data()
     headers = ["Categoría", "Prenda", "Unidades", "Total (Bs.)"]
     rows = []
@@ -388,13 +388,13 @@ async def pdf_rotacion(current_user: User = Depends(get_current_user), db: Sessi
 # 7. Envíos Delivery StyleStore
 @router.get("/envios/preview")
 async def preview_envios(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_envios_report_data()
     return {"total_registros": len(data), "items": data}
 
 @router.get("/envios/excel")
 async def excel_envios(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_envios_report_data()
     headers = ["Ticket", "Cliente", "Ciudad", "Dirección", "Conductor", "Tracking Delivery", "Estado", "Costo (Bs.)", "Fecha"]
     rows = [[d["ticket"], d["cliente"], d["ciudad"], d["direccion"], d["conductor"], d["tracking"], d["estado"], d["costo"], d["fecha"]] for d in data]
@@ -403,7 +403,7 @@ async def excel_envios(current_user: User = Depends(get_current_user), db: Sessi
 
 @router.get("/envios/pdf")
 async def pdf_envios(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_envios_report_data()
     headers = ["Ticket", "Cliente", "Destino", "Tracking / Conductor", "Estado", "Costo"]
     rows = [[d["ticket"], d["cliente"][:15], f"{d['ciudad']} - {d['direccion'][:18]}", f"{d['tracking']}\n{d['conductor']}", d["estado"], f"Bs. {d['costo']:.2f}"] for d in data]
@@ -413,13 +413,13 @@ async def pdf_envios(current_user: User = Depends(get_current_user), db: Session
 # 8. Devoluciones y Cambios
 @router.get("/devoluciones/preview")
 async def preview_devoluciones(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_cambios_devoluciones_report_data(sucursal_id)
     return {"total_registros": len(data), "items": data}
 
 @router.get("/devoluciones/excel")
 async def excel_devoluciones(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_cambios_devoluciones_report_data(sucursal_id)
     headers = ["ID", "Ticket", "Tipo", "Motivo", "Producto", "Sucursal", "Estado", "Fecha Programada"]
     rows = [[d["id"], d["ticket"], d["tipo"], d["motivo"], d["producto"], d["sucursal"], d["estado"], d["fecha_programada"]] for d in data]
@@ -428,7 +428,7 @@ async def excel_devoluciones(sucursal_id: Optional[int] = None, current_user: Us
 
 @router.get("/devoluciones/pdf")
 async def pdf_devoluciones(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_cambios_devoluciones_report_data(sucursal_id)
     headers = ["Ticket", "Tipo", "Motivo", "Producto", "Sucursal", "Estado", "Fecha"]
     rows = [[d["ticket"], d["tipo"], d["motivo"], d["producto"][:18], d["sucursal"], d["estado"], d["fecha_programada"]] for d in data]
@@ -443,13 +443,13 @@ async def pdf_devoluciones(sucursal_id: Optional[int] = None, current_user: User
 # 9. Flujo Financiero y Pagos
 @router.get("/financiero/preview")
 async def preview_financiero(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_financiero_report_data(sucursal_id)
     return {"total_registros": len(data), "items": data}
 
 @router.get("/financiero/excel")
 async def excel_financiero(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_financiero_report_data(sucursal_id)
     headers = ["Método de Pago", "N° Transacciones", "Total Recaudado (Bs.)"]
     rows = [[d["metodo"], d["cantidad_transacciones"], d["total_recaudado"]] for d in data]
@@ -458,7 +458,7 @@ async def excel_financiero(sucursal_id: Optional[int] = None, current_user: User
 
 @router.get("/financiero/pdf")
 async def pdf_financiero(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_financiero_report_data(sucursal_id)
     headers = ["Método de Pago", "Transacciones", "Total Recaudado (Bs.)"]
     rows = [[d["metodo"], d["cantidad_transacciones"], f"Bs. {d['total_recaudado']:.2f}"] for d in data]
@@ -469,13 +469,13 @@ async def pdf_financiero(sucursal_id: Optional[int] = None, current_user: User =
 # 10. Caducidad y Obsolescencia de Temporadas
 @router.get("/caducidad/preview")
 async def preview_caducidad(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_caducidad_report_data(sucursal_id)
     return {"total_registros": len(data), "items": data}
 
 @router.get("/caducidad/excel")
 async def excel_caducidad(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_caducidad_report_data(sucursal_id)
     headers = ["Código", "Producto", "Temporada", "Sucursal", "Talla", "Stock", "Precio (Bs.)", "Sugerencia"]
     rows = [[d["codigo"], d["producto"], d["temporada"], d["sucursal"], d["talla"], d["unidades_stock"], d["precio_actual"], d["descuento_sugerido"]] for d in data]
@@ -484,7 +484,7 @@ async def excel_caducidad(sucursal_id: Optional[int] = None, current_user: User 
 
 @router.get("/caducidad/pdf")
 async def pdf_caducidad(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_caducidad_report_data(sucursal_id)
     headers = ["Código", "Prenda", "Temporada", "Sucursal", "Stock", "Precio"]
     rows = [[d["codigo"], d["producto"][:20], d["temporada"][:12], d["sucursal"][:12], d["unidades_stock"], f"Bs. {d['precio_actual']:.2f}"] for d in data]
@@ -495,13 +495,13 @@ async def pdf_caducidad(sucursal_id: Optional[int] = None, current_user: User = 
 # 11. Auditoría y Bitácora
 @router.get("/auditoria/preview")
 async def preview_auditoria(limit: int = 150, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_auditoria_report_data(limit)
     return {"total_registros": len(data), "items": data}
 
 @router.get("/auditoria/excel")
 async def excel_auditoria(limit: int = 200, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_auditoria_report_data(limit)
     headers = ["ID", "Usuario / Rol", "Módulo", "Acción Realizada", "IP", "Fecha"]
     rows = [[d["id"], d["usuario"], d["modulo"], d["accion"], d["ip"], d["fecha"]] for d in data]
@@ -510,7 +510,7 @@ async def excel_auditoria(limit: int = 200, current_user: User = Depends(get_cur
 
 @router.get("/auditoria/pdf")
 async def pdf_auditoria(limit: int = 150, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_auditoria_report_data(limit)
     headers = ["Usuario", "Módulo", "Acción Realizada", "Fecha"]
     rows = [[d["usuario"][:18], d["modulo"][:10], d["accion"][:35], d["fecha"]] for d in data]
@@ -521,13 +521,13 @@ async def pdf_auditoria(limit: int = 150, current_user: User = Depends(get_curre
 # 12. Compras a Proveedores (Abastecimiento)
 @router.get("/compras/preview")
 async def preview_compras(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_compras_report_data(sucursal_id)
     return {"total_registros": len(data), "items": data}
 
 @router.get("/compras/excel")
 async def excel_compras(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_compras_report_data(sucursal_id)
     headers = ["ID Compra", "Fecha", "Proveedor", "Sucursal Destino", "Monto Total (Bs.)"]
     rows = [[d["id"], d["fecha"], d["proveedor"], d["sucursal"], d["total"]] for d in data]
@@ -536,7 +536,7 @@ async def excel_compras(sucursal_id: Optional[int] = None, current_user: User = 
 
 @router.get("/compras/pdf")
 async def pdf_compras(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    srv = ReportService(db)
+    srv = ReportService(db, current_user)
     data = srv.get_compras_report_data(sucursal_id)
     headers = ["ID", "Fecha", "Proveedor", "Sucursal", "Total (Bs.)"]
     rows = [[d["id"], d["fecha"], d["proveedor"][:20], d["sucursal"], f"Bs. {d['total']:.2f}"] for d in data]
@@ -664,5 +664,3 @@ async def exportar_asistente_ia_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": 'attachment; filename="reporte_ejecutivo_ia.pdf"'},
     )
-
-

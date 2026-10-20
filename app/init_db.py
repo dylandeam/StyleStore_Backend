@@ -23,6 +23,7 @@ def _run_column_migrations(db: Session):
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_platform_admin BOOLEAN DEFAULT FALSE",
         # Bitacora
         "ALTER TABLE bitacora ADD COLUMN IF NOT EXISTS ip_address VARCHAR(50)",
+        "ALTER TABLE bitacora ADD COLUMN IF NOT EXISTS empresa_id INTEGER",
         # OrdenVenta
         "ALTER TABLE orden_venta ADD COLUMN IF NOT EXISTS carrito_id INTEGER",
         "ALTER TABLE orden_venta ADD COLUMN IF NOT EXISTS ticket_numero VARCHAR(50)",
@@ -48,6 +49,14 @@ def _run_column_migrations(db: Session):
         "ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS longitud NUMERIC(10, 6)",
         "ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS maps_url VARCHAR(500)",
         "ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS empresa_id INTEGER",
+        # Catálogo y operaciones por empresa
+        "ALTER TABLE categorias ADD COLUMN IF NOT EXISTS empresa_id INTEGER",
+        "ALTER TABLE colores ADD COLUMN IF NOT EXISTS empresa_id INTEGER",
+        "ALTER TABLE tallas ADD COLUMN IF NOT EXISTS empresa_id INTEGER",
+        "ALTER TABLE temporadas ADD COLUMN IF NOT EXISTS empresa_id INTEGER",
+        "ALTER TABLE colecciones ADD COLUMN IF NOT EXISTS empresa_id INTEGER",
+        "ALTER TABLE productos ADD COLUMN IF NOT EXISTS empresa_id INTEGER",
+        "ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS empresa_id INTEGER",
         # Envios v7 (distancia real y repartidor)
         "ALTER TABLE envios ADD COLUMN IF NOT EXISTS token_seguimiento VARCHAR(100)",
         "ALTER TABLE envios ADD COLUMN IF NOT EXISTS tracking_activo BOOLEAN DEFAULT TRUE",
@@ -106,6 +115,7 @@ def _run_column_migrations(db: Session):
         """
         CREATE TABLE IF NOT EXISTS qr_pago_config (
             id SERIAL PRIMARY KEY,
+            empresa_id INTEGER,
             imagen_url VARCHAR(500) NOT NULL,
             banco_destino VARCHAR(100),
             titular VARCHAR(150),
@@ -115,6 +125,7 @@ def _run_column_migrations(db: Session):
             updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         )
         """,
+        "ALTER TABLE qr_pago_config ADD COLUMN IF NOT EXISTS empresa_id INTEGER",
     ]
     for stmt in statements:
         try:
@@ -158,6 +169,19 @@ def init_db():
         db.query(Sucursal).filter(Sucursal.empresa_id.is_(None)).update(
             {Sucursal.empresa_id: default_empresa.id}, synchronize_session=False
         )
+        from app.models.categoria import Categoria
+        from app.models.color import Color
+        from app.models.talla import Talla
+        from app.models.temporada import Temporada
+        from app.models.coleccion import Coleccion
+        from app.models.producto import Producto
+        from app.models.proveedor import Proveedor
+        from app.models.qr_pago_config import QRPagoConfig
+        from app.models.bitacora import Bitacora
+        for model in (Categoria, Color, Talla, Temporada, Coleccion, Producto, Proveedor, QRPagoConfig, Bitacora):
+            db.query(model).filter(model.empresa_id.is_(None)).update(
+                {model.empresa_id: default_empresa.id}, synchronize_session=False
+            )
         db.commit()
 
         # Seed permissions and roles
@@ -177,7 +201,6 @@ def init_db():
             db.commit()
 
         # Seed default QR de cobro en mostrador if not exists
-        from app.models.qr_pago_config import QRPagoConfig
         qr_cfg = db.query(QRPagoConfig).first()
         if not qr_cfg:
             qr_cfg = QRPagoConfig(
@@ -186,6 +209,7 @@ def init_db():
                 titular="StyleStore Bolivia",
                 activo=True,
                 sucursal_id=1,
+                empresa_id=default_empresa.id,
             )
             db.add(qr_cfg)
             db.commit()

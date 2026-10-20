@@ -15,11 +15,17 @@ from app.models.reserva import Reserva
 from app.models.envio import Envio
 from app.models.cambio_devolucion import CambioDevolucion
 from app.models.sucursal import Sucursal
+from app.models.user import User
+from app.services.tenant_scope import scope_by_empresa, scope_by_sucursal
 
 
 class DashboardService:
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, current_user: User):
         self.db = db
+        self.current_user = current_user
+
+    def _scope_branch(self, query, column):
+        return scope_by_sucursal(query, self.db, self.current_user, column)
 
     def get_dashboard_stats(self, sucursal_id: Optional[int] = None) -> Dict[str, Any]:
         """Calcula todas las métricas operativas del dashboard según la sucursal o global."""
@@ -30,6 +36,7 @@ class DashboardService:
         ventas_query = self.db.query(OrdenVenta).filter(
             ~OrdenVenta.estado.in_(["anulado", "cancelada"])
         )
+        ventas_query = self._scope_branch(ventas_query, OrdenVenta.sucursal_id)
         if sucursal_id:
             ventas_query = ventas_query.filter(OrdenVenta.sucursal_id == sucursal_id)
 
@@ -68,10 +75,12 @@ class DashboardService:
 
         # 2. Inventario y Stock Crítico
         stock_query = self.db.query(StockInventario)
+        stock_query = self._scope_branch(stock_query, StockInventario.sucursal_id)
         if sucursal_id:
             stock_query = stock_query.filter(StockInventario.sucursal_id == sucursal_id)
 
         total_stock_unidades = self.db.query(func.coalesce(func.sum(StockInventario.cantidad), 0))
+        total_stock_unidades = self._scope_branch(total_stock_unidades, StockInventario.sucursal_id)
         if sucursal_id:
             total_stock_unidades = total_stock_unidades.filter(StockInventario.sucursal_id == sucursal_id)
         total_stock_unidades = int(total_stock_unidades.scalar() or 0)
@@ -79,12 +88,16 @@ class DashboardService:
         productos_bajo_stock = stock_query.filter(StockInventario.cantidad <= 5).count()
 
         # 3. Clientes Registrados
-        total_clientes = self.db.query(Cliente).count()
+        clientes_query = self.db.query(Cliente).join(User, Cliente.user_id == User.id)
+        total_clientes = scope_by_empresa(
+            clientes_query, self.current_user, User.empresa_id
+        ).count()
 
         # 4. Reservas Activas / Pendientes
         reservas_activas_query = self.db.query(Reserva).filter(
             Reserva.estado.in_(["pendiente", "confirmada"])
         )
+        reservas_activas_query = self._scope_branch(reservas_activas_query, Reserva.sucursal_id)
         if sucursal_id:
             reservas_activas_query = reservas_activas_query.filter(Reserva.sucursal_id == sucursal_id)
         reservas_activas = reservas_activas_query.count()
@@ -93,26 +106,31 @@ class DashboardService:
         reservas_vencidas_query = self.db.query(Reserva).filter(
             Reserva.estado.in_(["vencida", "cancelada"])
         )
+        reservas_vencidas_query = self._scope_branch(reservas_vencidas_query, Reserva.sucursal_id)
         if sucursal_id:
             reservas_vencidas_query = reservas_vencidas_query.filter(Reserva.sucursal_id == sucursal_id)
         reservas_vencidas = reservas_vencidas_query.count()
 
         # 5. Envíos Pendientes (Delivery StyleStore)
-        envios_query = self.db.query(Envio).filter(Envio.estado.in_(["pendiente", "en_camino"]))
+        envios_query = self.db.query(Envio).join(
+            OrdenVenta, Envio.orden_venta_id == OrdenVenta.id
+        ).filter(Envio.estado.in_(["pendiente", "en_camino"]))
+        envios_query = self._scope_branch(envios_query, OrdenVenta.sucursal_id)
         if sucursal_id:
-            envios_query = envios_query.join(OrdenVenta, Envio.orden_venta_id == OrdenVenta.id).filter(
-                OrdenVenta.sucursal_id == sucursal_id
-            )
+            envios_query = envios_query.filter(OrdenVenta.sucursal_id == sucursal_id)
         envios_pendientes = envios_query.count()
 
         # 6. Solicitudes de Cambio / Devolución pendientes
         cambios_query = self.db.query(CambioDevolucion).filter(CambioDevolucion.estado == "pendiente")
+        cambios_query = self._scope_branch(cambios_query, CambioDevolucion.sucursal_id)
         if sucursal_id:
             cambios_query = cambios_query.filter(CambioDevolucion.sucursal_id == sucursal_id)
         cambios_pendientes = cambios_query.count()
 
         # Lista de sucursales para el selector en el dashboard
-        sucursales = self.db.query(Sucursal).filter(Sucursal.active == True).all()
+        sucursales = scope_by_empresa(
+            self.db.query(Sucursal), self.current_user, Sucursal.empresa_id
+        ).filter(Sucursal.active == True).all()
         sucursales_data = [{"id": s.id, "nombre": s.nombre, "ciudad": s.ciudad} for s in sucursales]
 
         # Últimas 5 ventas recientes

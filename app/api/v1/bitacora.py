@@ -58,6 +58,7 @@ async def list_bitacora(
         module=module,
         page=page,
         size=size,
+        current_user=current_user,
     )
 
 
@@ -98,7 +99,10 @@ async def verify_master_key(
 
     # 3. Si el usuario actual no es admin (ej. empleado probando con clave del admin de la tienda)
     if not is_valid:
-        admins = db.query(User).filter(User.role == "administrador", User.is_active.is_(True)).all()
+        admins_query = db.query(User).filter(User.role == "administrador", User.is_active.is_(True))
+        if not current_user.is_platform_admin:
+            admins_query = admins_query.filter(User.empresa_id == current_user.empresa_id)
+        admins = admins_query.all()
         for adm in admins:
             target_hash = adm.bitacora_password_hash or adm.hashed_password
             if target_hash and verify_password(input_key, target_hash):

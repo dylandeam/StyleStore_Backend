@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User
+from app.models.empresa import Empresa
 from app.api.deps import require_permission, get_optional_current_user
 from app.schemas.sucursal import SucursalCreate, SucursalUpdate, SucursalResponse
 from app.schemas.common import MessageResponse
@@ -27,9 +28,12 @@ async def list_sucursales(
 ):
     """Listar todas las sucursales."""
     service = SucursalService(db)
+    default_empresa = None if current_user else db.query(Empresa).filter(
+        Empresa.codigo == "stylestore", Empresa.active.is_(True)
+    ).first()
     return service.list_sucursales(
         active_only=active_only,
-        empresa_id=current_user.empresa_id if current_user else None,
+        empresa_id=current_user.empresa_id if current_user else (default_empresa.id if default_empresa else -1),
         include_all_empresas=bool(current_user and current_user.is_platform_admin),
     )
 
@@ -47,9 +51,12 @@ async def get_sucursal(
 ):
     """Obtener detalle de sucursal."""
     service = SucursalService(db)
+    default_empresa = None if current_user else db.query(Empresa).filter(
+        Empresa.codigo == "stylestore", Empresa.active.is_(True)
+    ).first()
     return service.get_sucursal_by_id(
         sucursal_id,
-        empresa_id=current_user.empresa_id if current_user else None,
+        empresa_id=current_user.empresa_id if current_user else (default_empresa.id if default_empresa else -1),
         include_all_empresas=bool(current_user and current_user.is_platform_admin),
     )
 

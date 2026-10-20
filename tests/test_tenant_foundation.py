@@ -1,5 +1,11 @@
 """Tenant boundary regression tests for the SaaS foundation."""
+from decimal import Decimal
+
 from app.models.user import User
+from app.models.cliente import Cliente
+from app.models.orden_venta import OrdenVenta
+from app.models.envio import Envio
+from app.core.security import hash_password
 
 
 def _create_empresa(client, admin_token: str, codigo: str, email: str) -> dict:
@@ -180,3 +186,124 @@ def test_staff_clients_and_inventory_are_hidden_between_tenants(client, db_sessi
     assert client.get(
         f"/api/v1/inventario/sucursal/{branch_b.json()['id']}", headers=headers_a
     ).status_code == 404
+
+
+def test_catalog_roots_are_isolated_and_names_can_repeat_per_tenant(client, db_session, admin_token):
+    platform_admin = db_session.query(User).filter(User.email == "admin_test@stylestore.com").one()
+    platform_admin.is_platform_admin = True
+    db_session.commit()
+    _create_empresa(client, admin_token, "catalog-a", "admin-a@catalog.example.com")
+    _create_empresa(client, admin_token, "catalog-b", "admin-b@catalog.example.com")
+    headers_a = {"Authorization": f"Bearer {_login(client, 'admin-a@catalog.example.com')}"}
+    headers_b = {"Authorization": f"Bearer {_login(client, 'admin-b@catalog.example.com')}"}
+
+    category_a = client.post("/api/v1/categorias", headers=headers_a, json={"nombre": "Casual"})
+    category_b = client.post("/api/v1/categorias", headers=headers_b, json={"nombre": "Casual"})
+    assert category_a.status_code == 201, category_a.text
+    assert category_b.status_code == 201, category_b.text
+    assert category_a.json()["id"] != category_b.json()["id"]
+    assert client.get(f"/api/v1/categorias/{category_b.json()['id']}", headers=headers_a).status_code == 404
+    assert [item["id"] for item in client.get("/api/v1/categorias", headers=headers_a).json()] == [category_a.json()["id"]]
+
+    season_a = client.post("/api/v1/temporadas", headers=headers_a, json={"nombre": "Verano"})
+    season_b = client.post("/api/v1/temporadas", headers=headers_b, json={"nombre": "Verano"})
+    color_b = client.post("/api/v1/colores", headers=headers_b, json={"nombre": "Azul"})
+    size_b = client.post("/api/v1/tallas", headers=headers_b, json={"nombre": "M"})
+    assert season_a.status_code == season_b.status_code == 201
+    assert color_b.status_code == size_b.status_code == 201
+
+    product_b = client.post(
+        "/api/v1/productos", headers=headers_b,
+        json={
+            "codigo": "CAT-B-001", "nombre": "Prenda privada B", "precio": 120,
+            "categoria_id": category_b.json()["id"], "temporada_id": season_b.json()["id"],
+            "color_ids": [color_b.json()["id"]],
+        },
+    )
+    assert product_b.status_code == 201, product_b.text
+    assert client.get("/api/v1/productos/CAT-B-001", headers=headers_a).status_code == 404
+    assert all(item["codigo"] != "CAT-B-001" for item in client.get("/api/v1/productos", headers=headers_a).json())
+
+    cross_reference = client.post(
+        "/api/v1/productos", headers=headers_a,
+        json={
+            "codigo": "CAT-A-X", "nombre": "Cruce inválido", "precio": 90,
+            "categoria_id": category_b.json()["id"], "temporada_id": season_a.json()["id"],
+        },
+    )
+    assert cross_reference.status_code == 404
+
+    supplier_b = client.post(
+        "/api/v1/proveedores", headers=headers_b,
+        json={
+            "codigo": "SUP-B-001", "nombre": "Proveedor", "apellido": "Privado",
+            "email": "supplier-b@catalog.example.com", "telefono": "70000100",
+            "categoria_ids": [category_b.json()["id"]],
+        },
+    )
+    assert supplier_b.status_code == 201, supplier_b.text
+    assert client.get("/api/v1/proveedores/SUP-B-001", headers=headers_a).status_code == 404
+
+
+def test_orders_payments_shipments_and_reports_are_isolated(client, db_session, admin_token):
+    platform_admin = db_session.query(User).filter(User.email == "admin_test@stylestore.com").one()
+    platform_admin.is_platform_admin = True
+    db_session.commit()
+    empresa_a = _create_empresa(client, admin_token, "ops-a", "admin-a@ops.example.com")
+    empresa_b = _create_empresa(client, admin_token, "ops-b", "admin-b@ops.example.com")
+    headers_a = {"Authorization": f"Bearer {_login(client, 'admin-a@ops.example.com')}"}
+    headers_b = {"Authorization": f"Bearer {_login(client, 'admin-b@ops.example.com')}"}
+
+    branch_a = client.post(
+        "/api/v1/sucursales", headers=headers_a,
+        json={"name": "Operaciones A", "city": "La Paz", "address": "Calle A", "phone": "70000201"},
+    ).json()
+    branch_b = client.post(
+        "/api/v1/sucursales", headers=headers_b,
+        json={"name": "Operaciones B", "city": "Tarija", "address": "Calle B", "phone": "70000202"},
+    ).json()
+    assert branch_a["empresa_id"] == empresa_a["id"]
+    assert branch_b["empresa_id"] == empresa_b["id"]
+
+    buyer_b = User(
+        empresa_id=empresa_b["id"], email="buyer-b@ops.example.com", name="Buyer B",
+        hashed_password=hash_password("ClientPass2026!"), role="cliente", is_active=True,
+    )
+    db_session.add(buyer_b)
+    db_session.flush()
+    profile_b = Cliente(
+        codigo="CLI-OPS-B", user_id=buyer_b.id, telefono="70000203", direccion="Dirección B"
+    )
+    db_session.add(profile_b)
+    db_session.flush()
+    order_b = OrdenVenta(
+        codigo_cliente=profile_b.codigo, sucursal_id=branch_b["id"], total=Decimal("155.00"),
+        estado="pendiente", tipo_venta="en_linea",
+    )
+    db_session.add(order_b)
+    db_session.flush()
+    shipment_b = Envio(
+        orden_venta_id=order_b.id, direccion="Destino B", ciudad="Tarija",
+        costo=Decimal("10.00"), estado="pendiente",
+    )
+    db_session.add(shipment_b)
+    db_session.commit()
+
+    assert client.get(f"/api/v1/ventas/{order_b.id}", headers=headers_a).status_code == 404
+    assert client.post(
+        "/api/v1/pagos/caja",
+        headers=headers_a,
+        json={"orden_venta_id": order_b.id, "efectivo_recibido": 200},
+    ).status_code == 404
+    assert client.patch(
+        f"/api/v1/envios/{shipment_b.id}/delivery",
+        headers=headers_a,
+        json={"estado": "en camino"},
+    ).status_code == 404
+
+    report_a = client.get("/api/v1/reportes/ventas/preview", headers=headers_a)
+    assert report_a.status_code == 200
+    assert all(item["id"] != order_b.id for item in report_a.json()["items"])
+    dashboard_a = client.get("/api/v1/reportes/dashboard-stats", headers=headers_a)
+    assert dashboard_a.status_code == 200
+    assert dashboard_a.json()["total_ventas"] == 0

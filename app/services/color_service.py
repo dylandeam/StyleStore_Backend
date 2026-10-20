@@ -10,6 +10,7 @@ from app.models.stock_inventario import StockInventario
 from app.models.user import User
 from app.schemas.color import ColorCreate, ColorUpdate, ColorResponse
 from app.services.bitacora_service import BitacoraService
+from app.services.tenant_scope import scope_by_empresa
 
 
 class ColorService:
@@ -17,12 +18,15 @@ class ColorService:
         self.db = db
         self.bitacora = BitacoraService(db)
 
-    def list_colores(self) -> list[ColorResponse]:
-        colores = self.db.query(Color).order_by(Color.nombre.asc()).all()
+    def _query(self, current_user: User):
+        return scope_by_empresa(self.db.query(Color), current_user, Color.empresa_id)
+
+    def list_colores(self, current_user: User) -> list[ColorResponse]:
+        colores = self._query(current_user).order_by(Color.nombre.asc()).all()
         return [ColorResponse.model_validate(c) for c in colores]
 
-    def get_color_by_id(self, color_id: int) -> ColorResponse:
-        c = self.db.query(Color).filter(Color.id == color_id).first()
+    def get_color_by_id(self, color_id: int, current_user: User) -> ColorResponse:
+        c = self._query(current_user).filter(Color.id == color_id).first()
         if not c:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -30,14 +34,14 @@ class ColorService:
             )
         return ColorResponse.model_validate(c)
 
-    def create_color(self, req: ColorCreate, current_user: User | None = None) -> ColorResponse:
+    def create_color(self, req: ColorCreate, current_user: User) -> ColorResponse:
         nombre_clean = req.nombre.strip()
-        if self.db.query(Color).filter(Color.nombre.ilike(nombre_clean)).first():
+        if self._query(current_user).filter(Color.nombre.ilike(nombre_clean)).first():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Ya existe un color con el nombre '{nombre_clean}'.",
             )
-        c = Color(nombre=nombre_clean)
+        c = Color(empresa_id=current_user.empresa_id, nombre=nombre_clean)
         self.db.add(c)
         self.db.commit()
         self.db.refresh(c)
@@ -51,8 +55,8 @@ class ColorService:
             )
         return ColorResponse.model_validate(c)
 
-    def update_color(self, color_id: int, req: ColorUpdate, current_user: User | None = None) -> ColorResponse:
-        c = self.db.query(Color).filter(Color.id == color_id).first()
+    def update_color(self, color_id: int, req: ColorUpdate, current_user: User) -> ColorResponse:
+        c = self._query(current_user).filter(Color.id == color_id).first()
         if not c:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -60,7 +64,7 @@ class ColorService:
             )
         nombre_clean = req.nombre.strip()
         existente = (
-            self.db.query(Color)
+            self._query(current_user)
             .filter(Color.nombre.ilike(nombre_clean), Color.id != color_id)
             .first()
         )
@@ -82,8 +86,8 @@ class ColorService:
             )
         return ColorResponse.model_validate(c)
 
-    def delete_color(self, color_id: int, current_user: User | None = None) -> dict:
-        c = self.db.query(Color).filter(Color.id == color_id).first()
+    def delete_color(self, color_id: int, current_user: User) -> dict:
+        c = self._query(current_user).filter(Color.id == color_id).first()
         if not c:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

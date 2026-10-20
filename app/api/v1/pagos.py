@@ -16,6 +16,7 @@ from app.models.cliente import Cliente
 from app.models.orden_venta import OrdenVenta
 from app.models.pago import Pago
 from app.models.qr_pago_config import QRPagoConfig
+from app.models.empresa import Empresa
 from app.schemas.pago_envio import (
     PagoCreateRequest,
     PagoResponse,
@@ -30,8 +31,30 @@ from app.api.deps import get_current_user, get_optional_current_user, require_pe
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.bitacora_service import BitacoraService
 from app.services.paypal_service import paypal_service
+from app.services.tenant_scope import scope_by_sucursal
 
 router = APIRouter(prefix="/pagos", tags=["Pagos"])
+
+
+def _scoped_order(db: Session, current_user: User, order_id: int) -> OrdenVenta | None:
+    query = db.query(OrdenVenta).filter(OrdenVenta.id == order_id)
+    order = scope_by_sucursal(query, db, current_user, OrdenVenta.sucursal_id).first()
+    if order and current_user.role == "cliente":
+        cliente = db.query(Cliente).filter(Cliente.user_id == current_user.id).first()
+        if not cliente or order.codigo_cliente != cliente.codigo:
+            return None
+    return order
+
+
+def _scoped_payment(db: Session, current_user: User, payment_id: int) -> Pago | None:
+    query = db.query(Pago).join(OrdenVenta, Pago.orden_venta_id == OrdenVenta.id).filter(Pago.id == payment_id)
+    query = scope_by_sucursal(query, db, current_user, OrdenVenta.sucursal_id)
+    payment = query.first()
+    if payment and current_user.role == "cliente":
+        cliente = db.query(Cliente).filter(Cliente.user_id == current_user.id).first()
+        if not cliente or payment.orden_venta.codigo_cliente != cliente.codigo:
+            return None
+    return payment
 
 
 # ==========================================
@@ -47,7 +70,7 @@ async def create_paypal_order(
     """
     Crea una orden en PayPal v2 para el checkout de StyleStore.
     """
-    orden = db.query(OrdenVenta).filter(OrdenVenta.id == payload.orden_venta_id).first()
+    orden = _scoped_order(db, current_user, payload.orden_venta_id)
     if not orden:
         raise NotFoundException(f"Orden de venta con ID {payload.orden_venta_id} no encontrada.")
 
@@ -111,17 +134,31 @@ async def capture_paypal_order(
 
     # 1. Buscar orden por ID si fue provisto
     if payload.orden_venta_id and payload.orden_venta_id > 0:
-        orden = db.query(OrdenVenta).filter(OrdenVenta.id == payload.orden_venta_id).first()
+        orden = _scoped_order(db, current_user, payload.orden_venta_id) if current_user else None
 
     # 2. Si no se encontró por ID, buscar pago por paypal_order_id
     if not orden or not pago:
         pago = db.query(Pago).filter(Pago.paypal_order_id == payload.paypal_order_id).first()
         if pago and not orden:
-            orden = db.query(OrdenVenta).filter(OrdenVenta.id == pago.orden_venta_id).first()
+            orden = (
+                _scoped_order(db, current_user, pago.orden_venta_id)
+                if current_user
+                else db.query(OrdenVenta).filter(OrdenVenta.id == pago.orden_venta_id).first()
+            )
+            if not orden:
+                pago = None
 
     # 3. Si aún no tenemos orden, buscar la última orden pendiente del sistema o cliente
-    if not orden:
-        orden = db.query(OrdenVenta).order_by(OrdenVenta.id.desc()).first()
+    if not orden and current_user:
+        order_query = scope_by_sucursal(
+            db.query(OrdenVenta), db, current_user, OrdenVenta.sucursal_id
+        )
+        if current_user.role == "cliente":
+            cliente = db.query(Cliente).filter(Cliente.user_id == current_user.id).first()
+            order_query = order_query.filter(
+                OrdenVenta.codigo_cliente == cliente.codigo if cliente else ""
+            )
+        orden = order_query.order_by(OrdenVenta.id.desc()).first()
 
     if not orden:
         raise NotFoundException("No se encontró ninguna orden de venta asociada al token de PayPal.")
@@ -201,7 +238,7 @@ async def process_caja_payment(
     Registra cobro en efectivo presencial en el POS / Punto de Venta.
     Calcula vuelto y genera ticket numerado de venta.
     """
-    orden = db.query(OrdenVenta).filter(OrdenVenta.id == payload.orden_venta_id).first()
+    orden = _scoped_order(db, current_user, payload.orden_venta_id)
     if not orden:
         raise NotFoundException(f"Orden de venta con ID {payload.orden_venta_id} no encontrada.")
 
@@ -277,7 +314,7 @@ async def process_payment(
     """
     Registra el pago general de una orden de venta.
     """
-    orden = db.query(OrdenVenta).filter(OrdenVenta.id == payload.orden_venta_id).first()
+    orden = _scoped_order(db, current_user, payload.orden_venta_id)
     if not orden:
         raise NotFoundException(f"Orden de venta con ID {payload.orden_venta_id} no encontrada.")
 
@@ -334,10 +371,17 @@ async def list_my_payments(
 
 @router.get("/config-qr", response_model=QRConfigResponse, summary="Obtener configuración del QR de cobro")
 async def get_qr_config(
+    current_user: User | None = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
 ):
     """Retorna la imagen y datos del QR de cobro vigente para mostrador y pagos."""
-    config = db.query(QRPagoConfig).filter(QRPagoConfig.activo == True).order_by(QRPagoConfig.updated_at.desc()).first()
+    empresa_id = current_user.empresa_id if current_user else None
+    if empresa_id is None:
+        default_empresa = db.query(Empresa).filter(Empresa.codigo == "stylestore").first()
+        empresa_id = default_empresa.id if default_empresa else None
+    config = db.query(QRPagoConfig).filter(
+        QRPagoConfig.activo == True, QRPagoConfig.empresa_id == empresa_id
+    ).order_by(QRPagoConfig.updated_at.desc()).first()
     if not config:
         return QRConfigResponse(
             id=None,
@@ -364,9 +408,16 @@ async def update_qr_config(
     db: Session = Depends(get_db),
 ):
     """Permite al encargado o administrador subir o actualizar la imagen del QR para cobro."""
-    config = db.query(QRPagoConfig).filter(QRPagoConfig.activo == True).order_by(QRPagoConfig.updated_at.desc()).first()
+    if payload.sucursal_id:
+        from app.services.tenant_scope import get_scoped_sucursal
+        get_scoped_sucursal(db, current_user, payload.sucursal_id)
+    config = db.query(QRPagoConfig).filter(
+        QRPagoConfig.activo == True,
+        QRPagoConfig.empresa_id == current_user.empresa_id,
+    ).order_by(QRPagoConfig.updated_at.desc()).first()
     if not config:
         config = QRPagoConfig(
+            empresa_id=current_user.empresa_id,
             imagen_url=payload.imagen_url,
             banco_destino=payload.banco_destino or "QR Simple BNB / BCP / Banco Unión",
             titular=payload.titular or "StyleStore Bolivia",
@@ -411,7 +462,7 @@ async def get_payment_receipt(
     db: Session = Depends(get_db),
 ):
     """Genera el detalle completo de recibo / nota de venta."""
-    pago = db.query(Pago).filter(Pago.id == pago_id).first()
+    pago = _scoped_payment(db, current_user, pago_id)
     if not pago:
         raise NotFoundException(f"Pago con ID {pago_id} no encontrado.")
 
@@ -452,7 +503,10 @@ async def list_all_payments(
     db: Session = Depends(get_db),
 ):
     """Retorna el listado completo de pagos con datos de la orden y ticket asociado."""
-    pagos = db.query(Pago).order_by(Pago.created_at.desc()).all()
+    pagos_query = db.query(Pago).join(OrdenVenta, Pago.orden_venta_id == OrdenVenta.id)
+    pagos = scope_by_sucursal(
+        pagos_query, db, current_user, OrdenVenta.sucursal_id
+    ).order_by(Pago.created_at.desc()).all()
     resultado = []
     for p in pagos:
         orden = p.orden_venta
@@ -481,7 +535,7 @@ async def confirmar_cobro_online(
     Confirma el cobro de una orden de compra en línea directamente en Gestionar Pagos.
     No requiere cálculo de vuelto; emite ticket inmediatamente y actualiza estado a pagada.
     """
-    orden = db.query(OrdenVenta).filter(OrdenVenta.id == orden_id).first()
+    orden = _scoped_order(db, current_user, orden_id)
     if not orden:
         raise NotFoundException(f"Orden de venta #{orden_id} no encontrada.")
 
@@ -538,7 +592,7 @@ async def delete_payment(
     db: Session = Depends(get_db),
 ):
     """Elimina o revierte un registro de pago y bitacora la acción (para administradores)."""
-    pago = db.query(Pago).filter(Pago.id == pago_id).first()
+    pago = _scoped_payment(db, current_user, pago_id)
     if not pago:
         raise NotFoundException(f"Pago #{pago_id} no encontrado.")
 
@@ -557,4 +611,3 @@ async def delete_payment(
         module="pagos",
     )
     return {"message": f"Pago #{pago_id} eliminado exitosamente."}
-

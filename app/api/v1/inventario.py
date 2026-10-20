@@ -13,10 +13,11 @@ from app.models.user import User
 from app.models.stock_inventario import StockInventario
 from app.models.producto_color import ProductoColor
 from app.models.producto import Producto
+from app.models.talla import Talla
 from app.api.deps import require_permission
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.bitacora_service import BitacoraService
-from app.services.tenant_scope import get_scoped_sucursal, scope_by_sucursal
+from app.services.tenant_scope import get_scoped_sucursal, scope_by_empresa, scope_by_sucursal
 
 router = APIRouter(prefix="/inventario", tags=["Inventario"])
 
@@ -196,6 +197,24 @@ async def ajustar_stock(
         stock.cantidad = payload.cantidad
     elif payload.producto_color_id and payload.talla_id and payload.sucursal_id:
         get_scoped_sucursal(db, current_user, payload.sucursal_id)
+        producto_color = (
+            db.query(ProductoColor)
+            .join(Producto, Producto.codigo == ProductoColor.producto_codigo)
+            .filter(
+                ProductoColor.id == payload.producto_color_id,
+                Producto.empresa_id == current_user.empresa_id,
+            )
+            .first()
+            if not current_user.is_platform_admin
+            else db.query(ProductoColor).filter(ProductoColor.id == payload.producto_color_id).first()
+        )
+        if not producto_color:
+            raise NotFoundException("Variante de producto no encontrada.")
+        talla = scope_by_empresa(
+            db.query(Talla), current_user, Talla.empresa_id
+        ).filter(Talla.id == payload.talla_id).first()
+        if not talla:
+            raise NotFoundException("Talla no encontrada.")
         stock = (
             db.query(StockInventario)
             .filter(

@@ -21,6 +21,7 @@ from app.schemas.pago_envio import (
 from app.api.deps import get_current_user, require_permission
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.bitacora_service import BitacoraService
+from app.services.tenant_scope import get_scoped_sucursal, scope_by_sucursal
 
 router = APIRouter(prefix="/ventas", tags=["Ventas"])
 
@@ -114,7 +115,9 @@ async def list_ventas(
         ventas = db.query(OrdenVenta).filter(OrdenVenta.codigo_cliente == cliente.codigo).order_by(OrdenVenta.created_at.desc()).all()
         return [_serialize_orden(v) for v in ventas]
 
-    ventas = db.query(OrdenVenta).order_by(OrdenVenta.created_at.desc()).all()
+    ventas = scope_by_sucursal(
+        db.query(OrdenVenta), db, current_user, OrdenVenta.sucursal_id
+    ).order_by(OrdenVenta.created_at.desc()).all()
     return [_serialize_orden(v) for v in ventas]
 
 
@@ -164,9 +167,14 @@ async def get_venta(
     db: Session = Depends(get_db),
 ):
     """Detalle completo de una orden de venta."""
-    venta = db.query(OrdenVenta).filter(OrdenVenta.id == venta_id).first()
+    venta_query = db.query(OrdenVenta).filter(OrdenVenta.id == venta_id)
+    venta = scope_by_sucursal(venta_query, db, current_user, OrdenVenta.sucursal_id).first()
     if not venta:
         raise NotFoundException(f"Venta con ID {venta_id} no encontrada.")
+    if current_user.role == "cliente":
+        cliente = db.query(Cliente).filter(Cliente.user_id == current_user.id).first()
+        if not cliente or venta.codigo_cliente != cliente.codigo:
+            raise NotFoundException(f"Venta con ID {venta_id} no encontrada.")
     return _serialize_orden(venta)
 
 
@@ -184,10 +192,16 @@ async def create_venta_presencial(
     """
     # Buscar cliente o asignar/crear Cliente General por defecto
     codigo_cli = payload.codigo_cliente or "CLI-GENERAL"
-    cliente = db.query(Cliente).filter(Cliente.codigo == codigo_cli).first()
+    cliente_query = db.query(Cliente).join(User, Cliente.user_id == User.id).filter(Cliente.codigo == codigo_cli)
+    if not current_user.is_platform_admin:
+        cliente_query = cliente_query.filter(User.empresa_id == current_user.empresa_id)
+    cliente = cliente_query.first()
     if not cliente:
         # Intentar buscar por id o crear un cliente genérico para ventas rápidas de mostrador
-        cliente = db.query(Cliente).first()
+        fallback_query = db.query(Cliente).join(User, Cliente.user_id == User.id)
+        if not current_user.is_platform_admin:
+            fallback_query = fallback_query.filter(User.empresa_id == current_user.empresa_id)
+        cliente = fallback_query.first()
         if not cliente:
             cliente = Cliente(
                 codigo="CLI-GENERAL",
@@ -203,14 +217,17 @@ async def create_venta_presencial(
     detalles_orden = []
 
     sucursal_id_detectada = payload.sucursal_id
+    if payload.sucursal_id:
+        get_scoped_sucursal(db, current_user, payload.sucursal_id)
 
     for item in payload.items:
-        stock = (
+        stock_query = (
             db.query(StockInventario)
             .filter(StockInventario.id == item.stock_inventario_id)
-            .with_for_update(of=StockInventario)
-            .first()
         )
+        stock = scope_by_sucursal(
+            stock_query, db, current_user, StockInventario.sucursal_id
+        ).with_for_update(of=StockInventario).first()
         if not stock:
             db.rollback()
             raise NotFoundException(f"Inventario #{item.stock_inventario_id} no encontrado.")
@@ -330,7 +347,8 @@ async def delete_venta(
     db: Session = Depends(get_db),
 ):
     """Eliminar un registro de orden de venta."""
-    orden = db.query(OrdenVenta).filter(OrdenVenta.id == venta_id).first()
+    orden_query = db.query(OrdenVenta).filter(OrdenVenta.id == venta_id)
+    orden = scope_by_sucursal(orden_query, db, current_user, OrdenVenta.sucursal_id).first()
     if not orden:
         raise NotFoundException(f"Venta con ID {venta_id} no encontrada.")
 

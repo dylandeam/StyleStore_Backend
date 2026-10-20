@@ -9,6 +9,7 @@ from app.models.producto import Producto
 from app.models.user import User
 from app.schemas.temporada import TemporadaCreate, TemporadaUpdate, TemporadaResponse
 from app.services.bitacora_service import BitacoraService
+from app.services.tenant_scope import scope_by_empresa
 
 
 class TemporadaService:
@@ -16,12 +17,15 @@ class TemporadaService:
         self.db = db
         self.bitacora = BitacoraService(db)
 
-    def list_temporadas(self) -> list[TemporadaResponse]:
-        temps = self.db.query(Temporada).order_by(Temporada.nombre.asc()).all()
+    def _query(self, current_user: User):
+        return scope_by_empresa(self.db.query(Temporada), current_user, Temporada.empresa_id)
+
+    def list_temporadas(self, current_user: User) -> list[TemporadaResponse]:
+        temps = self._query(current_user).order_by(Temporada.nombre.asc()).all()
         return [TemporadaResponse.model_validate(t) for t in temps]
 
-    def get_temporada_by_id(self, temp_id: int) -> TemporadaResponse:
-        t = self.db.query(Temporada).filter(Temporada.id == temp_id).first()
+    def get_temporada_by_id(self, temp_id: int, current_user: User) -> TemporadaResponse:
+        t = self._query(current_user).filter(Temporada.id == temp_id).first()
         if not t:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -29,14 +33,14 @@ class TemporadaService:
             )
         return TemporadaResponse.model_validate(t)
 
-    def create_temporada(self, req: TemporadaCreate, current_user: User | None = None) -> TemporadaResponse:
+    def create_temporada(self, req: TemporadaCreate, current_user: User) -> TemporadaResponse:
         nombre_clean = req.nombre.strip()
-        if self.db.query(Temporada).filter(Temporada.nombre.ilike(nombre_clean)).first():
+        if self._query(current_user).filter(Temporada.nombre.ilike(nombre_clean)).first():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Ya existe una temporada con el nombre '{nombre_clean}'.",
             )
-        t = Temporada(nombre=nombre_clean)
+        t = Temporada(empresa_id=current_user.empresa_id, nombre=nombre_clean)
         self.db.add(t)
         self.db.commit()
         self.db.refresh(t)
@@ -50,8 +54,8 @@ class TemporadaService:
             )
         return TemporadaResponse.model_validate(t)
 
-    def update_temporada(self, temp_id: int, req: TemporadaUpdate, current_user: User | None = None) -> TemporadaResponse:
-        t = self.db.query(Temporada).filter(Temporada.id == temp_id).first()
+    def update_temporada(self, temp_id: int, req: TemporadaUpdate, current_user: User) -> TemporadaResponse:
+        t = self._query(current_user).filter(Temporada.id == temp_id).first()
         if not t:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -59,7 +63,7 @@ class TemporadaService:
             )
         nombre_clean = req.nombre.strip()
         existente = (
-            self.db.query(Temporada)
+            self._query(current_user)
             .filter(Temporada.nombre.ilike(nombre_clean), Temporada.id != temp_id)
             .first()
         )
@@ -81,14 +85,16 @@ class TemporadaService:
             )
         return TemporadaResponse.model_validate(t)
 
-    def delete_temporada(self, temp_id: int, current_user: User | None = None) -> dict:
-        t = self.db.query(Temporada).filter(Temporada.id == temp_id).first()
+    def delete_temporada(self, temp_id: int, current_user: User) -> dict:
+        t = self._query(current_user).filter(Temporada.id == temp_id).first()
         if not t:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Temporada con ID {temp_id} no encontrada.",
             )
-        tiene_prods = self.db.query(Producto).filter(Producto.temporada_id == temp_id).first()
+        tiene_prods = scope_by_empresa(
+            self.db.query(Producto), current_user, Producto.empresa_id
+        ).filter(Producto.temporada_id == temp_id).first()
         if tiene_prods:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
