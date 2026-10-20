@@ -33,9 +33,13 @@ class UserService:
         self,
         search: str | None = None,
         role: str | None = None,
+        empresa_id: int | None = None,
+        include_all_empresas: bool = False,
     ) -> list[User]:
         """List users with optional search and role filtering."""
         query = self.db.query(User)
+        if not include_all_empresas:
+            query = query.filter(User.empresa_id == empresa_id)
         if role:
             if role.isdigit():
                 query = query.filter(User.role_id == int(role))
@@ -131,6 +135,7 @@ class UserService:
             clean_apellido = raw_apellido
 
         user = User(
+            empresa_id=current_user.empresa_id,
             email=request.email,
             name=clean_name,
             apellido=clean_apellido,
@@ -159,6 +164,9 @@ class UserService:
     ) -> User:
         """Update user properties (role, active status, name) by administrator."""
         user = self.get_user_by_id(user_id)
+        if not current_user.is_platform_admin and user.empresa_id != current_user.empresa_id:
+            from app.core.exceptions import ForbiddenException
+            raise ForbiddenException("No puede modificar usuarios de otra empresa.")
 
         if request.name is not None:
             user.name = request.name.strip()

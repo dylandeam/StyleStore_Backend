@@ -3,8 +3,8 @@ Sucursal model for Store Branches.
 """
 from datetime import datetime
 from decimal import Decimal
-from sqlalchemy import String, Boolean, DateTime, Numeric, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import String, Boolean, DateTime, Numeric, Integer, ForeignKey, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
@@ -15,6 +15,9 @@ class Sucursal(Base):
     __tablename__ = "sucursales"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    empresa_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("empresas.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(150), unique=True, index=True, nullable=False)
     city: Mapped[str] = mapped_column(String(100), nullable=False)
     address: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -29,6 +32,8 @@ class Sucursal(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+    empresa_rel = relationship("Empresa", back_populates="sucursales", lazy="joined")
 
     @property
     def nombre(self) -> str:

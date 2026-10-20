@@ -60,10 +60,21 @@ async def get_current_user(
     user_service = UserService(db)
     user = user_service.get_user_by_id(user_id)
 
+    token_empresa_id = payload.get("empresa_id")
+    if token_empresa_id is not None and int(token_empresa_id) != user.empresa_id:
+        raise CredentialsException(detail="El ámbito de empresa del token ya no es válido")
+
     if not user.is_active:
         raise CredentialsException(detail="User account is deactivated")
 
     return user
+
+
+async def require_platform_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Allow only the platform operator; tenant administrators are intentionally excluded."""
+    if not current_user.is_platform_admin:
+        raise ForbiddenException("Esta operación requiere administración global de la plataforma")
+    return current_user
 
 
 optional_security = HTTPBearer(auto_error=False)
@@ -133,4 +144,3 @@ def require_permission(permission_code: str):
         return current_user
 
     return permission_checker
-

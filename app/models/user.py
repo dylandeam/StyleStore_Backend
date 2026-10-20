@@ -15,6 +15,9 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    empresa_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("empresas.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
     email: Mapped[str] = mapped_column(
         String(255), unique=True, index=True, nullable=False
     )
@@ -32,6 +35,7 @@ class User(Base):
     developer_key_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     bitacora_password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_platform_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -40,6 +44,7 @@ class User(Base):
     )
 
     role_rel = relationship("Role", back_populates="users", lazy="joined")
+    empresa_rel = relationship("Empresa", back_populates="users", lazy="joined")
 
     @property
     def sucursal_id(self) -> int | None:

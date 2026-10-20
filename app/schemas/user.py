@@ -60,6 +60,7 @@ class UserResponse(BaseModel):
     """Schema for returning user data in API responses."""
 
     id: int = Field(..., description="User ID")
+    empresa_id: int | None = Field(None, description="Empresa tenant del usuario")
     email: EmailStr = Field(..., description="User email")
     name: str = Field(..., description="User full name")
     apellido: str | None = Field(None, description="User last name")
@@ -71,6 +72,7 @@ class UserResponse(BaseModel):
     role: str = Field(..., description="User role")
     sucursal_id: int | None = Field(None, description="ID de sucursal si es empleado")
     is_active: bool = Field(..., description="Whether the user is active")
+    is_platform_admin: bool = Field(False, description="Administrador global de la plataforma SaaS")
     created_at: datetime = Field(..., description="Account creation timestamp")
 
     model_config = {"from_attributes": True}

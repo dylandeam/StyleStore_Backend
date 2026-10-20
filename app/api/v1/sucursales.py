@@ -27,7 +27,11 @@ async def list_sucursales(
 ):
     """Listar todas las sucursales."""
     service = SucursalService(db)
-    return service.list_sucursales(active_only=active_only)
+    return service.list_sucursales(
+        active_only=active_only,
+        empresa_id=current_user.empresa_id if current_user else None,
+        include_all_empresas=bool(current_user and current_user.is_platform_admin),
+    )
 
 
 @router.get(
@@ -43,7 +47,11 @@ async def get_sucursal(
 ):
     """Obtener detalle de sucursal."""
     service = SucursalService(db)
-    return service.get_sucursal_by_id(sucursal_id)
+    return service.get_sucursal_by_id(
+        sucursal_id,
+        empresa_id=current_user.empresa_id if current_user else None,
+        include_all_empresas=bool(current_user and current_user.is_platform_admin),
+    )
 
 
 @router.post(

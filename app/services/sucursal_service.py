@@ -16,23 +16,44 @@ class SucursalService:
     def __init__(self, db: Session):
         self.db = db
 
-    def list_sucursales(self, active_only: bool = False) -> list[Sucursal]:
+    def list_sucursales(
+        self,
+        active_only: bool = False,
+        empresa_id: int | None = None,
+        include_all_empresas: bool = False,
+    ) -> list[Sucursal]:
         """List all branches or only active ones."""
         query = self.db.query(Sucursal)
+        if not include_all_empresas and empresa_id is not None:
+            query = query.filter(Sucursal.empresa_id == empresa_id)
         if active_only:
             query = query.filter(Sucursal.active == True)
         return query.order_by(Sucursal.name).all()
 
-    def get_sucursal_by_id(self, sucursal_id: int) -> Sucursal:
+    def get_sucursal_by_id(
+        self,
+        sucursal_id: int,
+        empresa_id: int | None = None,
+        include_all_empresas: bool = False,
+    ) -> Sucursal:
         """Get branch by ID."""
-        sucursal = self.db.query(Sucursal).filter(Sucursal.id == sucursal_id).first()
+        query = self.db.query(Sucursal).filter(Sucursal.id == sucursal_id)
+        if not include_all_empresas and empresa_id is not None:
+            query = query.filter(Sucursal.empresa_id == empresa_id)
+        sucursal = query.first()
         if not sucursal:
             raise NotFoundException(f"No se encontró la sucursal con ID {sucursal_id}.")
         return sucursal
 
     def create_sucursal(self, data: SucursalCreate, current_user: User) -> Sucursal:
         """Create a new branch."""
-        existing = self.db.query(Sucursal).filter(Sucursal.name.ilike(data.name)).first()
+        if current_user.empresa_id is None:
+            from app.core.exceptions import ForbiddenException
+            raise ForbiddenException("El usuario no tiene una empresa asignada.")
+        existing = self.db.query(Sucursal).filter(
+            Sucursal.empresa_id == current_user.empresa_id,
+            Sucursal.name.ilike(data.name),
+        ).first()
         if existing:
             raise ConflictException(f"Ya existe una sucursal con el nombre '{data.name}'.")
 
@@ -46,6 +67,7 @@ class SucursalService:
                 lat, lon = plat, plon
 
         sucursal = Sucursal(
+            empresa_id=current_user.empresa_id,
             name=data.name,
             city=data.city,
             address=data.address,
@@ -71,10 +93,17 @@ class SucursalService:
         self, sucursal_id: int, data: SucursalUpdate, current_user: User
     ) -> Sucursal:
         """Update branch information."""
-        sucursal = self.get_sucursal_by_id(sucursal_id)
+        sucursal = self.get_sucursal_by_id(
+            sucursal_id,
+            empresa_id=current_user.empresa_id,
+            include_all_empresas=current_user.is_platform_admin,
+        )
 
         if data.name is not None and data.name.lower() != sucursal.name.lower():
-            existing = self.db.query(Sucursal).filter(Sucursal.name.ilike(data.name)).first()
+            existing = self.db.query(Sucursal).filter(
+                Sucursal.empresa_id == sucursal.empresa_id,
+                Sucursal.name.ilike(data.name),
+            ).first()
             if existing and existing.id != sucursal_id:
                 raise ConflictException(f"Ya existe otra sucursal con el nombre '{data.name}'.")
             sucursal.name = data.name
@@ -114,7 +143,11 @@ class SucursalService:
 
     def delete_sucursal(self, sucursal_id: int, current_user: User) -> dict:
         """Delete branch."""
-        sucursal = self.get_sucursal_by_id(sucursal_id)
+        sucursal = self.get_sucursal_by_id(
+            sucursal_id,
+            empresa_id=current_user.empresa_id,
+            include_all_empresas=current_user.is_platform_admin,
+        )
         name = sucursal.name
 
         self.db.delete(sucursal)

@@ -59,7 +59,12 @@ async def list_users(
 ):
     """Listar usuarios del sistema."""
     service = UserService(db)
-    return service.list_users(search=search, role=role)
+    return service.list_users(
+        search=search,
+        role=role,
+        empresa_id=current_user.empresa_id,
+        include_all_empresas=current_user.is_platform_admin,
+    )
 
 
 @router.post(

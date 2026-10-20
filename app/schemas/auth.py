@@ -22,6 +22,7 @@ class RegisterRequest(BaseModel):
     telefono: str | None = Field(None, max_length=20, description="Número de teléfono o celular")
     direccion: str | None = Field(None, max_length=255, description="Dirección de domicilio")
     foto: str | None = Field(None, max_length=255, description="URL o path de la foto de perfil")
+    empresa_codigo: str | None = Field(None, max_length=50, description="Código de la empresa donde se registra")
 
     @field_validator("password")
     @classmethod

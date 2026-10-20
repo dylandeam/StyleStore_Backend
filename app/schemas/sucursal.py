@@ -55,6 +55,7 @@ class SucursalResponse(SucursalBase):
     """Schema for returning branch details."""
 
     id: int
+    empresa_id: int | None = None
     created_at: datetime
     updated_at: datetime
 

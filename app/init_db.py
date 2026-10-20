@@ -19,6 +19,8 @@ def _run_column_migrations(db: Session):
         # Users
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS developer_key_hash VARCHAR(255)",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS bitacora_password_hash VARCHAR(255)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS empresa_id INTEGER",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_platform_admin BOOLEAN DEFAULT FALSE",
         # Bitacora
         "ALTER TABLE bitacora ADD COLUMN IF NOT EXISTS ip_address VARCHAR(50)",
         # OrdenVenta
@@ -45,6 +47,7 @@ def _run_column_migrations(db: Session):
         "ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS latitud NUMERIC(10, 6)",
         "ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS longitud NUMERIC(10, 6)",
         "ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS maps_url VARCHAR(500)",
+        "ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS empresa_id INTEGER",
         # Envios v7 (distancia real y repartidor)
         "ALTER TABLE envios ADD COLUMN IF NOT EXISTS token_seguimiento VARCHAR(100)",
         "ALTER TABLE envios ADD COLUMN IF NOT EXISTS tracking_activo BOOLEAN DEFAULT TRUE",
@@ -139,6 +142,24 @@ def init_db():
         # Run defensive column migrations
         _run_column_migrations(db)
 
+        # Seed the legacy tenant before assigning existing records.
+        from app.models.empresa import Empresa
+        default_empresa = db.query(Empresa).filter(Empresa.codigo == "stylestore").first()
+        if not default_empresa:
+            default_empresa = Empresa(codigo="stylestore", nombre="StyleStore", active=True)
+            db.add(default_empresa)
+            db.commit()
+            db.refresh(default_empresa)
+
+        from app.models.sucursal import Sucursal
+        db.query(User).filter(User.empresa_id.is_(None)).update(
+            {User.empresa_id: default_empresa.id}, synchronize_session=False
+        )
+        db.query(Sucursal).filter(Sucursal.empresa_id.is_(None)).update(
+            {Sucursal.empresa_id: default_empresa.id}, synchronize_session=False
+        )
+        db.commit()
+
         # Seed permissions and roles
         role_service = RoleService(db)
         role_service.seed_default_permissions_and_roles()
@@ -178,11 +199,18 @@ def init_db():
                 name="Administrador StyleStore",
                 hashed_password=hash_password("Admin@1234"),
                 role="administrador",
+                empresa_id=default_empresa.id,
+                is_platform_admin=True,
                 is_active=True,
             )
             db.add(admin_user)
             db.commit()
             logger.info("Created default administrator user: admin@stylestore.com / Admin@1234")
+        elif not db.query(User).filter(User.is_platform_admin == True).first():
+            admin_user.is_platform_admin = True
+            if admin_user.empresa_id is None:
+                admin_user.empresa_id = default_empresa.id
+            db.commit()
     except Exception as e:
         logger.error(f"Error during database initialization: {e}")
         db.rollback()

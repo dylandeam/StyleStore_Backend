@@ -27,7 +27,11 @@ def setup_test_db():
     # Seed default permissions and roles for test DB
     db = TestingSessionLocal()
     from app.services.role_service import RoleService
+    from app.models.empresa import Empresa
     RoleService(db).seed_default_permissions_and_roles()
+    default_empresa = Empresa(codigo="stylestore", nombre="StyleStore", active=True)
+    db.add(default_empresa)
+    db.commit()
     db.close()
     
     yield
@@ -71,7 +75,10 @@ def admin_token(db_session, client):
 
     admin = db_session.query(User).filter(User.email == "admin_test@stylestore.com").first()
     if not admin:
+        from app.models.empresa import Empresa
+        default_empresa = db_session.query(Empresa).filter(Empresa.codigo == "stylestore").one()
         admin = User(
+            empresa_id=default_empresa.id,
             email="admin_test@stylestore.com",
             name="Admin Test",
             apellido="StyleStore",

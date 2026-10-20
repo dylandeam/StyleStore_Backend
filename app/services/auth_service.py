@@ -14,6 +14,7 @@ from app.core.security import (
     decode_token,
 )
 from app.core.exceptions import (
+    BadRequestException,
     CredentialsException,
     UserAlreadyExistsException,
     InvalidTokenException,
@@ -33,6 +34,28 @@ class AuthService:
         """
         Register a new client user.
         """
+        from app.models.empresa import Empresa
+
+        empresa = None
+        if request.empresa_codigo:
+            empresa = (
+                self.db.query(Empresa)
+                .filter(Empresa.codigo == request.empresa_codigo.strip().lower(), Empresa.active == True)
+                .first()
+            )
+            if not empresa:
+                raise BadRequestException("El código de empresa no existe o está inactivo.")
+        else:
+            active_empresas = self.db.query(Empresa).filter(Empresa.active == True).all()
+            if not active_empresas:
+                empresa = Empresa(codigo="stylestore", nombre="StyleStore", active=True)
+                self.db.add(empresa)
+                self.db.flush()
+            elif len(active_empresas) == 1:
+                empresa = active_empresas[0]
+            else:
+                raise BadRequestException("Debe indicar el código de empresa para registrarse.")
+
         # Check if user already exists by email
         existing_user = (
             self.db.query(User).filter(User.email == request.email).first()
@@ -73,6 +96,7 @@ class AuthService:
 
         # Create new user with default client role (CU9 / v7 Punto 1)
         user = User(
+            empresa_id=empresa.id,
             email=request.email,
             name=clean_name,
             apellido=clean_apellido,
@@ -151,7 +175,12 @@ class AuthService:
             raise CredentialsException(detail="La cuenta de usuario está desactivada")
 
         # Generate tokens
-        token_data = {"sub": str(user.id), "role": user.role, "email": user.email}
+        token_data = {
+            "sub": str(user.id),
+            "role": user.role,
+            "email": user.email,
+            "empresa_id": user.empresa_id,
+        }
         access_token = create_access_token(data=token_data)
         refresh_token = create_refresh_token(data={"sub": str(user.id)})
 
@@ -230,8 +259,17 @@ class AuthService:
         if user_id is None:
             raise InvalidTokenException()
 
-        # Generate new access token
-        token_data = {"sub": user_id}
+        user = self.db.query(User).filter(User.id == int(user_id), User.is_active == True).first()
+        if not user:
+            raise InvalidTokenException()
+
+        # Generate a new access token from current server-side identity data.
+        token_data = {
+            "sub": user_id,
+            "role": user.role,
+            "email": user.email,
+            "empresa_id": user.empresa_id,
+        }
         new_access_token = create_access_token(data=token_data)
 
         return TokenResponse(
