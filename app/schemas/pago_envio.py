@@ -157,6 +157,7 @@ class VentaItemCreate(BaseModel):
 
 
 class VentaPresencialCreate(BaseModel):
+    operation_uuid: str | None = Field(None, min_length=36, max_length=36, exclude=True)
     codigo_cliente: str = "CLI-GENERAL"
     sucursal_id: int
     items: list[VentaItemCreate] = Field(..., min_length=1)

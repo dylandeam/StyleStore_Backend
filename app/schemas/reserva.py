@@ -24,6 +24,7 @@ class DetalleReservaResponse(BaseModel):
 
 
 class ReservaCreate(BaseModel):
+    operation_uuid: str | None = Field(None, min_length=36, max_length=36, exclude=True)
     sucursal_id: int
     fecha_limite: date | None = None
     hora_retiro: time | None = Field(

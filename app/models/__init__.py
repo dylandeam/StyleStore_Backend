@@ -40,6 +40,7 @@ from app.models.qr_pago_config import QRPagoConfig
 from app.models.producto_landmark import ProductoLandmark
 from app.models.prueba_virtual import PruebaVirtual
 from app.models.plan_suscripcion import PlanSuscripcion, ContratacionPlan
+from app.models.sync_operation import SyncOperation
 
 __all__ = [
     "Role",
@@ -90,4 +91,5 @@ __all__ = [
     "PruebaVirtual",
     "PlanSuscripcion",
     "ContratacionPlan",
+    "SyncOperation",
 ]

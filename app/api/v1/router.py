@@ -40,6 +40,7 @@ from app.api.v1.outfits import router as outfits_router
 from app.api.v1.promociones import router as promociones_router
 from app.api.v1.prueba_virtual import router as prueba_virtual_router
 from app.api.v1.planes import router as planes_router
+from app.api.v1.sync import router as sync_router
 
 api_v1_router = APIRouter()
 
@@ -80,3 +81,4 @@ api_v1_router.include_router(outfits_router)
 api_v1_router.include_router(promociones_router)
 api_v1_router.include_router(prueba_virtual_router)
 api_v1_router.include_router(planes_router)
+api_v1_router.include_router(sync_router)

@@ -255,6 +255,7 @@ async def create_reserva(
         raise BadRequestException("La hora de retiro debe ser posterior a la hora actual.")
 
     reserva = Reserva(
+        client_operation_uuid=payload.operation_uuid,
         fecha=fecha_reserva,
         hora=hora_retiro,
         estado="pendiente",

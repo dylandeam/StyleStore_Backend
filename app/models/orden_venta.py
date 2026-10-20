@@ -17,6 +17,7 @@ class OrdenVenta(Base):
     __tablename__ = "orden_venta"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    client_operation_uuid: Mapped[str | None] = mapped_column(String(36), unique=True, nullable=True, index=True)
     fecha: Mapped[date] = mapped_column(Date, default=func.current_date(), nullable=False)
     estado: Mapped[str] = mapped_column(String(30), default="pendiente_pago", nullable=False)  # 'pendiente_pago', 'pagada', 'en_camino', 'entregada', 'cancelada'
     total: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=0.00)

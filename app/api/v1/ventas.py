@@ -291,6 +291,7 @@ async def create_venta_presencial(
     ticket_num = f"TCK-{now.strftime('%Y%m%d%H%M%S')}"
 
     orden = OrdenVenta(
+        client_operation_uuid=payload.operation_uuid,
         fecha=now.date(),
         estado="pagada",
         total=total_venta,

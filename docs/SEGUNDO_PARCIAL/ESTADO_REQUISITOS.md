@@ -14,32 +14,32 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-008 | EN_PRUEBAS | JWT/refresh/blacklist/guards conservados; falta prueba manual de caída de red |
 | REQ-009 | EN_PRUEBAS | Migración Alembic aditiva con una cabeza; falta aplicar/verificar en PostgreSQL desplegado |
 | REQ-010 | PENDIENTE | Existe variante talla/color/sucursal, faltan precio por talla y medidas |
-| REQ-011 | EN_CURSO | Checkout online bloquea stock; falta flujo offline y conflictos sync |
+| REQ-011 | EN_PRUEBAS | Servidor autoritativo bloquea stock online y al sincronizar; reenvío UUID no duplica ni vuelve a descontar, falta prueba de concurrencia real |
 | REQ-012 | PENDIENTE | No existe política/entidad completa de reembolso por rechazo offline |
-| REQ-013 | PENDIENTE | No existe contrato común de sincronización |
+| REQ-013 | TERMINADO_VERIFICADO | Contrato `/sync` versionado con UUID, tenant/usuario derivados del JWT, idempotencia, estados, motivo y pruebas de replay |
 | REQ-014 | EN_CURSO | RBAC y bitácora existen; falta matriz tenant/sucursal/plan completa |
 | REQ-015 | EN_PRUEBAS | Flujos preservados y suite aprobada; falta prueba manual desplegada |
-| REQ-016 | PENDIENTE | Falta UX/documentación completa de alcance offline |
+| REQ-016 | EN_CURSO | PWA diferencia provisional/confirmado, bloquea QR offline y documenta límites; falta paridad móvil |
 | REQ-017 | EN_CURSO | API crea empresa y administrador propio; falta asociación integral y UI |
 | REQ-018 | TERMINADO_VERIFICADO | Existen exactamente Básico, Profesional y Personalizado; el tercero inicia sin beneficios inventados y es editable |
 | REQ-019 | EN_CURSO | Mínimos y límites oficiales viven en backend; falta aplicar bloqueos de capacidad/sucursales a las operaciones |
 | REQ-020 | TERMINADO_VERIFICADO | Precio, moneda, límites, capacidades, beneficios y estilo se configuran en backend y UI por ámbito global/tenant |
 | REQ-021 | EN_CURSO | Alta, cambio, consulta, estado, inicio/vencimiento y snapshot implementados; faltan renovación y bloqueos operativos |
 | REQ-022 | EN_CURSO | Contratación/cambio simulado disponible para cliente; falta flujo administrativo de renovación SaaS |
-| REQ-023 | PENDIENTE | Angular aún no tiene Service Worker PWA |
-| REQ-024 | PENDIENTE | No existe IndexedDB comercial |
-| REQ-025 | PENDIENTE | Catálogo PWA offline no implementado |
-| REQ-026 | PENDIENTE | Reserva PWA offline no implementada |
-| REQ-027 | PENDIENTE | Venta de contado PWA offline no implementada |
-| REQ-028 | PENDIENTE | UI de cola/estados PWA no implementada |
+| REQ-023 | EN_PRUEBAS | Manifest, Service Worker, app shell y actualización controlada generan correctamente; falta evidencia manual de instalación/carga offline desplegada |
+| REQ-024 | EN_PRUEBAS | IndexedDB persiste catálogo y cola comercial aislada por empresa/usuario; falta prueba E2E de reinicio de navegador |
+| REQ-025 | EN_PRUEBAS | Catálogo con precios, variantes y stock conocido cae a snapshot local y muestra fecha/advertencia; falta E2E en navegador |
+| REQ-026 | EN_PRUEBAS | Reserva offline persiste con UUID, comprobante provisional y sincronización; falta E2E de cierre/reapertura |
+| REQ-027 | EN_PRUEBAS | POS guarda venta de contado con detalle/importes y bloquea QR offline; falta E2E de comprobante impreso |
+| REQ-028 | EN_PRUEBAS | Pantalla PWA muestra cola y estados pendiente/confirmada/rechazada/conflicto con motivo; falta evidencia visual E2E |
 | REQ-029 | PENDIENTE | Flutter no incluye SQLite |
 | REQ-030 | PENDIENTE | Esquema SQLite local no implementado |
 | REQ-031 | PENDIENTE | Operaciones Flutter offline no implementadas |
 | REQ-032 | PENDIENTE | UI y recuperación sync Flutter no implementadas |
-| REQ-033 | PENDIENTE | Colas persistentes con UUID no implementadas |
-| REQ-034 | PENDIENTE | Replay idempotente general no implementado |
-| REQ-035 | PENDIENTE | Resolución de conflicto offline no implementada |
-| REQ-036 | PENDIENTE | Caches/sync todavía no existen para probar aislamiento |
+| REQ-033 | EN_CURSO | Cola web persistente implementa UUID y transiciones sin borrar fallos; falta cola SQLite móvil |
+| REQ-034 | EN_CURSO | PWA reintenta al reconectar y backend confirma idempotentemente ventas/reservas; falta paridad móvil y prueba de timeout E2E |
+| REQ-035 | EN_CURSO | Backend rechaza/conflicta contra stock central y PWA conserva motivo; falta escenario concurrente E2E y móvil |
+| REQ-036 | EN_CURSO | IndexedDB usa clave empresa+usuario y backend ignora tenant del payload; falta SQLite móvil y prueba A/B local automatizada |
 | REQ-037 | EN_CURSO | Reportes escritos y aislamiento tenant existen; falta voz y autorización por plan |
 | REQ-038 | EN_CURSO | Filtros controlados, datos reales y ámbito tenant aplicados; falta autorización por plan y validación E2E |
 | REQ-039 | EN_CURSO | Tablas/exportación Excel/PDF y prueba negativa A/B existen; faltan gráficos y evidencia E2E completa |
@@ -54,7 +54,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-048 | EN_PRUEBAS | URLs/remotos declarados; falta verificar despliegue posterior a estos commits |
 | REQ-049 | PENDIENTE | Artefactos ICONIX/UML 2.5+ del segundo parcial no creados |
 | REQ-050 | PENDIENTE | Documento final capítulos I–VI no disponible |
-| REQ-051 | EN_CURSO | 57 pruebas backend y regresiones tenant/planes A/B aprobadas; faltan offline/sync y E2E desplegado |
+| REQ-051 | EN_CURSO | 60 pruebas backend, replay sync, tenant/planes A/B, build/test PWA y auditoría runtime aprobados; faltan E2E desplegado y móvil offline |
 | REQ-052 | EN_CURSO | Matriz iniciada; paquetes/capturas de entregas pendientes |
 | REQ-053 | PENDIENTE | QR y enlaces finales verificados no preparados |
 | REQ-054 | EN_CURSO | Solicitudes de cambio existen; falta nueva nota vinculada completa |
@@ -73,9 +73,9 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-067 | PENDIENTE | Flujo auditable de reembolso offline no implementado |
 | REQ-068 | PENDIENTE | Requiere propuesta del equipo sin desplazar obligatorios |
 | REQ-069 | EN_CURSO | Contratos compartidos preservados; offline/paridad nueva pendientes |
-| REQ-070 | PENDIENTE | Diagnóstico estructurado de sync no implementado |
-| REQ-071 | PENDIENTE | Indicador de conexión/último sync no implementado |
-| REQ-072 | PENDIENTE | Estrategia de caché/cola por usuario-tenant no implementada |
+| REQ-070 | EN_CURSO | Operaciones sync conservan estado, motivo, recurso resultante y fechas; faltan métricas/alertas agregadas |
+| REQ-071 | EN_PRUEBAS | Banner global informa conexión, catálogo cacheado, última sincronización, pendientes y actualización PWA; falta E2E visual |
+| REQ-072 | EN_CURSO | Caché y cola web están separadas por empresa+usuario; falta estrategia equivalente SQLite móvil |
 
 ## Decisiones bloqueadas explícitamente
 
