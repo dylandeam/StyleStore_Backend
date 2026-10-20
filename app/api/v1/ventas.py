@@ -268,7 +268,7 @@ async def create_venta_presencial(
         if stock.producto_color:
             col_nom = stock.producto_color.color.nombre if stock.producto_color.color else None
             if stock.producto_color.producto:
-                precio = stock.producto_color.producto.precio
+                precio = stock.precio_variante if stock.precio_variante is not None else stock.producto_color.producto.precio
                 prod_nom = stock.producto_color.producto.nombre
         if stock.talla:
             talla_nom = stock.talla.nombre

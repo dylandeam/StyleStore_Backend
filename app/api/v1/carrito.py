@@ -167,7 +167,7 @@ async def add_item_to_cart(
     # Obtener precio del producto
     precio = Decimal("0.00")
     if stock.producto_color and stock.producto_color.producto:
-        precio = stock.producto_color.producto.precio
+        precio = stock.precio_variante if stock.precio_variante is not None else stock.producto_color.producto.precio
 
     # Validar si ya existe en el carrito
     existing_item = (

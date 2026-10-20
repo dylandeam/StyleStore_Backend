@@ -92,6 +92,9 @@ async def get_catalogo(
                     "sucursal_nombre": s.sucursal.nombre if s.sucursal else None,
                     "sucursal_ciudad": s.sucursal.ciudad if s.sucursal else None,
                     "cantidad": s.cantidad,
+                    "precio": float(s.precio_variante if s.precio_variante is not None else p.precio),
+                    "precio_variante": float(s.precio_variante) if s.precio_variante is not None else None,
+                    "medidas": s.medidas or {},
                 })
 
             if pc.color:
@@ -198,6 +201,9 @@ async def get_producto_detalle(
                     "sucursal_nombre": s.sucursal.nombre if s.sucursal else None,
                     "sucursal_ciudad": s.sucursal.ciudad if s.sucursal else None,
                     "cantidad": s.cantidad,
+                    "precio": float(s.precio_variante if s.precio_variante is not None else p.precio),
+                    "precio_variante": float(s.precio_variante) if s.precio_variante is not None else None,
+                    "medidas": s.medidas or {},
                 })
 
             if pc.color:

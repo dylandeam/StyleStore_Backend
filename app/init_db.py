@@ -39,6 +39,9 @@ def _run_column_migrations(db: Session):
         "ALTER TABLE detalle_venta ADD COLUMN IF NOT EXISTS cantidad INTEGER",
         "ALTER TABLE detalle_venta ADD COLUMN IF NOT EXISTS precio_unitario NUMERIC(10, 2)",
         "ALTER TABLE detalle_venta ADD COLUMN IF NOT EXISTS subtotal NUMERIC(10, 2)",
+        # Variantes de inventario por talla/color/sucursal
+        "ALTER TABLE stock_inventario ADD COLUMN IF NOT EXISTS precio_variante NUMERIC(12, 2)",
+        "ALTER TABLE stock_inventario ADD COLUMN IF NOT EXISTS medidas JSON DEFAULT '{}'",
         # Pagos
         "ALTER TABLE pagos ADD COLUMN IF NOT EXISTS paypal_capture_id VARCHAR(100)",
         "ALTER TABLE pagos ADD COLUMN IF NOT EXISTS metodo_pago VARCHAR(50)",

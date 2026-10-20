@@ -5,7 +5,9 @@ Conforme a Especificación StyleStore v4 (Diagrama DB Oficial).
 se agrega aquí 'cantidad: int' por sentido común funcional para que opere el inventario.
 """
 from datetime import datetime
-from sqlalchemy import Integer, DateTime, ForeignKey, UniqueConstraint, func
+from decimal import Decimal
+
+from sqlalchemy import Integer, DateTime, ForeignKey, JSON, Numeric, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -34,6 +36,8 @@ class StockInventario(Base):
 
     # TODO-CONFIRMAR: Campo de cantidad agregado para resolver el vacío del diagrama
     cantidad: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    precio_variante: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    medidas: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}", nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

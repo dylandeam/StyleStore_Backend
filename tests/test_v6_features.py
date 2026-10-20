@@ -181,6 +181,43 @@ def test_dashboard_stats_endpoint(client: TestClient, auth_tokens, sample_invent
     assert "sucursales" in data
 
 
+def test_variant_price_and_measurements_flow(client: TestClient, auth_tokens, sample_inventory):
+    admin_headers = {"Authorization": f"Bearer {auth_tokens['admin_token']}"}
+    client_headers = {"Authorization": f"Bearer {auth_tokens['client_token']}"}
+    stock = sample_inventory["stock"]
+
+    adjusted = client.post(
+        "/api/v1/inventario/ajustar",
+        headers=admin_headers,
+        json={
+            "stock_inventario_id": stock.id,
+            "cantidad": 15,
+            "precio_variante": 279.90,
+            "medidas": {"pecho": 92, "cintura": 74, "largo": 108},
+        },
+    )
+    assert adjusted.status_code == 200, adjusted.text
+    assert adjusted.json()["precio_variante"] == 279.9
+    assert adjusted.json()["medidas"]["pecho"] == 92
+
+    detail = client.get(
+        f"/api/v1/catalogo/{sample_inventory['producto'].codigo}/detalle",
+        headers=client_headers,
+    )
+    assert detail.status_code == 200, detail.text
+    variant = detail.json()["variantes"][0]["existencias"][0]
+    assert variant["precio"] == 279.9
+    assert variant["medidas"]["largo"] == 108
+
+    cart = client.post(
+        "/api/v1/carrito/items",
+        headers=client_headers,
+        json={"stock_inventario_id": stock.id, "cantidad": 1},
+    )
+    assert cart.status_code == 200, cart.text
+    assert float(cart.json()["items"][0]["precio_unitario"]) == 279.9
+
+
 def test_chatbot_local_inteligente(client: TestClient, auth_tokens):
     headers = {"Authorization": f"Bearer {auth_tokens['client_token']}"}
     

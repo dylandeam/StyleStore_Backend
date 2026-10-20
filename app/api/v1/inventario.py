@@ -6,7 +6,9 @@ vinculando producto, color, talla, temporada y colección.
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from pydantic import BaseModel, Field
+from decimal import Decimal
+
+from pydantic import BaseModel, Field, field_validator
 
 from app.database import get_db
 from app.models.user import User
@@ -28,6 +30,23 @@ class StockAdjustRequest(BaseModel):
     talla_id: int | None = None
     sucursal_id: int | None = None
     cantidad: int = Field(..., ge=0, description="Nueva cantidad de stock")
+    precio_variante: Decimal | None = Field(None, ge=0, max_digits=12, decimal_places=2)
+    medidas: dict[str, float] | None = None
+
+    @field_validator("medidas")
+    @classmethod
+    def validate_measurements(cls, value: dict[str, float] | None):
+        if value is None:
+            return value
+        if len(value) > 20:
+            raise ValueError("Solo se permiten hasta 20 medidas por variante.")
+        cleaned: dict[str, float] = {}
+        for key, measure in value.items():
+            name = key.strip().lower().replace(" ", "_")
+            if not name or len(name) > 40 or measure <= 0 or measure > 1000:
+                raise ValueError("Las medidas deben tener nombre y un valor entre 0 y 1000 cm.")
+            cleaned[name] = round(float(measure), 2)
+        return cleaned
 
 
 @router.get("/global", summary="Inventario Global Consolidado")
@@ -67,7 +86,7 @@ async def get_inventario_global(
             if prod:
                 p_cod = prod.codigo
                 p_nom = prod.nombre
-                p_precio = float(prod.precio)
+                p_precio = float(s.precio_variante if s.precio_variante is not None else prod.precio)
                 p_foto = prod.foto
                 cat_nom = prod.categoria.nombre if prod.categoria else None
                 temp_nom = prod.temporada.nombre if prod.temporada else None
@@ -97,6 +116,8 @@ async def get_inventario_global(
             "producto_nombre": p_nom,
             "foto": p_foto,
             "precio": p_precio,
+            "precio_variante": float(s.precio_variante) if s.precio_variante is not None else None,
+            "medidas": s.medidas or {},
             "categoria": cat_nom,
             "temporada": temp_nom,
             "coleccion": col_nom,
@@ -138,7 +159,7 @@ async def get_inventario_sucursal(
             if s.producto_color.producto:
                 p_cod = s.producto_color.producto.codigo
                 p_nom = s.producto_color.producto.nombre
-                p_precio = float(s.producto_color.producto.precio)
+                p_precio = float(s.precio_variante if s.precio_variante is not None else s.producto_color.producto.precio)
                 p_foto = s.producto_color.producto.foto
                 if s.producto_color.producto.categoria:
                     p_cat_nom = s.producto_color.producto.categoria.nombre
@@ -161,6 +182,8 @@ async def get_inventario_sucursal(
             "foto": p_foto,
             "precio": p_precio,
             "precio_unitario": p_precio,
+            "precio_variante": float(s.precio_variante) if s.precio_variante is not None else None,
+            "medidas": s.medidas or {},
             "producto_color_id": s.producto_color_id,
             "color": color_nom,
             "color_nombre": color_nom,
@@ -195,6 +218,10 @@ async def ajustar_stock(
         if not stock:
             raise NotFoundException("Registro de inventario no encontrado.")
         stock.cantidad = payload.cantidad
+        if payload.precio_variante is not None:
+            stock.precio_variante = payload.precio_variante
+        if payload.medidas is not None:
+            stock.medidas = payload.medidas
     elif payload.producto_color_id and payload.talla_id and payload.sucursal_id:
         get_scoped_sucursal(db, current_user, payload.sucursal_id)
         producto_color = (
@@ -226,12 +253,18 @@ async def ajustar_stock(
         )
         if stock:
             stock.cantidad = payload.cantidad
+            if payload.precio_variante is not None:
+                stock.precio_variante = payload.precio_variante
+            if payload.medidas is not None:
+                stock.medidas = payload.medidas
         else:
             stock = StockInventario(
                 producto_color_id=payload.producto_color_id,
                 talla_id=payload.talla_id,
                 sucursal_id=payload.sucursal_id,
                 cantidad=payload.cantidad,
+                precio_variante=payload.precio_variante,
+                medidas=payload.medidas or {},
             )
             db.add(stock)
     else:
@@ -251,4 +284,6 @@ async def ajustar_stock(
         "message": "Stock actualizado exitosamente.",
         "stock_inventario_id": stock.id,
         "cantidad": stock.cantidad,
+        "precio_variante": float(stock.precio_variante) if stock.precio_variante is not None else None,
+        "medidas": stock.medidas or {},
     }
