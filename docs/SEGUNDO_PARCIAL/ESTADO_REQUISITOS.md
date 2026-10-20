@@ -32,10 +32,10 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-026 | EN_PRUEBAS | Reserva offline persiste con UUID, comprobante provisional y sincronización; falta E2E de cierre/reapertura |
 | REQ-027 | EN_PRUEBAS | POS guarda venta de contado con detalle/importes y bloquea QR offline; falta E2E de comprobante impreso |
 | REQ-028 | EN_PRUEBAS | Pantalla PWA muestra cola y estados pendiente/confirmada/rechazada/conflicto con motivo; falta evidencia visual E2E |
-| REQ-029 | EN_PRUEBAS | Flutter conserva Provider/secure storage e integra SQLite con claves foráneas; falta prueba en dispositivo de cierre/reapertura |
+| REQ-029 | TERMINADO_VERIFICADO | Flutter conserva Provider/secure storage, integra SQLite con claves foráneas y mantuvo sesión/snapshot tras actualización, cierre y reapertura real en Samsung S21+ |
 | REQ-030 | EN_PRUEBAS | SQLite guarda catálogo, sucursales, ventas/detalles, reservas/detalles y cola con claves foráneas; prueba de reapertura aprobada, falta clientes mínimos y dispositivo real |
-| REQ-031 | EN_PRUEBAS | Flutter consulta catálogo/stock conocido y registra reservas y ventas de contado offline; falta demostración completa en modo avión |
-| REQ-032 | EN_PRUEBAS | Flutter muestra cola/resultados y sincroniza reservas/ventas al reconectar; falta evidencia en dispositivo |
+| REQ-031 | EN_PRUEBAS | Catálogo SQLite comprobado en modo avión y UI advierte stock provisional; reserva/venta offline físicas pendientes porque el tenant de prueba no tiene inventario ni cuenta staff |
+| REQ-032 | EN_PRUEBAS | Cola offline y recuperación de conectividad comprobadas en Samsung S21+; falta transición física pendiente→confirmada/conflicto con una operación comercial real |
 | REQ-033 | EN_PRUEBAS | Web y móvil conservan colas UUID y transiciones sin borrar fallos; falta E2E de proceso interrumpido en dispositivo |
 | REQ-034 | EN_PRUEBAS | PWA/Flutter reintentan y backend confirma idempotentemente ventas/reservas; falta simulación E2E de timeout real |
 | REQ-035 | EN_PRUEBAS | Prueba automatizada confirma que la última unidad solo genera una venta, la reserva competidora queda en conflicto, el reintento conserva el motivo y el stock queda en cero; falta E2E con dos dispositivos |
@@ -51,10 +51,10 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-045 | PENDIENTE | Integración ML/dashboard no implementada |
 | REQ-046 | EN_PRUEBAS | Recomendaciones y vestidor preservados; falta E2E desplegado |
 | REQ-047 | EN_CURSO | Hay pruebas base; faltan evidencias completas RNF01–RNF12 |
-| REQ-048 | EN_PRUEBAS | Backend y PWA verificados públicamente tras push; APK release con SQLite generado y validado por hash, falta instalación/validación móvil real |
+| REQ-048 | EN_PRUEBAS | Backend/PWA públicos y APK `1.0.3+4` instalado/validado en Samsung S21+ con hash y modo avión; falta mecanismo público de descarga y E2E comercial completo |
 | REQ-049 | PENDIENTE | Artefactos ICONIX/UML 2.5+ del segundo parcial no creados |
 | REQ-050 | PENDIENTE | Documento final capítulos I–VI no disponible |
-| REQ-051 | EN_CURSO | 61 pruebas backend, conflicto de última unidad/replay sync, tenant/planes A/B, build/test PWA, 5 pruebas Flutter incluida reapertura SQLite y auditoría runtime aprobados; faltan E2E en dispositivo |
+| REQ-051 | EN_CURSO | 61 pruebas backend, conflicto/replay/tenant/planes, build/test PWA, 5 pruebas Flutter y cierre/reapertura SQLite real en S21+ aprobados; faltan E2E comerciales en dispositivo |
 | REQ-052 | EN_CURSO | Matriz iniciada; paquetes/capturas de entregas pendientes |
 | REQ-053 | PENDIENTE | QR y enlaces finales verificados no preparados |
 | REQ-054 | EN_CURSO | Solicitudes de cambio existen; falta nueva nota vinculada completa |
