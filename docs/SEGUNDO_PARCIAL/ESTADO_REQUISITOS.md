@@ -6,9 +6,9 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 |---|---|---|
 | REQ-001 | TERMINADO_VERIFICADO | Inventario técnico versionado y contraste de los tres repositorios |
 | REQ-002 | EN_PRUEBAS | Se extendió el proyecto existente; regresión automatizada completa, falta E2E desplegado |
-| REQ-003 | EN_CURSO | Entidad `Empresa` y frontera tenant inicial; falta cubrir todo el dominio |
+| REQ-003 | EN_CURSO | Entidad `Empresa`, consola SaaS maestra y frontera tenant activa; falta cerrar recursos secundarios del dominio |
 | REQ-004 | EN_CURSO | Migraciones aditivas para empresa, usuarios, sucursales y raíces de catálogo; ida/vuelta SQL comprobada, faltan recursos secundarios |
-| REQ-005 | EN_CURSO | Empresa y sucursal son entidades separadas en backend; faltan UI web/móvil |
+| REQ-005 | EN_CURSO | Empresa y sucursal son entidades separadas; la consola web muestra jerarquía, uso y administrador, falta paridad móvil donde aplique |
 | REQ-006 | EN_CURSO | Aislamiento aplicado a usuarios, clientes, catálogo, stock, compras, ventas, pagos, carrito, envíos, cambios, bitácora y reportes; faltan recursos secundarios/archivos |
 | REQ-007 | EN_CURSO | Tenant derivado del JWT y regresiones A/B para IDs directos, operaciones y exportables; falta auditoría completa de archivos/sync |
 | REQ-008 | EN_PRUEBAS | JWT/refresh/blacklist/guards conservados; falta prueba manual de caída de red |
@@ -17,15 +17,15 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-011 | EN_PRUEBAS | Servidor autoritativo bloquea stock online y al sincronizar; reenvío UUID no duplica ni vuelve a descontar, falta prueba de concurrencia real |
 | REQ-012 | PENDIENTE | No existe política/entidad completa de reembolso por rechazo offline |
 | REQ-013 | TERMINADO_VERIFICADO | Contrato `/sync` versionado con UUID, tenant/usuario derivados del JWT, idempotencia, estados, motivo y pruebas de replay |
-| REQ-014 | EN_CURSO | RBAC y bitácora existen; falta matriz tenant/sucursal/plan completa |
+| REQ-014 | EN_CURSO | Maestro separado por `is_platform_admin`, administrador tenant visible y consola global protegida/auditada; falta matriz tenant/sucursal/plan completa |
 | REQ-015 | EN_PRUEBAS | Flujos preservados y suite aprobada; falta prueba manual desplegada |
 | REQ-016 | EN_CURSO | PWA diferencia provisional/confirmado, bloquea QR offline y documenta límites; falta paridad móvil |
-| REQ-017 | EN_CURSO | API crea empresa y administrador propio; falta asociación integral y UI |
+| REQ-017 | EN_CURSO | Consola maestra crea/edita/suspende tenants, gestiona su administrador y muestra usuarios/sucursales aislados; falta asociación integral de recursos secundarios |
 | REQ-018 | TERMINADO_VERIFICADO | Existen exactamente Básico, Profesional y Personalizado; el tercero inicia sin beneficios inventados y es editable |
 | REQ-019 | EN_CURSO | Mínimos y límites oficiales viven en backend; falta aplicar bloqueos de capacidad/sucursales a las operaciones |
 | REQ-020 | TERMINADO_VERIFICADO | Precio, moneda, límites, capacidades, beneficios y estilo se configuran en backend y UI por ámbito global/tenant |
-| REQ-021 | EN_CURSO | Alta, cambio, consulta, estado, inicio/vencimiento y snapshot implementados; faltan renovación y bloqueos operativos |
-| REQ-022 | EN_CURSO | Contratación/cambio simulado disponible para cliente; falta flujo administrativo de renovación SaaS |
+| REQ-021 | EN_CURSO | Alta, cambio, renovación administrativa, estado, inicio/vencimiento, historial y snapshot implementados; falta aplicar todos los bloqueos/cupos operativos |
+| REQ-022 | EN_PRUEBAS | Contratación/cambio simulado y renovación desde consola maestra implementados con auditoría; falta evidencia E2E desplegada |
 | REQ-023 | EN_PRUEBAS | Manifest, Service Worker, app shell y actualización controlada generan correctamente; falta evidencia manual de instalación/carga offline desplegada |
 | REQ-024 | EN_PRUEBAS | IndexedDB persiste catálogo y cola comercial aislada por empresa/usuario; falta prueba E2E de reinicio de navegador |
 | REQ-025 | EN_PRUEBAS | Catálogo con precios, variantes y stock conocido cae a snapshot local y muestra fecha/advertencia; falta E2E en navegador |
@@ -54,7 +54,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-048 | EN_PRUEBAS | Backend/PWA públicos y APK `1.0.3+4` instalado/validado en Samsung S21+ con hash y modo avión; falta mecanismo público de descarga y E2E comercial completo |
 | REQ-049 | PENDIENTE | Artefactos ICONIX/UML 2.5+ del segundo parcial no creados |
 | REQ-050 | PENDIENTE | Documento final capítulos I–VI no disponible |
-| REQ-051 | EN_CURSO | 61 pruebas backend, conflicto/replay/tenant/planes, build/test PWA, 5 pruebas Flutter y cierre/reapertura SQLite real en S21+ aprobados; faltan E2E comerciales en dispositivo |
+| REQ-051 | EN_CURSO | 64 pruebas backend, conflicto/replay/tenant/consola SaaS/planes, build y 2 pruebas web, 5 pruebas Flutter y cierre/reapertura SQLite real en S21+ aprobados; faltan E2E comerciales en dispositivo |
 | REQ-052 | EN_CURSO | Matriz iniciada; paquetes/capturas de entregas pendientes |
 | REQ-053 | PENDIENTE | QR y enlaces finales verificados no preparados |
 | REQ-054 | EN_CURSO | Solicitudes de cambio existen; falta nueva nota vinculada completa |

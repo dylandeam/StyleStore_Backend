@@ -95,6 +95,104 @@ def test_tenant_admin_cannot_list_or_create_companies(client, db_session, admin_
     assert response.status_code == 403
 
 
+def test_platform_admin_manages_tenant_lifecycle_admin_and_subscription(
+    client, db_session, admin_token
+):
+    platform_admin = db_session.query(User).filter(User.email == "admin_test@stylestore.com").one()
+    platform_admin.is_platform_admin = True
+    db_session.commit()
+    headers = {"Authorization": f"Bearer {admin_token}"}
+
+    created = _create_empresa(client, admin_token, "managed", "admin@managed.example.com")
+    tenant_id = created["id"]
+    summary = client.get("/api/v1/empresas/resumen", headers=headers)
+    assert summary.status_code == 200, summary.text
+    tenant = next(item for item in summary.json() if item["id"] == tenant_id)
+    assert tenant["admin"]["email"] == "admin@managed.example.com"
+    assert tenant["suscripcion"]["plan_codigo"] == "basico"
+    assert tenant["usuarios_count"] == 1
+
+    updated = client.patch(
+        f"/api/v1/empresas/{tenant_id}",
+        headers=headers,
+        json={"nombre": "Managed Boutique"},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["nombre"] == "Managed Boutique"
+
+    admin_update = client.put(
+        f"/api/v1/empresas/{tenant_id}/administrador",
+        headers=headers,
+        json={
+            "name": "Nueva Administradora",
+            "email": "owner@managed.example.com",
+            "password": "NewTenantPass2026!",
+        },
+    )
+    assert admin_update.status_code == 200, admin_update.text
+    assert admin_update.json()["email"] == "owner@managed.example.com"
+
+    subscription = client.put(
+        f"/api/v1/empresas/{tenant_id}/suscripcion",
+        headers=headers,
+        json={
+            "plan_codigo": "profesional",
+            "fecha_inicio": "2026-10-20",
+            "fecha_fin": "2027-10-20",
+        },
+    )
+    assert subscription.status_code == 200, subscription.text
+    assert subscription.json()["plan_codigo"] == "profesional"
+    assert subscription.json()["fecha_fin"] == "2027-10-20"
+
+    tenant_login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "owner@managed.example.com", "password": "NewTenantPass2026!"},
+    )
+    assert tenant_login.status_code == 200, tenant_login.text
+    tenant_headers = {"Authorization": f"Bearer {tenant_login.json()['access_token']}"}
+
+    suspended = client.put(
+        f"/api/v1/empresas/{tenant_id}/estado",
+        headers=headers,
+        json={"active": False},
+    )
+    assert suspended.status_code == 200, suspended.text
+    assert suspended.json()["active"] is False
+    assert client.get("/api/v1/users/me", headers=tenant_headers).status_code == 401
+
+    forbidden = client.put(
+        f"/api/v1/empresas/{tenant_id}/estado",
+        headers=tenant_headers,
+        json={"active": True},
+    )
+    assert forbidden.status_code == 401
+
+    reactivated = client.put(
+        f"/api/v1/empresas/{tenant_id}/estado",
+        headers=headers,
+        json={"active": True},
+    )
+    assert reactivated.status_code == 200
+    assert client.get("/api/v1/users/me", headers=tenant_headers).status_code == 200
+
+
+def test_tenant_admin_cannot_access_saas_console(client, db_session, admin_token):
+    platform_admin = db_session.query(User).filter(User.email == "admin_test@stylestore.com").one()
+    platform_admin.is_platform_admin = True
+    db_session.commit()
+    created = _create_empresa(client, admin_token, "private-console", "admin@private.example.com")
+    tenant_headers = {"Authorization": f"Bearer {_login(client, 'admin@private.example.com')}"}
+
+    assert client.get("/api/v1/empresas/resumen", headers=tenant_headers).status_code == 403
+    assert client.get(f"/api/v1/empresas/{created['id']}", headers=tenant_headers).status_code == 403
+    assert client.patch(
+        f"/api/v1/empresas/{created['id']}",
+        headers=tenant_headers,
+        json={"nombre": "Ataque"},
+    ).status_code == 403
+
+
 def test_tenant_admin_cannot_see_or_modify_platform_admin_in_same_company(
     client, db_session, admin_token
 ):

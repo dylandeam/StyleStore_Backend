@@ -1,6 +1,7 @@
 """Pydantic schemas for SaaS companies (tenants)."""
-from datetime import datetime
+from datetime import date, datetime
 import re
+from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -11,6 +12,7 @@ class EmpresaCreate(BaseModel):
     admin_email: EmailStr
     admin_name: str = Field(..., min_length=2, max_length=100)
     admin_password: str = Field(..., min_length=8, max_length=100)
+    plan_codigo: Literal["basico", "profesional", "personalizado"] = "basico"
 
     @field_validator("codigo")
     @classmethod
@@ -41,3 +43,75 @@ class EmpresaResponse(BaseModel):
 
 class EmpresaConAdminResponse(EmpresaResponse):
     admin_user_id: int
+
+
+class EmpresaUpdate(BaseModel):
+    codigo: str | None = Field(None, min_length=2, max_length=50)
+    nombre: str | None = Field(None, min_length=2, max_length=150)
+
+    @field_validator("codigo")
+    @classmethod
+    def validate_codigo(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip().lower()
+        if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", normalized):
+            raise ValueError("El código solo admite letras minúsculas, números, guion y guion bajo.")
+        return normalized
+
+
+class EmpresaEstadoUpdate(BaseModel):
+    active: bool
+
+
+class TenantAdminUpdate(BaseModel):
+    email: EmailStr | None = None
+    name: str | None = Field(None, min_length=2, max_length=100)
+    password: str | None = Field(None, min_length=8, max_length=100)
+    is_active: bool | None = None
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str | None) -> str | None:
+        if value is not None and (
+            not re.search(r"[a-z]", value)
+            or not re.search(r"[A-Z]", value)
+            or not re.search(r"[^A-Za-z0-9]", value)
+        ):
+            raise ValueError("La contraseña debe incluir mayúscula, minúscula y carácter especial.")
+        return value
+
+
+class TenantAdminResponse(BaseModel):
+    id: int
+    email: EmailStr
+    name: str
+    is_active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class EmpresaSuscripcionUpdate(BaseModel):
+    plan_codigo: Literal["basico", "profesional", "personalizado"]
+    estado: Literal["activa", "suspendida", "vencida", "cancelada"] = "activa"
+    fecha_inicio: date | None = None
+    fecha_fin: date | None = None
+
+
+class EmpresaSuscripcionResponse(BaseModel):
+    id: int
+    plan_codigo: str
+    plan_nombre: str
+    estado: str
+    precio: float
+    moneda: str
+    fecha_inicio: date
+    fecha_fin: date | None
+
+
+class EmpresaResumenResponse(EmpresaResponse):
+    admin: TenantAdminResponse | None = None
+    suscripcion: EmpresaSuscripcionResponse | None = None
+    usuarios_count: int = 0
+    sucursales_count: int = 0

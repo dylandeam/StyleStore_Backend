@@ -67,6 +67,11 @@ async def get_current_user(
     if not user.is_active:
         raise CredentialsException(detail="User account is deactivated")
 
+    if not user.is_platform_admin and user.empresa_id is not None:
+        empresa = user.empresa_rel
+        if empresa is None or not empresa.active:
+            raise CredentialsException(detail="La empresa se encuentra suspendida")
+
     return user
 
 
