@@ -172,6 +172,13 @@ class AuthService:
         if not user.is_active:
             raise CredentialsException(detail="La cuenta de usuario está desactivada")
 
+        if (
+            not user.is_platform_admin
+            and user.empresa_id is not None
+            and (user.empresa_rel is None or not user.empresa_rel.active)
+        ):
+            raise CredentialsException(detail="La empresa se encuentra suspendida")
+
         # Generate tokens
         token_data = {
             "sub": str(user.id),

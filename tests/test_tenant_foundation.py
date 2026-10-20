@@ -160,6 +160,10 @@ def test_platform_admin_manages_tenant_lifecycle_admin_and_subscription(
     assert suspended.status_code == 200, suspended.text
     assert suspended.json()["active"] is False
     assert client.get("/api/v1/users/me", headers=tenant_headers).status_code == 401
+    assert client.post(
+        "/api/v1/auth/login",
+        json={"email": "owner@managed.example.com", "password": "NewTenantPass2026!"},
+    ).status_code == 401
 
     forbidden = client.put(
         f"/api/v1/empresas/{tenant_id}/estado",
@@ -551,3 +555,32 @@ def test_three_plans_are_configurable_without_cross_tenant_changes(client, db_se
     assert master_updates_b.status_code == 200
     assert master_updates_b.json()["empresa_id"] == empresa_b["id"]
     assert empresa_a["id"] != empresa_b["id"]
+
+
+def test_basic_plan_blocks_third_active_branch(client, db_session, admin_token):
+    platform_admin = db_session.query(User).filter(User.email == "admin_test@stylestore.com").one()
+    platform_admin.is_platform_admin = True
+    db_session.commit()
+    _create_empresa(client, admin_token, "branch-limit", "admin@branch-limit.example.com")
+    headers = {"Authorization": f"Bearer {_login(client, 'admin@branch-limit.example.com')}"}
+
+    for number in (1, 2):
+        response = client.post(
+            "/api/v1/sucursales",
+            headers=headers,
+            json={
+                "name": f"Sucursal {number}",
+                "city": "La Paz",
+                "address": f"Calle {number}",
+                "phone": f"7000000{number}",
+            },
+        )
+        assert response.status_code == 201, response.text
+
+    blocked = client.post(
+        "/api/v1/sucursales",
+        headers=headers,
+        json={"name": "Sucursal 3", "city": "La Paz", "address": "Calle 3", "phone": "70000003"},
+    )
+    assert blocked.status_code == 403
+    assert "permite hasta 2 sucursales" in blocked.json()["detail"]

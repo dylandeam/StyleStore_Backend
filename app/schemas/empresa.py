@@ -108,6 +108,7 @@ class EmpresaSuscripcionResponse(BaseModel):
     moneda: str
     fecha_inicio: date
     fecha_fin: date | None
+    max_sucursales: int | None = None
 
 
 class EmpresaResumenResponse(EmpresaResponse):

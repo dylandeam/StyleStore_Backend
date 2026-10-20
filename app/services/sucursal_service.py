@@ -8,6 +8,7 @@ from app.models.user import User
 from app.schemas.sucursal import SucursalCreate, SucursalUpdate
 from app.core.exceptions import NotFoundException, ConflictException
 from app.services.bitacora_service import BitacoraService
+from app.services.plan_service import PlanService
 
 
 class SucursalService:
@@ -50,6 +51,7 @@ class SucursalService:
         if current_user.empresa_id is None:
             from app.core.exceptions import ForbiddenException
             raise ForbiddenException("El usuario no tiene una empresa asignada.")
+        PlanService(self.db).require_branch_capacity(current_user)
         existing = self.db.query(Sucursal).filter(
             Sucursal.empresa_id == current_user.empresa_id,
             Sucursal.name.ilike(data.name),

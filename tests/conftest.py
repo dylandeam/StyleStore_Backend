@@ -96,6 +96,12 @@ def admin_token(db_session, client):
         db_session.add(admin)
         db_session.commit()
 
+    # This shared fixture represents the platform owner. Tenant-admin scenarios
+    # create their own isolated accounts explicitly in the corresponding tests.
+    if not admin.is_platform_admin:
+        admin.is_platform_admin = True
+        db_session.commit()
+
     login_res = client.post(
         "/api/v1/auth/login",
         json={"email": "admin_test@stylestore.com", "password": "AdminPass123!"},

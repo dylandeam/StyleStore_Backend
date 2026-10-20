@@ -72,6 +72,7 @@ class EmpresaService:
                 "moneda": contract.moneda_snapshot,
                 "fecha_inicio": contract.fecha_inicio,
                 "fecha_fin": contract.fecha_fin,
+                "max_sucursales": contract.plan.max_sucursales,
             }
         return {
             "id": empresa.id,

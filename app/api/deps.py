@@ -107,7 +107,15 @@ async def get_optional_current_user(
         user_service = UserService(db)
         user = user_service.get_user_by_id(user_id)
         if user and user.is_active:
+            if (
+                not user.is_platform_admin
+                and user.empresa_id is not None
+                and (user.empresa_rel is None or not user.empresa_rel.active)
+            ):
+                raise CredentialsException(detail="La empresa se encuentra suspendida")
             return user
+    except CredentialsException:
+        raise
     except Exception:
         return None
     return None

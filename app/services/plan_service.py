@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
 from app.models.empresa import Empresa
 from app.models.plan_suscripcion import ContratacionPlan, PlanSuscripcion
+from app.models.sucursal import Sucursal
 from app.models.user import User
 from app.schemas.plan_suscripcion import PLAN_CODES, PlanUpdate
 from app.services.bitacora_service import BitacoraService
@@ -217,6 +218,25 @@ class PlanService:
             raise ForbiddenException(
                 "La suscripción vigente no incluye la capacidad "
                 f"'{capability}'. Actualiza el plan para utilizarla."
+            )
+        return contract
+
+    def require_branch_capacity(self, current_user: User) -> ContratacionPlan | None:
+        """Enforce the active tenant plan branch quota before creating a branch."""
+        if current_user.is_platform_admin:
+            return None
+        contract = self.require_capability(current_user, "productos")
+        if contract is None or contract.plan.max_sucursales is None:
+            return contract
+        active_branches = self.db.query(Sucursal.id).filter(
+            Sucursal.empresa_id == current_user.empresa_id,
+            Sucursal.active.is_(True),
+        ).count()
+        if active_branches >= contract.plan.max_sucursales:
+            raise ForbiddenException(
+                f"El plan {contract.plan.nombre} permite hasta "
+                f"{contract.plan.max_sucursales} sucursales activas. "
+                "Cambia de plan o desactiva una sucursal para continuar."
             )
         return contract
 

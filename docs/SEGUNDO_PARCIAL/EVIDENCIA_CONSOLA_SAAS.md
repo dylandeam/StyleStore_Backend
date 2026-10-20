@@ -25,11 +25,11 @@ Todos exigen `require_platform_admin`; el tenant se obtiene desde el recurso del
 
 ## Verificación ejecutada
 
-- `pytest -q`: **64 pruebas aprobadas**.
-- `pytest tests/test_tenant_foundation.py -q`: **10 pruebas aprobadas**.
+- `pytest -q`: **65 pruebas aprobadas**.
+- `pytest tests/test_tenant_foundation.py -q`: **11 pruebas aprobadas**.
 - `npx ng build --configuration production`: compilación de producción aprobada.
 - `npx ng test --watch=false`: **2 pruebas aprobadas**.
-- Se verifican creación, resumen, edición, cambio de responsable/contraseña, renovación, suspensión, reactivación y rechazo de acceso desde administrador tenant.
+- Se verifican creación, resumen, edición, cambio de responsable/contraseña, renovación, suspensión, reactivación, rechazo de acceso desde administrador tenant y bloqueo de la tercera sucursal en plan Básico.
 
 ## Pendiente para cierre formal
 
