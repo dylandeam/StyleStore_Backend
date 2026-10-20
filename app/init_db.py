@@ -188,6 +188,9 @@ def init_db():
         role_service = RoleService(db)
         role_service.seed_default_permissions_and_roles()
 
+        from app.services.plan_service import PlanService
+        PlanService(db).seed_global_plans()
+
         # Seed default backup configuration if not exists
         from app.models.backup_config import BackupConfig
         cfg = db.query(BackupConfig).first()

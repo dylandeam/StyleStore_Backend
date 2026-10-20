@@ -26,8 +26,9 @@ Cadena lineal antes del segundo parcial:
 5. `e7a1c4b9d210`: base aditiva empresa/tenant incorporada en este corte.
 6. `f28b6d91a043`: horarios configurables de sucursal y fecha/hora de retiro.
 7. `a41c7e9d2b65`: ámbito empresa en catálogo, proveedores, QR y bitácora.
+8. `b52d8f1a3c74`: tres planes configurables por ámbito y contrataciones con snapshot.
 
-Existe una sola cabeza Alembic (`a41c7e9d2b65`). La generación SQL de upgrade y downgrade fue comprobada; las migraciones conservan datos históricos asignándolos a la empresa legado `stylestore`.
+Existe una sola cabeza Alembic (`b52d8f1a3c74`). La generación SQL de upgrade y downgrade fue comprobada; las migraciones conservan datos históricos asignándolos a la empresa legado `stylestore`.
 
 ## Seguridad y permisos comprobados
 

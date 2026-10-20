@@ -307,3 +307,80 @@ def test_orders_payments_shipments_and_reports_are_isolated(client, db_session, 
     dashboard_a = client.get("/api/v1/reportes/dashboard-stats", headers=headers_a)
     assert dashboard_a.status_code == 200
     assert dashboard_a.json()["total_ventas"] == 0
+
+
+def test_three_plans_are_configurable_without_cross_tenant_changes(client, db_session, admin_token):
+    platform_admin = db_session.query(User).filter(User.email == "admin_test@stylestore.com").one()
+    platform_admin.is_platform_admin = True
+    db_session.commit()
+    empresa_a = _create_empresa(client, admin_token, "plans-a", "admin-a@plans.example.com")
+    empresa_b = _create_empresa(client, admin_token, "plans-b", "admin-b@plans.example.com")
+    headers_a = {"Authorization": f"Bearer {_login(client, 'admin-a@plans.example.com')}"}
+    headers_b = {"Authorization": f"Bearer {_login(client, 'admin-b@plans.example.com')}"}
+
+    plans_a = client.get("/api/v1/planes/admin", headers=headers_a)
+    plans_b = client.get("/api/v1/planes/admin", headers=headers_b)
+    assert plans_a.status_code == plans_b.status_code == 200
+    assert [plan["codigo"] for plan in plans_a.json()] == ["basico", "profesional", "personalizado"]
+    assert [plan["codigo"] for plan in plans_b.json()] == ["basico", "profesional", "personalizado"]
+
+    updated = client.put(
+        "/api/v1/planes/admin/personalizado",
+        headers=headers_a,
+        json={
+            "nombre": "Plan Boutique A", "precio_mensual": 249.90, "moneda": "USD",
+            "beneficios": ["Atención prioritaria", "Panel personalizado"],
+            "capacidades": {"productos": True, "ia_generativa": True},
+            "estilo": {"color_primario": "#7C3AED", "destacado": True},
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["nombre"] == "Plan Boutique A"
+    assert updated.json()["moneda"] == "USD"
+
+    tenant_b_custom = next(
+        plan for plan in client.get("/api/v1/planes/admin", headers=headers_b).json()
+        if plan["codigo"] == "personalizado"
+    )
+    assert tenant_b_custom["nombre"] == "Personalizado"
+    assert tenant_b_custom["precio_mensual"] == "0.00"
+
+    cross_update = client.put(
+        f"/api/v1/planes/admin/basico?empresa_id={empresa_b['id']}",
+        headers=headers_a, json={"precio_mensual": 999},
+    )
+    assert cross_update.status_code == 404
+
+    register = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "client-a@plans.example.com", "password": "ClientPass2026!",
+            "name": "Cliente Plan A", "empresa_codigo": "plans-a",
+        },
+    )
+    assert register.status_code == 201, register.text
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "client-a@plans.example.com", "password": "ClientPass2026!"},
+    )
+    client_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    public_plans = client.get("/api/v1/planes", headers=client_headers)
+    assert next(plan for plan in public_plans.json() if plan["codigo"] == "personalizado")["nombre"] == "Plan Boutique A"
+
+    contracted = client.post(
+        "/api/v1/planes/contratar", headers=client_headers,
+        json={"plan_codigo": "personalizado"},
+    )
+    assert contracted.status_code == 200, contracted.text
+    assert contracted.json()["plan_nombre"] == "Plan Boutique A"
+    assert contracted.json()["precio"] == "249.90"
+    assert client.get("/api/v1/planes/mi-contratacion", headers=client_headers).json()["estado"] == "activa"
+
+    master_updates_b = client.put(
+        f"/api/v1/planes/admin/basico?empresa_id={empresa_b['id']}",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"precio_mensual": 79, "moneda": "BOB"},
+    )
+    assert master_updates_b.status_code == 200
+    assert master_updates_b.json()["empresa_id"] == empresa_b["id"]
+    assert empresa_a["id"] != empresa_b["id"]

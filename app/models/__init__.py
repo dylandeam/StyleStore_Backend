@@ -39,6 +39,7 @@ from app.models.outfit import Outfit, OutfitItem
 from app.models.qr_pago_config import QRPagoConfig
 from app.models.producto_landmark import ProductoLandmark
 from app.models.prueba_virtual import PruebaVirtual
+from app.models.plan_suscripcion import PlanSuscripcion, ContratacionPlan
 
 __all__ = [
     "Role",
@@ -87,4 +88,6 @@ __all__ = [
     "QRPagoConfig",
     "ProductoLandmark",
     "PruebaVirtual",
+    "PlanSuscripcion",
+    "ContratacionPlan",
 ]

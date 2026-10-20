@@ -21,11 +21,11 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-015 | EN_PRUEBAS | Flujos preservados y suite aprobada; falta prueba manual desplegada |
 | REQ-016 | PENDIENTE | Falta UX/documentación completa de alcance offline |
 | REQ-017 | EN_CURSO | API crea empresa y administrador propio; falta asociación integral y UI |
-| REQ-018 | PENDIENTE | Tercer plan requiere definición; no se inventaron beneficios |
-| REQ-019 | PENDIENTE | Límites y capacidades por plan no implementados |
-| REQ-020 | PENDIENTE | Configuración backend de planes no implementada |
-| REQ-021 | PENDIENTE | Ciclo de suscripción no implementado |
-| REQ-022 | PENDIENTE | Simulación de contratación/renovación no implementada |
+| REQ-018 | TERMINADO_VERIFICADO | Existen exactamente Básico, Profesional y Personalizado; el tercero inicia sin beneficios inventados y es editable |
+| REQ-019 | EN_CURSO | Mínimos y límites oficiales viven en backend; falta aplicar bloqueos de capacidad/sucursales a las operaciones |
+| REQ-020 | TERMINADO_VERIFICADO | Precio, moneda, límites, capacidades, beneficios y estilo se configuran en backend y UI por ámbito global/tenant |
+| REQ-021 | EN_CURSO | Alta, cambio, consulta, estado, inicio/vencimiento y snapshot implementados; faltan renovación y bloqueos operativos |
+| REQ-022 | EN_CURSO | Contratación/cambio simulado disponible para cliente; falta flujo administrativo de renovación SaaS |
 | REQ-023 | PENDIENTE | Angular aún no tiene Service Worker PWA |
 | REQ-024 | PENDIENTE | No existe IndexedDB comercial |
 | REQ-025 | PENDIENTE | Catálogo PWA offline no implementado |
@@ -54,7 +54,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-048 | EN_PRUEBAS | URLs/remotos declarados; falta verificar despliegue posterior a estos commits |
 | REQ-049 | PENDIENTE | Artefactos ICONIX/UML 2.5+ del segundo parcial no creados |
 | REQ-050 | PENDIENTE | Documento final capítulos I–VI no disponible |
-| REQ-051 | EN_CURSO | 56 pruebas backend y regresiones tenant A/B aprobadas; faltan offline/sync/planes y E2E desplegado |
+| REQ-051 | EN_CURSO | 57 pruebas backend y regresiones tenant/planes A/B aprobadas; faltan offline/sync y E2E desplegado |
 | REQ-052 | EN_CURSO | Matriz iniciada; paquetes/capturas de entregas pendientes |
 | REQ-053 | PENDIENTE | QR y enlaces finales verificados no preparados |
 | REQ-054 | EN_CURSO | Solicitudes de cambio existen; falta nueva nota vinculada completa |
