@@ -8,7 +8,12 @@ from app.models.user import User
 from app.models.role import Role
 from app.schemas.user import UserCreateByAdmin, UserUpdateByAdmin, UserProfileUpdateRequest
 from app.core.security import hash_password
-from app.core.exceptions import UserNotFoundException, UserAlreadyExistsException, BadRequestException
+from app.core.exceptions import (
+    BadRequestException,
+    ForbiddenException,
+    UserAlreadyExistsException,
+    UserNotFoundException,
+)
 from app.services.bitacora_service import BitacoraService
 
 
@@ -39,7 +44,10 @@ class UserService:
         """List users with optional search and role filtering."""
         query = self.db.query(User)
         if not include_all_empresas:
-            query = query.filter(User.empresa_id == empresa_id)
+            query = query.filter(
+                User.empresa_id == empresa_id,
+                User.is_platform_admin.is_(False),
+            )
         if role:
             if role.isdigit():
                 query = query.filter(User.role_id == int(role))
@@ -164,8 +172,11 @@ class UserService:
     ) -> User:
         """Update user properties (role, active status, name) by administrator."""
         user = self.get_user_by_id(user_id)
+        if user.is_platform_admin and not current_user.is_platform_admin:
+            raise ForbiddenException(
+                "Solo el administrador maestro puede modificar una cuenta global de la plataforma."
+            )
         if not current_user.is_platform_admin and user.empresa_id != current_user.empresa_id:
-            from app.core.exceptions import ForbiddenException
             raise ForbiddenException("No puede modificar usuarios de otra empresa.")
 
         if request.name is not None:

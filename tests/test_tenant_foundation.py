@@ -95,6 +95,61 @@ def test_tenant_admin_cannot_list_or_create_companies(client, db_session, admin_
     assert response.status_code == 403
 
 
+def test_tenant_admin_cannot_see_or_modify_platform_admin_in_same_company(
+    client, db_session, admin_token
+):
+    platform_admin = db_session.query(User).filter(User.email == "admin_test@stylestore.com").one()
+    platform_admin.is_platform_admin = True
+    db_session.commit()
+
+    created = client.post(
+        "/api/v1/users",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={
+            "email": "tenant-admin@stylestore.example.com",
+            "name": "Administrador Tenant",
+            "password": "TenantAdmin2026!",
+            "role": "administrador",
+        },
+    )
+    assert created.status_code == 201, created.text
+
+    login = client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "tenant-admin@stylestore.example.com",
+            "password": "TenantAdmin2026!",
+        },
+    )
+    assert login.status_code == 200, login.text
+    tenant_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    visible_users = client.get("/api/v1/users", headers=tenant_headers)
+    assert visible_users.status_code == 200
+    assert platform_admin.email not in {item["email"] for item in visible_users.json()}
+
+    forbidden_update = client.put(
+        f"/api/v1/users/{platform_admin.id}",
+        headers=tenant_headers,
+        json={"is_active": False},
+    )
+    assert forbidden_update.status_code == 403
+    db_session.refresh(platform_admin)
+    assert platform_admin.is_active is True
+    assert platform_admin.is_platform_admin is True
+
+    visible_employees = client.get("/api/v1/empleados", headers=tenant_headers)
+    assert visible_employees.status_code == 200
+    assert platform_admin.email not in {item["email"] for item in visible_employees.json()}
+
+    global_users = client.get(
+        "/api/v1/users",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert global_users.status_code == 200
+    assert platform_admin.email in {item["email"] for item in global_users.json()}
+
+
 def test_legacy_registration_defaults_to_stylestore_when_other_tenants_exist(client, db_session, admin_token):
     platform_admin = db_session.query(User).filter(User.email == "admin_test@stylestore.com").one()
     platform_admin.is_platform_admin = True

@@ -35,7 +35,10 @@ class EmpleadoService:
     def _scope_query(self, current_user: User):
         query = self.db.query(Empleado).join(User, Empleado.user_id == User.id)
         if not current_user.is_platform_admin:
-            query = query.filter(User.empresa_id == current_user.empresa_id)
+            query = query.filter(
+                User.empresa_id == current_user.empresa_id,
+                User.is_platform_admin.is_(False),
+            )
         return query
 
     def _sync_orphan_staff_users(self, current_user: User):
@@ -47,7 +50,10 @@ class EmpleadoService:
             .filter(Empleado.codigo == None)
         )
         if not current_user.is_platform_admin:
-            orphan_query = orphan_query.filter(User.empresa_id == current_user.empresa_id)
+            orphan_query = orphan_query.filter(
+                User.empresa_id == current_user.empresa_id,
+                User.is_platform_admin.is_(False),
+            )
         orphan_users = orphan_query.all()
         if not orphan_users:
             return
