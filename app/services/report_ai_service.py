@@ -19,14 +19,33 @@ from app.models.producto_color import ProductoColor
 from app.models.envio import Envio
 from app.models.stock_inventario import StockInventario
 from app.models.cliente import Cliente
+from app.models.user import User
 from app.config import settings
+from app.services.tenant_scope import scope_by_empresa, scope_by_sucursal
 
 
 class ReportAIService:
     """Motor analítico de IA para consultas gerenciales y ejecutivas en Reportes."""
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, current_user: User):
         self.db = db
+        self.current_user = current_user
+
+    def _orders(self, query):
+        return scope_by_sucursal(
+            query, self.db, self.current_user, OrdenVenta.sucursal_id
+        )
+
+    def _shipments(self, query):
+        if self.current_user.is_platform_admin:
+            return query
+        return query.join(OrdenVenta, Envio.orden_venta_id == OrdenVenta.id).filter(
+            OrdenVenta.sucursal_id.in_(
+                self.db.query(Sucursal.id).filter(
+                    Sucursal.empresa_id == self.current_user.empresa_id
+                )
+            )
+        )
 
     def _recopilar_contexto_operativo(self) -> Dict[str, Any]:
         """Extrae un resumen consolidado de las operaciones de StyleStore para el LLM."""
@@ -42,7 +61,7 @@ class ReportAIService:
         ordenes_hoy = []
         try:
             ordenes_hoy = (
-                self.db.query(OrdenVenta)
+                self._orders(self.db.query(OrdenVenta))
                 .options(joinedload(OrdenVenta.sucursal), selectinload(OrdenVenta.detalles))
                 .filter(
                     or_(
@@ -58,7 +77,7 @@ class ReportAIService:
             if not ordenes_hoy:
                 limite_24h = now_utc - timedelta(hours=24)
                 ordenes_hoy = (
-                    self.db.query(OrdenVenta)
+                    self._orders(self.db.query(OrdenVenta))
                     .options(joinedload(OrdenVenta.sucursal), selectinload(OrdenVenta.detalles))
                     .filter(
                         OrdenVenta.created_at >= limite_24h,
@@ -102,7 +121,7 @@ class ReportAIService:
         ultimas_prendas_detalle = []
         try:
             ultimas_ordenes = (
-                self.db.query(OrdenVenta)
+                self._orders(self.db.query(OrdenVenta))
                 .options(joinedload(OrdenVenta.sucursal), selectinload(OrdenVenta.detalles))
                 .filter(OrdenVenta.estado != "cancelada")
                 .order_by(OrdenVenta.id.desc())
@@ -130,7 +149,9 @@ class ReportAIService:
             print(f"[ReportAIService] Error consultando ultimas_ordenes: {e}")
 
         # 2. Recaudación por Sucursal (Hoy y Mes)
-        sucursales = self.db.query(Sucursal).filter(Sucursal.active == True).all()
+        sucursales = scope_by_empresa(
+            self.db.query(Sucursal), self.current_user, Sucursal.empresa_id
+        ).filter(Sucursal.active.is_(True)).all()
         sucursal_metricas = []
         for s in sucursales:
             recaudacion_hoy_suc = sum(
@@ -138,7 +159,7 @@ class ReportAIService:
             )
             # Recaudación en el mes
             ordenes_mes_suc = (
-                self.db.query(func.coalesce(func.sum(OrdenVenta.total), 0))
+                self._orders(self.db.query(func.coalesce(func.sum(OrdenVenta.total), 0)))
                 .filter(
                     OrdenVenta.sucursal_id == s.id,
                     or_(
@@ -162,7 +183,7 @@ class ReportAIService:
         envios_hoy = []
         try:
             envios_hoy = (
-                self.db.query(Envio)
+                self._shipments(self.db.query(Envio))
                 .filter(
                     or_(
                         Envio.fecha.in_(fechas_filtro),
@@ -174,7 +195,7 @@ class ReportAIService:
             if not envios_hoy:
                 limite_24h = now_utc - timedelta(hours=24)
                 envios_hoy = (
-                    self.db.query(Envio)
+                    self._shipments(self.db.query(Envio))
                     .filter(Envio.created_at >= limite_24h)
                     .all()
                 )
@@ -188,7 +209,7 @@ class ReportAIService:
         total_tarifas_delivery_hoy = sum([float(e.costo) for e in envios_hoy])
 
         envios_mes_total = (
-            self.db.query(func.count(Envio.id))
+            self._shipments(self.db.query(func.count(Envio.id)))
             .filter(
                 or_(
                     Envio.fecha >= primer_dia_mes,
@@ -201,7 +222,12 @@ class ReportAIService:
 
         # 4. Inventario Crítico (Prendas con stock <= 5 o agotadas)
         stocks_bajos = (
-            self.db.query(StockInventario)
+            scope_by_sucursal(
+                self.db.query(StockInventario),
+                self.db,
+                self.current_user,
+                StockInventario.sucursal_id,
+            )
             .options(
                 joinedload(StockInventario.producto_color).joinedload(ProductoColor.producto),
                 joinedload(StockInventario.sucursal),
@@ -230,7 +256,7 @@ class ReportAIService:
 
         # 6. Recaudación Total Mes
         recaudacion_mes_total = (
-            self.db.query(func.coalesce(func.sum(OrdenVenta.total), 0))
+            self._orders(self.db.query(func.coalesce(func.sum(OrdenVenta.total), 0)))
             .filter(
                 or_(
                     OrdenVenta.fecha >= primer_dia_mes,

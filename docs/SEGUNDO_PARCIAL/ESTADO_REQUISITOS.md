@@ -40,11 +40,11 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-034 | EN_PRUEBAS | PWA/Flutter reintentan y backend confirma idempotentemente ventas/reservas; falta simulación E2E de timeout real |
 | REQ-035 | EN_PRUEBAS | Prueba automatizada confirma que la última unidad solo genera una venta, la reserva competidora queda en conflicto, el reintento conserva el motivo y el stock queda en cero; falta E2E con dos dispositivos |
 | REQ-036 | EN_PRUEBAS | Backend deriva tenant del JWT; IndexedDB y SQLite separan cola por empresa+usuario y las pruebas locales rechazan lectura desde otro ámbito; falta evidencia A/B en dispositivos |
-| REQ-037 | EN_CURSO | Reportes escritos y aislamiento tenant existen; falta voz y autorización por plan |
-| REQ-038 | EN_CURSO | Filtros controlados, datos reales y ámbito tenant aplicados; falta autorización por plan y validación E2E |
+| REQ-037 | EN_PRUEBAS | La interfaz acepta consultas escritas y voz nativa con manejo de incompatibilidad; backend exige rol administrativo y plan con IA, falta evidencia de micrófono en navegador real |
+| REQ-038 | EN_PRUEBAS | El contexto IA consulta ventas, sucursales, envíos e inventario reales restringidos al tenant; prueba A/B impide incorporar operaciones ajenas, faltan filtros conversacionales E2E |
 | REQ-039 | EN_CURSO | Tablas/exportación Excel/PDF y prueba negativa A/B existen; faltan gráficos y evidencia E2E completa |
 | REQ-040 | EN_PRUEBAS | Existen más de cuatro familias de reporte; falta escenario reproducible multiempresa |
-| REQ-041 | PENDIENTE | Falta restricción por tenant y plan para IA |
+| REQ-041 | EN_PRUEBAS | IA restringida por tenant, rol, contratación vigente y capacidad configurable; pregunta/respuesta tienen límites validados y pruebas Básico/Profesional, falta batería de solicitudes ambiguas/maliciosas |
 | REQ-042 | PENDIENTE | Dataset sintético ML reproducible no implementado |
 | REQ-043 | PENDIENTE | Modelo supervisado no implementado |
 | REQ-044 | PENDIENTE | Modelo no supervisado no implementado |

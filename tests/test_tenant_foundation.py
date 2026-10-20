@@ -6,6 +6,7 @@ from app.models.cliente import Cliente
 from app.models.orden_venta import OrdenVenta
 from app.models.envio import Envio
 from app.core.security import hash_password
+from app.services.report_ai_service import ReportAIService
 
 
 def _create_empresa(client, admin_token: str, codigo: str, email: str) -> dict:
@@ -307,6 +308,19 @@ def test_orders_payments_shipments_and_reports_are_isolated(client, db_session, 
     dashboard_a = client.get("/api/v1/reportes/dashboard-stats", headers=headers_a)
     assert dashboard_a.status_code == 200
     assert dashboard_a.json()["total_ventas"] == 0
+
+    admin_a = db_session.query(User).filter(
+        User.email == "admin-a@ops.example.com"
+    ).one()
+    ai_context_a = ReportAIService(
+        db_session, admin_a
+    )._recopilar_contexto_operativo()
+    assert [item["nombre"] for item in ai_context_a["sucursales"]] == [
+        "Operaciones A"
+    ]
+    assert ai_context_a["ventas_hoy"]["cantidad_ordenes"] == 0
+    assert ai_context_a["delivery"]["total_hoy"] == 0
+    assert ai_context_a["recaudacion_mes_total"] == 0
 
 
 def test_three_plans_are_configurable_without_cross_tenant_changes(client, db_session, admin_token):

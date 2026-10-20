@@ -186,6 +186,40 @@ class PlanService:
         )
         return contract
 
+    def require_capability(self, current_user: User, capability: str) -> ContratacionPlan | None:
+        """Require an active tenant subscription that enables a backend capability."""
+        if current_user.is_platform_admin:
+            return None
+        if current_user.empresa_id is None:
+            raise ForbiddenException("La cuenta no pertenece a una empresa contratante.")
+
+        today = date.today()
+        contract = (
+            self.db.query(ContratacionPlan)
+            .join(PlanSuscripcion, ContratacionPlan.plan_id == PlanSuscripcion.id)
+            .filter(
+                ContratacionPlan.empresa_id == current_user.empresa_id,
+                ContratacionPlan.estado == "activa",
+                ContratacionPlan.fecha_inicio <= today,
+                (ContratacionPlan.fecha_fin.is_(None)) | (ContratacionPlan.fecha_fin >= today),
+                PlanSuscripcion.active.is_(True),
+            )
+            .order_by(ContratacionPlan.id.desc())
+            .first()
+        )
+        enabled = False
+        if contract:
+            if capability == "ia_generativa":
+                enabled = bool(contract.plan.ia_generativa)
+            else:
+                enabled = bool((contract.plan.capacidades or {}).get(capability, False))
+        if not enabled:
+            raise ForbiddenException(
+                "La suscripción vigente no incluye la capacidad "
+                f"'{capability}'. Actualiza el plan para utilizarla."
+            )
+        return contract
+
     @staticmethod
     def serialize_contract(contract: ContratacionPlan) -> dict:
         return {

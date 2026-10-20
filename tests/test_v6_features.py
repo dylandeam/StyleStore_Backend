@@ -24,7 +24,9 @@ from app.models.producto_color import ProductoColor
 from app.models.stock_inventario import StockInventario
 from app.models.orden_venta import OrdenVenta, DetalleVenta
 from app.models.pago import Pago
+from app.models.empresa import Empresa
 from app.core.security import create_access_token
+from app.services.plan_service import PlanService
 
 
 @pytest.fixture
@@ -505,9 +507,33 @@ def test_catalogo_para_ti_y_sucursales_publicas(client: TestClient, auth_tokens)
     assert isinstance(res_suc.json(), list)
 
 
-def test_asistente_ia_reportes(client: TestClient, auth_tokens):
-    """Verifica que el asistente de IA para reportes responda adecuadamente al admin."""
+def test_asistente_ia_reportes(client: TestClient, db_session, auth_tokens):
+    """Verifica rol y plan antes de responder reportes con IA."""
+    client_headers = {"Authorization": f"Bearer {auth_tokens['client_token']}"}
+    forbidden_role = client.post(
+        "/api/v1/reportes/asistente-ia",
+        json={"pregunta": "¿Cuánto se vendió hoy?"},
+        headers=client_headers,
+    )
+    assert forbidden_role.status_code == 403
+
+    empresa = db_session.query(Empresa).filter(Empresa.codigo == "stylestore").one()
+    admin = auth_tokens["admin"]
+    admin.empresa_id = empresa.id
+    db_session.commit()
+    plans = PlanService(db_session)
+    plans.ensure_tenant_plans(empresa.id)
+    plans.contract(admin, "basico")
+
     headers = {"Authorization": f"Bearer {auth_tokens['admin_token']}"}
+    forbidden_plan = client.post(
+        "/api/v1/reportes/asistente-ia",
+        json={"pregunta": "¿Cuánto se vendió hoy?"},
+        headers=headers,
+    )
+    assert forbidden_plan.status_code == 403
+
+    plans.contract(admin, "profesional")
     res = client.post(
         "/api/v1/reportes/asistente-ia",
         json={"pregunta": "¿Cuántas ropas se vendieron hoy y cuántos pedidos por delivery hubo?"},
@@ -518,4 +544,3 @@ def test_asistente_ia_reportes(client: TestClient, auth_tokens):
     assert "respuesta" in data
     assert "kpis" in data
     assert isinstance(data["kpis"], list)
-

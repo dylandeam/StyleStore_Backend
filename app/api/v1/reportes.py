@@ -573,18 +573,32 @@ async def alias_pdf_garantias(sucursal_id: Optional[int] = None, current_user: U
 # ==========================================================
 # ASISTENTE DE INTELIGENCIA ARTIFICIAL PARA REPORTES & VOZ
 # ==========================================================
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from app.core.exceptions import ForbiddenException
+from app.services.plan_service import PlanService
 from app.services.report_ai_service import ReportAIService
 
 
 class ConsultaReporteIARequest(BaseModel):
-    pregunta: str
+    pregunta: str = Field(min_length=3, max_length=500)
 
 
 class ExportarReporteIARequest(BaseModel):
-    pregunta: str
-    respuesta: str
+    pregunta: str = Field(min_length=3, max_length=500)
+    respuesta: str = Field(min_length=1, max_length=20000)
     kpis: Optional[list] = None
+
+
+def _require_ai_reports(current_user: User, db: Session) -> None:
+    if not current_user.is_platform_admin and current_user.role not in {
+        "administrador",
+        "encargado",
+        "encargado_sucursal",
+    }:
+        raise ForbiddenException(
+            "Los reportes con IA requieren un rol administrativo autorizado."
+        )
+    PlanService(db).require_capability(current_user, "ia_generativa")
 
 
 @router.post("/asistente-ia", summary="Consulta ejecutiva analítica con IA para administradores y encargados")
@@ -594,8 +608,9 @@ async def consultar_asistente_ia(
     db: Session = Depends(get_db),
 ):
     """Procesa una consulta gerencial o analítica de reportes usando IA Groq y contexto operativo."""
+    _require_ai_reports(current_user, db)
     try:
-        service = ReportAIService(db)
+        service = ReportAIService(db, current_user)
         user_name = current_user.name or "Administrador"
         resultado = service.procesar_consulta(pregunta=req.pregunta, user_name=user_name)
 
@@ -625,7 +640,8 @@ async def exportar_asistente_ia_excel(
     db: Session = Depends(get_db),
 ):
     """Genera y descarga un Excel con la consulta y la respuesta analítica del Asistente IA."""
-    service = ReportAIService(db)
+    _require_ai_reports(current_user, db)
+    service = ReportAIService(db, current_user)
     buf = service.exportar_excel(req.pregunta, req.respuesta, req.kpis or [])
 
     BitacoraService.registrar(
@@ -649,7 +665,8 @@ async def exportar_asistente_ia_pdf(
     db: Session = Depends(get_db),
 ):
     """Genera y descarga un PDF estilizado con la consulta y respuesta del Asistente IA."""
-    service = ReportAIService(db)
+    _require_ai_reports(current_user, db)
+    service = ReportAIService(db, current_user)
     buf = service.exportar_pdf(req.pregunta, req.respuesta, req.kpis or [])
 
     BitacoraService.registrar(
