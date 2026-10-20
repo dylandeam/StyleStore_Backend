@@ -43,7 +43,13 @@ def db_session():
     """Provides a transactional database session for a test function."""
     connection = test_engine.connect()
     transaction = connection.begin()
-    session = TestingSessionLocal(bind=connection)
+    # Cada commit/rollback de la aplicación queda contenido en un savepoint.
+    # Así las rutas transaccionales se prueban de forma realista sin cerrar la
+    # transacción externa que permite limpiar por completo cada caso.
+    session = TestingSessionLocal(
+        bind=connection,
+        join_transaction_mode="create_savepoint",
+    )
 
     yield session
 

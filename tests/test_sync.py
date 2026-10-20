@@ -14,7 +14,7 @@ from app.models.temporada import Temporada
 from app.models.user import User
 
 
-def _inventory(db, empresa_id: int) -> StockInventario:
+def _inventory(db, empresa_id: int, quantity: int = 3) -> StockInventario:
     suffix = uuid4().hex[:8]
     branch = Sucursal(
         empresa_id=empresa_id,
@@ -37,7 +37,7 @@ def _inventory(db, empresa_id: int) -> StockInventario:
     db.add(product_color)
     db.flush()
     stock = StockInventario(
-        sucursal_id=branch.id, producto_color_id=product_color.id, talla_id=size.id, cantidad=3,
+        sucursal_id=branch.id, producto_color_id=product_color.id, talla_id=size.id, cantidad=quantity,
     )
     db.add(stock)
     db.commit()
@@ -127,3 +127,76 @@ def test_reservation_sync_is_idempotent(client, db_session, admin_token):
     assert second.json()["result_id"] == first.json()["result_id"]
     db_session.refresh(stock)
     assert stock.cantidad == 2
+
+
+def test_last_unit_conflict_is_preserved_and_does_not_oversell(
+    client, db_session, admin_token
+):
+    admin = db_session.query(User).filter(
+        User.email == "admin_test@stylestore.com"
+    ).one()
+    stock = _inventory(db_session, admin.empresa_id, quantity=1)
+    headers = {"Authorization": f"Bearer {admin_token}"}
+
+    sale = client.post(
+        "/api/v1/sync/operations",
+        json={
+            "operation_uuid": str(uuid4()),
+            "operation_type": "venta_efectivo",
+            "payload_version": 1,
+            "client_created_at": datetime.now(timezone.utc).isoformat(),
+            "payload": {
+                "sucursal_id": stock.sucursal_id,
+                "metodo_pago": "efectivo",
+                "efectivo_recibido": 100,
+                "items": [{"stock_inventario_id": stock.id, "cantidad": 1}],
+            },
+        },
+        headers=headers,
+    )
+    assert sale.status_code == 200, sale.text
+    assert sale.json()["status"] == "confirmada"
+
+    losing_operation = str(uuid4())
+    reservation = client.post(
+        "/api/v1/sync/operations",
+        json={
+            "operation_uuid": losing_operation,
+            "operation_type": "reserva",
+            "payload_version": 1,
+            "client_created_at": datetime.now(timezone.utc).isoformat(),
+            "payload": {
+                "sucursal_id": stock.sucursal_id,
+                "fecha_limite": (date.today() + timedelta(days=1)).isoformat(),
+                "hora_retiro": "12:00:00",
+                "items": [{"stock_inventario_id": stock.id, "cantidad": 1}],
+            },
+        },
+        headers=headers,
+    )
+    assert reservation.status_code == 200, reservation.text
+    assert reservation.json()["status"] == "conflicto"
+    assert "Stock insuficiente" in reservation.json()["reason"]
+
+    retry = client.post(
+        "/api/v1/sync/operations",
+        json={
+            "operation_uuid": losing_operation,
+            "operation_type": "reserva",
+            "payload_version": 1,
+            "client_created_at": datetime.now(timezone.utc).isoformat(),
+            "payload": {
+                "sucursal_id": stock.sucursal_id,
+                "fecha_limite": (date.today() + timedelta(days=1)).isoformat(),
+                "hora_retiro": "12:00:00",
+                "items": [{"stock_inventario_id": stock.id, "cantidad": 1}],
+            },
+        },
+        headers=headers,
+    )
+    assert retry.status_code == 200, retry.text
+    assert retry.json()["status"] == "conflicto"
+    assert retry.json()["reason"] == reservation.json()["reason"]
+
+    db_session.refresh(stock)
+    assert stock.cantidad == 0

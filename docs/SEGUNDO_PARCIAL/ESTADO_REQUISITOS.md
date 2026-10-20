@@ -38,8 +38,8 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-032 | EN_PRUEBAS | Flutter muestra cola/resultados y sincroniza reservas/ventas al reconectar; falta evidencia en dispositivo |
 | REQ-033 | EN_PRUEBAS | Web y móvil conservan colas UUID y transiciones sin borrar fallos; falta E2E de proceso interrumpido en dispositivo |
 | REQ-034 | EN_PRUEBAS | PWA/Flutter reintentan y backend confirma idempotentemente ventas/reservas; falta simulación E2E de timeout real |
-| REQ-035 | EN_CURSO | Backend rechaza/conflicta contra stock central y PWA conserva motivo; falta escenario concurrente E2E y móvil |
-| REQ-036 | EN_CURSO | IndexedDB usa clave empresa+usuario y backend ignora tenant del payload; falta SQLite móvil y prueba A/B local automatizada |
+| REQ-035 | EN_PRUEBAS | Prueba automatizada confirma que la última unidad solo genera una venta, la reserva competidora queda en conflicto, el reintento conserva el motivo y el stock queda en cero; falta E2E con dos dispositivos |
+| REQ-036 | EN_PRUEBAS | Backend deriva tenant del JWT; IndexedDB y SQLite separan cola por empresa+usuario y las pruebas locales rechazan lectura desde otro ámbito; falta evidencia A/B en dispositivos |
 | REQ-037 | EN_CURSO | Reportes escritos y aislamiento tenant existen; falta voz y autorización por plan |
 | REQ-038 | EN_CURSO | Filtros controlados, datos reales y ámbito tenant aplicados; falta autorización por plan y validación E2E |
 | REQ-039 | EN_CURSO | Tablas/exportación Excel/PDF y prueba negativa A/B existen; faltan gráficos y evidencia E2E completa |
@@ -54,7 +54,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-048 | EN_PRUEBAS | Backend y PWA verificados públicamente tras push; APK release con SQLite generado y validado por hash, falta instalación/validación móvil real |
 | REQ-049 | PENDIENTE | Artefactos ICONIX/UML 2.5+ del segundo parcial no creados |
 | REQ-050 | PENDIENTE | Documento final capítulos I–VI no disponible |
-| REQ-051 | EN_CURSO | 60 pruebas backend, replay sync, tenant/planes A/B, build/test PWA, 5 pruebas Flutter incluida reapertura SQLite y auditoría runtime aprobados; faltan E2E en dispositivo |
+| REQ-051 | EN_CURSO | 61 pruebas backend, conflicto de última unidad/replay sync, tenant/planes A/B, build/test PWA, 5 pruebas Flutter incluida reapertura SQLite y auditoría runtime aprobados; faltan E2E en dispositivo |
 | REQ-052 | EN_CURSO | Matriz iniciada; paquetes/capturas de entregas pendientes |
 | REQ-053 | PENDIENTE | QR y enlaces finales verificados no preparados |
 | REQ-054 | EN_CURSO | Solicitudes de cambio existen; falta nueva nota vinculada completa |

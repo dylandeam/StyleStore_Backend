@@ -284,8 +284,14 @@ async def create_reserva(
             )
 
         if stock.cantidad < item.cantidad:
+            disponible = stock.cantidad
+            solicitado = item.cantidad
+            stock_id = item.stock_inventario_id
             db.rollback()
-            raise BadRequestException(f"Stock insuficiente para el ítem {item.stock_inventario_id}. Disponible: {stock.cantidad}, solicitado: {item.cantidad}.")
+            raise BadRequestException(
+                f"Stock insuficiente para el ítem {stock_id}. "
+                f"Disponible: {disponible}, solicitado: {solicitado}."
+            )
 
         stock.cantidad -= item.cantidad
         detalle = DetalleReserva(
