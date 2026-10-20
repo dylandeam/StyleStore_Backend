@@ -33,9 +33,9 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-027 | EN_PRUEBAS | POS guarda venta de contado con detalle/importes y bloquea QR offline; falta E2E de comprobante impreso |
 | REQ-028 | EN_PRUEBAS | Pantalla PWA muestra cola y estados pendiente/confirmada/rechazada/conflicto con motivo; falta evidencia visual E2E |
 | REQ-029 | EN_PRUEBAS | Flutter conserva Provider/secure storage e integra SQLite con claves foráneas; falta prueba en dispositivo de cierre/reapertura |
-| REQ-030 | EN_CURSO | Esquema local incluye catálogo, sucursales, clientes, ventas/detalles, reservas/detalles y cola; falta conectar todos los flujos |
-| REQ-031 | EN_CURSO | Consulta móvil de catálogo y sucursales cae a SQLite por ámbito; faltan reservas y ventas de contado offline |
-| REQ-032 | PENDIENTE | UI y recuperación sync Flutter no implementadas |
+| REQ-030 | EN_CURSO | Esquema local incluye catálogo, sucursales, clientes, ventas/detalles, reservas/detalles y cola; reservas ya persisten, falta conectar ventas/clientes |
+| REQ-031 | EN_CURSO | Catálogo/sucursales y reservas offline funcionan desde SQLite; falta venta móvil de contado offline |
+| REQ-032 | EN_CURSO | Flutter muestra cola/resultados y sincroniza reservas al reconectar; falta integrar ventas y evidencia en dispositivo |
 | REQ-033 | EN_CURSO | Cola web persistente implementa UUID y transiciones sin borrar fallos; falta cola SQLite móvil |
 | REQ-034 | EN_CURSO | PWA reintenta al reconectar y backend confirma idempotentemente ventas/reservas; falta paridad móvil y prueba de timeout E2E |
 | REQ-035 | EN_CURSO | Backend rechaza/conflicta contra stock central y PWA conserva motivo; falta escenario concurrente E2E y móvil |
@@ -51,7 +51,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-045 | PENDIENTE | Integración ML/dashboard no implementada |
 | REQ-046 | EN_PRUEBAS | Recomendaciones y vestidor preservados; falta E2E desplegado |
 | REQ-047 | EN_CURSO | Hay pruebas base; faltan evidencias completas RNF01–RNF12 |
-| REQ-048 | EN_PRUEBAS | URLs/remotos declarados; falta verificar despliegue posterior a estos commits |
+| REQ-048 | EN_PRUEBAS | Backend y PWA nuevos verificados públicamente tras push; falta generar/publicar APK con SQLite y validación móvil real |
 | REQ-049 | PENDIENTE | Artefactos ICONIX/UML 2.5+ del segundo parcial no creados |
 | REQ-050 | PENDIENTE | Documento final capítulos I–VI no disponible |
 | REQ-051 | EN_CURSO | 60 pruebas backend, replay sync, tenant/planes A/B, build/test PWA y auditoría runtime aprobados; faltan E2E desplegado y móvil offline |
