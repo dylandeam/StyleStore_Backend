@@ -342,8 +342,8 @@ class RoleService:
         if role.nombre.lower() == "administrador":
             raise BadRequestException("El rol Administrador es fundamental para el sistema y no se puede eliminar.")
 
-        # Delete associated role permissions
-        self.db.query(RolePermission).filter(RolePermission.role_id == role.id).delete()
+        # The ORM relationship owns role permissions through delete-orphan cascade.
+        # Deleting them explicitly as well makes SQLAlchemy attempt a second DELETE.
         self.db.delete(role)
         self.db.commit()
 
