@@ -28,6 +28,8 @@ Tipos admitidos:
 - `reserva`: aplica elegibilidad, máximo de tres días, horario de la sucursal y bloqueo de stock.
 - `venta_efectivo`: aplica permisos de caja, pertenencia tenant y bloqueo de stock. QR, PayPal y cualquier pago electrónico offline se rechazan.
 
+Cuando una `venta_efectivo` incluye `snapshot.total` y no puede confirmarse por falta de stock, la respuesta añade `refund_id`, `refund_status` y `refund_amount`. Los reintentos con el mismo UUID devuelven el mismo reembolso y nunca crean uno adicional.
+
 ## Estados y resolución
 
 | Estado | Significado | Acción del cliente |

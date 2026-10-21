@@ -21,6 +21,9 @@ class SyncOperationResponse(BaseModel):
     reason: str | None = None
     result_type: str | None = None
     result_id: int | None = None
+    refund_id: int | None = None
+    refund_status: str | None = None
+    refund_amount: float | None = None
     created_at: datetime
     updated_at: datetime
 

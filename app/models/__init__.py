@@ -41,6 +41,7 @@ from app.models.producto_landmark import ProductoLandmark
 from app.models.prueba_virtual import PruebaVirtual
 from app.models.plan_suscripcion import PlanSuscripcion, ContratacionPlan
 from app.models.sync_operation import SyncOperation
+from app.models.reembolso_offline import ReembolsoOffline
 
 __all__ = [
     "Role",
@@ -92,4 +93,5 @@ __all__ = [
     "PlanSuscripcion",
     "ContratacionPlan",
     "SyncOperation",
+    "ReembolsoOffline",
 ]

@@ -1,4 +1,5 @@
 """Idempotent synchronization contract for web and mobile offline queues."""
+from decimal import Decimal, InvalidOperation
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
@@ -14,6 +15,7 @@ from app.models.permission import Permission
 from app.models.reserva import Reserva
 from app.models.role_permission import RolePermission
 from app.models.sync_operation import SyncOperation
+from app.models.reembolso_offline import ReembolsoOffline
 from app.models.user import User
 from app.schemas.pago_envio import VentaPresencialCreate
 from app.schemas.reserva import ReservaCreate
@@ -22,8 +24,18 @@ from app.schemas.sync import SyncBatchRequest, SyncOperationRequest, SyncOperati
 router = APIRouter(prefix="/sync", tags=["Sincronización offline"])
 
 
-def _response(record: SyncOperation) -> SyncOperationResponse:
-    return SyncOperationResponse.model_validate(record)
+def _response(record: SyncOperation, db: Session) -> SyncOperationResponse:
+    response = SyncOperationResponse.model_validate(record)
+    refund = db.query(ReembolsoOffline).filter(
+        ReembolsoOffline.sync_operation_id == record.id
+    ).first()
+    if refund:
+        response = response.model_copy(update={
+            "refund_id": refund.id,
+            "refund_status": refund.estado,
+            "refund_amount": float(refund.monto),
+        })
+    return response
 
 
 def _can_register_sale(db: Session, user: User) -> bool:
@@ -77,7 +89,7 @@ async def _process(payload: SyncOperationRequest, user: User, db: Session) -> Sy
     user_id = user.id
     existing = _find_owned(db, operation_uuid, user)
     if existing:
-        return _response(_reconcile_processing(db, existing))
+        return _response(_reconcile_processing(db, existing), db)
     collision = db.query(SyncOperation.id).filter(SyncOperation.operation_uuid == operation_uuid).first()
     if collision:
         raise ForbiddenException("El identificador de operación pertenece a otro ámbito")
@@ -101,7 +113,7 @@ async def _process(payload: SyncOperationRequest, user: User, db: Session) -> Sy
         db.rollback()
         concurrent = _find_owned_ids(db, operation_uuid, empresa_id, user_id)
         if concurrent:
-            return _response(_reconcile_processing(db, concurrent))
+            return _response(_reconcile_processing(db, concurrent), db)
         raise ForbiddenException("El identificador de operación pertenece a otro ámbito")
 
     try:
@@ -128,7 +140,7 @@ async def _process(payload: SyncOperationRequest, user: User, db: Session) -> Sy
         record.reason = None
         db.commit()
         db.refresh(record)
-        return _response(record)
+        return _response(record, db)
     except (HTTPException, ValidationError) as error:
         detail = error.detail if isinstance(error, HTTPException) else "El contenido local no cumple el contrato vigente"
         rejected = _find_owned_ids(db, operation_uuid, empresa_id, user_id)
@@ -146,9 +158,41 @@ async def _process(payload: SyncOperationRequest, user: User, db: Session) -> Sy
             db.add(rejected)
         rejected.status = "conflicto" if isinstance(error, HTTPException) and error.status_code in (400, 404, 409) else "rechazada"
         rejected.reason = str(detail)
+        db.flush()
+
+        reason_text = str(detail).lower()
+        snapshot = payload.payload.get("snapshot") or {}
+        raw_total = snapshot.get("total", 0) if isinstance(snapshot, dict) else 0
+        try:
+            refund_amount = Decimal(str(raw_total))
+        except (InvalidOperation, TypeError, ValueError):
+            refund_amount = Decimal("0")
+        stock_conflict = (
+            payload.operation_type == "venta_efectivo"
+            and str(payload.payload.get("metodo_pago", "efectivo")).lower() == "efectivo"
+            and isinstance(error, HTTPException)
+            and error.status_code in (400, 409)
+            and ("stock" in reason_text or "disponib" in reason_text)
+            and refund_amount > 0
+        )
+        if stock_conflict and not db.query(ReembolsoOffline.id).filter(
+            ReembolsoOffline.operation_uuid == operation_uuid
+        ).first():
+            db.add(ReembolsoOffline(
+                empresa_id=empresa_id,
+                user_id=user_id,
+                sucursal_id=rejected.sucursal_id,
+                sync_operation_id=rejected.id,
+                operation_uuid=operation_uuid,
+                monto=refund_amount,
+                moneda="BOB",
+                metodo_original="efectivo",
+                estado="pendiente",
+                motivo=str(detail),
+            ))
         db.commit()
         db.refresh(rejected)
-        return _response(rejected)
+        return _response(rejected, db)
 
 
 @router.post("/operations", response_model=SyncOperationResponse)
@@ -180,4 +224,4 @@ async def list_sync_operations(
         query = query.filter(SyncOperation.empresa_id == current_user.empresa_id)
     if status:
         query = query.filter(SyncOperation.status == status)
-    return [_response(item) for item in query.order_by(SyncOperation.created_at.desc()).all()]
+    return [_response(item, db) for item in query.order_by(SyncOperation.created_at.desc()).all()]

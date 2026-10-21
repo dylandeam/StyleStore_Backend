@@ -7,6 +7,7 @@ from app.models.categoria import Categoria
 from app.models.color import Color
 from app.models.producto import Producto
 from app.models.producto_color import ProductoColor
+from app.models.reembolso_offline import ReembolsoOffline
 from app.models.stock_inventario import StockInventario
 from app.models.sucursal import Sucursal
 from app.models.talla import Talla
@@ -200,3 +201,89 @@ def test_last_unit_conflict_is_preserved_and_does_not_oversell(
 
     db_session.refresh(stock)
     assert stock.cantidad == 0
+
+
+def test_rejected_offline_cash_sale_creates_one_auditable_refund(
+    client, db_session, admin_token
+):
+    admin = db_session.query(User).filter(
+        User.email == "admin_test@stylestore.com"
+    ).one()
+    stock = _inventory(db_session, admin.empresa_id, quantity=0)
+    operation_uuid = str(uuid4())
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    body = {
+        "operation_uuid": operation_uuid,
+        "operation_type": "venta_efectivo",
+        "payload_version": 1,
+        "client_created_at": datetime.now(timezone.utc).isoformat(),
+        "payload": {
+            "sucursal_id": stock.sucursal_id,
+            "metodo_pago": "efectivo",
+            "efectivo_recibido": 125,
+            "items": [{"stock_inventario_id": stock.id, "cantidad": 1}],
+            "snapshot": {"total": 125, "moneda": "BOB"},
+        },
+    }
+
+    rejected = client.post("/api/v1/sync/operations", json=body, headers=headers)
+    assert rejected.status_code == 200, rejected.text
+    payload = rejected.json()
+    assert payload["status"] == "conflicto"
+    assert payload["refund_id"] is not None
+    assert payload["refund_status"] == "pendiente"
+    assert payload["refund_amount"] == 125
+
+    replay = client.post("/api/v1/sync/operations", json=body, headers=headers)
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["refund_id"] == payload["refund_id"]
+    assert db_session.query(ReembolsoOffline).filter(
+        ReembolsoOffline.operation_uuid == operation_uuid
+    ).count() == 1
+
+    mine = client.get("/api/v1/reembolsos/mios", headers=headers)
+    assert mine.status_code == 200, mine.text
+    assert any(item["id"] == payload["refund_id"] for item in mine.json())
+
+    suffix = uuid4().hex[:8]
+    other_email = f"refund-{suffix}@tenant.example.com"
+    company = client.post(
+        "/api/v1/empresas",
+        json={
+            "codigo": f"refund-{suffix}",
+            "nombre": "Tenant ajeno al reembolso",
+            "admin_email": other_email,
+            "admin_name": "Admin ajeno",
+            "admin_password": "TenantPass2026!",
+        },
+        headers=headers,
+    )
+    assert company.status_code == 201, company.text
+    other_login = client.post(
+        "/api/v1/auth/login",
+        json={"email": other_email, "password": "TenantPass2026!"},
+    )
+    other_headers = {"Authorization": f"Bearer {other_login.json()['access_token']}"}
+    assert client.get("/api/v1/reembolsos", headers=other_headers).json() == []
+    cross_tenant = client.put(
+        f"/api/v1/reembolsos/{payload['refund_id']}",
+        json={"estado": "entregado", "observaciones": "Acceso de otro tenant"},
+        headers=other_headers,
+    )
+    assert cross_tenant.status_code == 404
+
+    delivered = client.put(
+        f"/api/v1/reembolsos/{payload['refund_id']}",
+        json={"estado": "entregado", "observaciones": "Efectivo devuelto al cliente"},
+        headers=headers,
+    )
+    assert delivered.status_code == 200, delivered.text
+    assert delivered.json()["estado"] == "entregado"
+    assert delivered.json()["procesado_por"] == admin.id
+
+    immutable = client.put(
+        f"/api/v1/reembolsos/{payload['refund_id']}",
+        json={"estado": "cancelado", "observaciones": "Intento de cambio posterior"},
+        headers=headers,
+    )
+    assert immutable.status_code == 403

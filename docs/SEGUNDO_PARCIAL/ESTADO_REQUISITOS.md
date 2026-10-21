@@ -15,7 +15,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-009 | EN_PRUEBAS | Migración Alembic aditiva con una cabeza; falta aplicar/verificar en PostgreSQL desplegado |
 | REQ-010 | EN_PRUEBAS | Variante talla/color/sucursal incorpora precio propio y medidas JSON; catálogo, inventario, carrito y venta usan el valor efectivo, falta E2E físico |
 | REQ-011 | EN_PRUEBAS | Servidor autoritativo bloquea stock online y al sincronizar; reenvío UUID no duplica ni vuelve a descontar, falta prueba de concurrencia real |
-| REQ-012 | PENDIENTE | No existe política/entidad completa de reembolso por rechazo offline |
+| REQ-012 | EN_PRUEBAS | Venta offline en efectivo rechazada por stock crea un único reembolso auditable ligado a la operación; replay no duplica, resolución es inmutable y queda en bitácora; falta demostración física del conflicto en dispositivo |
 | REQ-013 | TERMINADO_VERIFICADO | Contrato `/sync` versionado con UUID, tenant/usuario derivados del JWT, idempotencia, estados, motivo y pruebas de replay |
 | REQ-014 | EN_CURSO | Maestro separado por `is_platform_admin`, administrador tenant visible y consola global protegida/auditada; falta matriz tenant/sucursal/plan completa |
 | REQ-015 | EN_PRUEBAS | Flujos preservados y suite aprobada; falta prueba manual desplegada |
@@ -54,7 +54,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-048 | EN_PRUEBAS | Backend/PWA públicos y APK `1.0.3+4` instalado/validado en Samsung S21+ con hash y modo avión; falta mecanismo público de descarga y E2E comercial completo |
 | REQ-049 | PENDIENTE | Artefactos ICONIX/UML 2.5+ del segundo parcial no creados |
 | REQ-050 | PENDIENTE | Documento final capítulos I–VI no disponible |
-| REQ-051 | EN_CURSO | 66 pruebas backend, conflicto/replay/tenant/consola SaaS/cupos/variantes, build y 2 pruebas web, 5 pruebas Flutter y cierre/reapertura SQLite real en S21+ aprobados; faltan E2E comerciales en dispositivo |
+| REQ-051 | EN_CURSO | 67 pruebas backend, conflicto/replay/reembolso/tenant/consola SaaS/cupos/variantes, build y 2 pruebas web, 5 pruebas Flutter y cierre/reapertura SQLite real en S21+ aprobados; faltan E2E comerciales en dispositivo |
 | REQ-052 | EN_CURSO | Matriz iniciada; paquetes/capturas de entregas pendientes |
 | REQ-053 | PENDIENTE | QR y enlaces finales verificados no preparados |
 | REQ-054 | EN_CURSO | Solicitudes de cambio existen; falta nueva nota vinculada completa |
@@ -70,7 +70,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-064 | PENDIENTE | Calificaciones poscompra no implementadas |
 | REQ-065 | PENDIENTE | Favoritos/lista de deseos no implementados |
 | REQ-066 | EN_CURSO | Bloqueo online de stock existe; falta mensaje uniforme y conflicto offline |
-| REQ-067 | PENDIENTE | Flujo auditable de reembolso offline no implementado |
+| REQ-067 | EN_PRUEBAS | Estados pendiente/entregado/cancelado, gestión tenant en Web y aviso del monto en colas Web/Android implementados; falta evidencia E2E con venta cobrada físicamente en modo avión |
 | REQ-068 | PENDIENTE | Requiere propuesta del equipo sin desplazar obligatorios |
 | REQ-069 | EN_CURSO | Contratos compartidos preservados; offline/paridad nueva pendientes |
 | REQ-070 | EN_CURSO | Operaciones sync conservan estado, motivo, recurso resultante y fechas; faltan métricas/alertas agregadas |
