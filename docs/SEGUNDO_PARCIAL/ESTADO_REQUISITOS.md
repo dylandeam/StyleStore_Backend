@@ -22,9 +22,9 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-016 | EN_CURSO | PWA diferencia provisional/confirmado, bloquea QR offline y documenta límites; falta paridad móvil |
 | REQ-017 | EN_CURSO | Consola maestra crea/edita/suspende tenants, gestiona su administrador y muestra usuarios/sucursales aislados; falta asociación integral de recursos secundarios |
 | REQ-018 | TERMINADO_VERIFICADO | Existen exactamente Básico, Profesional y Personalizado; el tercero inicia sin beneficios inventados y es editable |
-| REQ-019 | EN_CURSO | Mínimos oficiales viven en backend y el cupo de sucursales activas se bloquea por plan; faltan bloqueos de capacidades en todos los módulos |
+| REQ-019 | EN_PRUEBAS | Mínimos oficiales de Básico/Profesional protegidos, cupos de sucursales y capacidades de productos, ventas, reservas, offline, reportes e IA aplicados en backend; falta demostración E2E desplegada |
 | REQ-020 | TERMINADO_VERIFICADO | Precio, moneda, límites, capacidades, beneficios y estilo se configuran en backend y UI por ámbito global/tenant |
-| REQ-021 | EN_CURSO | Alta, cambio, renovación administrativa, estado, inicio/vencimiento, historial y snapshot implementados; falta aplicar todos los bloqueos/cupos operativos |
+| REQ-021 | EN_PRUEBAS | Alta, cambio, renovación, estado, vigencia, snapshot y bloqueos operativos implementados; clientes no pueden cambiar el plan del tenant y el vencimiento bloquea capacidades; falta evidencia E2E desplegada |
 | REQ-022 | EN_PRUEBAS | Contratación/cambio simulado y renovación desde consola maestra implementados con auditoría; falta evidencia E2E desplegada |
 | REQ-023 | EN_PRUEBAS | Manifest, Service Worker, app shell y actualización controlada generan correctamente; falta evidencia manual de instalación/carga offline desplegada |
 | REQ-024 | EN_PRUEBAS | IndexedDB persiste catálogo y cola comercial aislada por empresa/usuario; falta prueba E2E de reinicio de navegador |
@@ -54,7 +54,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-048 | EN_PRUEBAS | Backend/PWA públicos y APK `1.0.3+4` instalado/validado en Samsung S21+ con hash y modo avión; falta mecanismo público de descarga y E2E comercial completo |
 | REQ-049 | PENDIENTE | Artefactos ICONIX/UML 2.5+ del segundo parcial no creados |
 | REQ-050 | PENDIENTE | Documento final capítulos I–VI no disponible |
-| REQ-051 | EN_CURSO | 67 pruebas backend, conflicto/replay/reembolso/tenant/consola SaaS/cupos/variantes, build y 2 pruebas web, 5 pruebas Flutter y cierre/reapertura SQLite real en S21+ aprobados; faltan E2E comerciales en dispositivo |
+| REQ-051 | EN_CURSO | 68 pruebas backend, conflicto/replay/reembolso/tenant/consola SaaS/cupos/capacidades/variantes, build y 2 pruebas web, 5 pruebas Flutter y cierre/reapertura SQLite real en S21+ aprobados; faltan E2E comerciales en dispositivo |
 | REQ-052 | EN_CURSO | Matriz iniciada; paquetes/capturas de entregas pendientes |
 | REQ-053 | PENDIENTE | QR y enlaces finales verificados no preparados |
 | REQ-054 | EN_CURSO | Solicitudes de cambio existen; falta nueva nota vinculada completa |

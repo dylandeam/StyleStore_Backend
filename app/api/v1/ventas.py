@@ -18,7 +18,7 @@ from app.schemas.pago_envio import (
     VentaPresencialCreate,
     DetalleVentaResponse,
 )
-from app.api.deps import get_current_user, require_permission
+from app.api.deps import get_current_user, require_permission, require_plan_capability
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.bitacora_service import BitacoraService
 from app.services.tenant_scope import get_scoped_sucursal, scope_by_sucursal
@@ -178,7 +178,13 @@ async def get_venta(
     return _serialize_orden(venta)
 
 
-@router.post("/presencial", response_model=OrdenVentaResponse, status_code=status.HTTP_201_CREATED, summary="Registrar venta presencial en caja")
+@router.post(
+    "/presencial",
+    response_model=OrdenVentaResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Registrar venta presencial en caja",
+    dependencies=[Depends(require_plan_capability("ventas"))],
+)
 async def create_venta_presencial(
     payload: VentaPresencialCreate,
     current_user: User = Depends(require_permission("productos.editar")),

@@ -18,7 +18,7 @@ from app.models.producto_color import ProductoColor
 from app.models.stock_inventario import StockInventario
 from app.models.compra import Compra, DetalleCompra
 from app.schemas.compra import CompraCreate, CompraResponse, DetalleCompraResponse
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_plan_capability
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.bitacora_service import BitacoraService
 from app.services.tenant_scope import get_scoped_sucursal, scope_by_empresa, scope_by_sucursal
@@ -96,7 +96,7 @@ async def get_compra(
     return _formatear_compra(compra)
 
 
-@router.post("", response_model=CompraResponse, status_code=status.HTTP_201_CREATED, summary="Registrar nueva compra y abastecer inventario")
+@router.post("", response_model=CompraResponse, status_code=status.HTTP_201_CREATED, summary="Registrar nueva compra y abastecer inventario", dependencies=[Depends(require_plan_capability("productos"))])
 async def create_compra(
     payload: CompraCreate,
     current_user: User = Depends(get_current_user),
@@ -202,7 +202,7 @@ async def create_compra(
     return _formatear_compra(compra)
 
 
-@router.post("/{compra_id}/anular", response_model=CompraResponse, summary="Anular compra y revertir stock")
+@router.post("/{compra_id}/anular", response_model=CompraResponse, summary="Anular compra y revertir stock", dependencies=[Depends(require_plan_capability("productos"))])
 async def anular_compra(
     compra_id: int,
     current_user: User = Depends(get_current_user),

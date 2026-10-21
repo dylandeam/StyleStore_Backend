@@ -11,9 +11,13 @@ from app.database import get_db
 from app.models.user import User
 from app.services.report_service import ReportService
 from app.services.bitacora_service import BitacoraService
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_plan_capability
 
-router = APIRouter(prefix="/reportes", tags=["Reportes"])
+router = APIRouter(
+    prefix="/reportes",
+    tags=["Reportes"],
+    dependencies=[Depends(require_plan_capability("reportes"))],
+)
 
 
 @router.get("/ventas/excel", summary="Exportar reporte de ventas en formato Excel")

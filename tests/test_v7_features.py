@@ -25,11 +25,14 @@ from app.models.stock_inventario import StockInventario
 from app.models.proveedor import Proveedor
 from app.models.orden_venta import OrdenVenta
 from app.models.outfit import Outfit, OutfitItem
+from app.models.empresa import Empresa
 from app.core.security import create_access_token
+from app.services.plan_service import PlanService
 
 
 @pytest.fixture
 def auth_context_v7(db_session):
+    empresa = db_session.query(Empresa).filter(Empresa.codigo == "stylestore").one()
     admin = db_session.query(User).filter(User.email == "admin_v7@stylestore.com").first()
     if not admin:
         admin = User(
@@ -43,6 +46,8 @@ def auth_context_v7(db_session):
         db_session.commit()
         db_session.refresh(admin)
 
+    admin.empresa_id = empresa.id
+    admin.is_platform_admin = True
     cliente_user = db_session.query(User).filter(User.email == "cliente_v7@test.com").first()
     if not cliente_user:
         cliente_user = User(
@@ -55,6 +60,11 @@ def auth_context_v7(db_session):
         db_session.add(cliente_user)
         db_session.commit()
         db_session.refresh(cliente_user)
+
+    cliente_user.empresa_id = empresa.id
+    cliente_user.is_platform_admin = False
+    db_session.commit()
+    PlanService(db_session).contract(admin, "basico")
 
     admin_token = create_access_token(data={"sub": str(admin.id), "email": admin.email, "role": admin.role})
     cliente_token = create_access_token(data={"sub": str(cliente_user.id), "email": cliente_user.email, "role": cliente_user.role})
@@ -74,6 +84,8 @@ def auth_context_v7(db_session):
         db_session.add(suc)
         db_session.commit()
         db_session.refresh(suc)
+    suc.empresa_id = empresa.id
+    db_session.commit()
 
     return {
         "admin": admin,
@@ -264,6 +276,7 @@ def test_v7_punto9_modulo_outfits(client: TestClient, auth_context_v7, db_sessio
     prod = db_session.query(Producto).filter(Producto.codigo == "PROD-V7-OUTFIT").first()
     if not prod:
         prod = Producto(
+            empresa_id=auth_context_v7["admin"].empresa_id,
             codigo="PROD-V7-OUTFIT",
             nombre="Polera Algodón Outfit",
             precio=Decimal("120.00"),

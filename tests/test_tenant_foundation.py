@@ -1,10 +1,12 @@
 """Tenant boundary regression tests for the SaaS foundation."""
+from datetime import date, timedelta
 from decimal import Decimal
 
 from app.models.user import User
 from app.models.cliente import Cliente
 from app.models.orden_venta import OrdenVenta
 from app.models.envio import Envio
+from app.models.plan_suscripcion import ContratacionPlan
 from app.core.security import hash_password
 from app.services.report_ai_service import ReportAIService
 
@@ -538,8 +540,14 @@ def test_three_plans_are_configurable_without_cross_tenant_changes(client, db_se
     public_plans = client.get("/api/v1/planes", headers=client_headers)
     assert next(plan for plan in public_plans.json() if plan["codigo"] == "personalizado")["nombre"] == "Plan Boutique A"
 
-    contracted = client.post(
+    forbidden_client_contract = client.post(
         "/api/v1/planes/contratar", headers=client_headers,
+        json={"plan_codigo": "personalizado"},
+    )
+    assert forbidden_client_contract.status_code == 403
+
+    contracted = client.post(
+        "/api/v1/planes/contratar", headers=headers_a,
         json={"plan_codigo": "personalizado"},
     )
     assert contracted.status_code == 200, contracted.text
@@ -584,3 +592,84 @@ def test_basic_plan_blocks_third_active_branch(client, db_session, admin_token):
     )
     assert blocked.status_code == 403
     assert "permite hasta 2 sucursales" in blocked.json()["detail"]
+
+
+def test_plan_minimums_and_operational_capabilities_are_enforced(
+    client, db_session, admin_token
+):
+    company = _create_empresa(
+        client, admin_token, "capabilities", "admin@capabilities.example.com"
+    )
+    tenant_headers = {
+        "Authorization": f"Bearer {_login(client, 'admin@capabilities.example.com')}"
+    }
+    master_headers = {"Authorization": f"Bearer {admin_token}"}
+
+    basic = client.put(
+        "/api/v1/planes/admin/basico",
+        headers=tenant_headers,
+        json={
+            "capacidades": {
+                "productos": False,
+                "ventas": False,
+                "reservas": False,
+                "offline": False,
+                "reportes": False,
+                "ia_generativa": True,
+            }
+        },
+    )
+    assert basic.status_code == 200, basic.text
+    assert all(
+        basic.json()["capacidades"][capability] is True
+        for capability in ("productos", "ventas", "reservas", "offline", "reportes")
+    )
+    assert basic.json()["ia_generativa"] is False
+    assert basic.json()["capacidades"]["ia_generativa"] is False
+
+    assigned = client.put(
+        f"/api/v1/empresas/{company['id']}/suscripcion",
+        headers=master_headers,
+        json={"plan_codigo": "personalizado"},
+    )
+    assert assigned.status_code == 200, assigned.text
+
+    blocked_report = client.get(
+        "/api/v1/reportes/dashboard-stats", headers=tenant_headers
+    )
+    assert blocked_report.status_code == 403
+    assert "reportes" in blocked_report.json()["detail"]
+
+    blocked_sync = client.post(
+        "/api/v1/sync/operations",
+        headers=tenant_headers,
+        json={
+            "operation_uuid": "a106f9bd-737a-441f-9103-78a7424a55aa",
+            "operation_type": "venta_efectivo",
+            "payload_version": 1,
+            "client_created_at": "2026-10-21T12:00:00Z",
+            "payload": {},
+        },
+    )
+    assert blocked_sync.status_code == 403
+    assert "offline" in blocked_sync.json()["detail"]
+
+    custom = client.put(
+        "/api/v1/planes/admin/personalizado",
+        headers=tenant_headers,
+        json={"capacidades": {"reportes": True, "offline": True}},
+    )
+    assert custom.status_code == 200, custom.text
+    allowed_report = client.get(
+        "/api/v1/reportes/dashboard-stats", headers=tenant_headers
+    )
+    assert allowed_report.status_code == 200, allowed_report.text
+
+    contract = db_session.query(ContratacionPlan).filter(
+        ContratacionPlan.empresa_id == company["id"],
+        ContratacionPlan.estado == "activa",
+    ).order_by(ContratacionPlan.id.desc()).first()
+    contract.fecha_fin = date.today() - timedelta(days=1)
+    db_session.commit()
+    expired = client.get("/api/v1/reportes/dashboard-stats", headers=tenant_headers)
+    assert expired.status_code == 403

@@ -80,7 +80,7 @@ async def get_my_contract(
     db: Session = Depends(get_db),
 ):
     contract = db.query(ContratacionPlan).filter(
-        ContratacionPlan.user_id == current_user.id,
+        ContratacionPlan.empresa_id == current_user.empresa_id,
         ContratacionPlan.estado == "activa",
     ).order_by(ContratacionPlan.id.desc()).first()
     return PlanService.serialize_contract(contract) if contract else None

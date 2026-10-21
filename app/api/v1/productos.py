@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User
-from app.api.deps import get_optional_current_user, require_permission
+from app.api.deps import get_optional_current_user, require_permission, require_plan_capability
 from app.schemas.producto import ProductoCreate, ProductoUpdate, ProductoResponse
 from app.schemas.stock_inventario import StockBulkUpdateRequest, StockInventarioResponse
 from app.schemas.common import MessageResponse
@@ -63,6 +63,7 @@ async def get_producto(
 
 @router.post(
     "",
+    dependencies=[Depends(require_plan_capability("productos"))],
     response_model=ProductoResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Crear producto",
@@ -79,6 +80,7 @@ async def create_producto(
 
 @router.put(
     "/{codigo}",
+    dependencies=[Depends(require_plan_capability("productos"))],
     response_model=ProductoResponse,
     summary="Actualizar producto",
     description="Modifica los datos de una prenda en el catálogo.",
@@ -95,6 +97,7 @@ async def update_producto(
 
 @router.delete(
     "/{codigo}",
+    dependencies=[Depends(require_plan_capability("productos"))],
     response_model=MessageResponse,
     summary="Eliminar producto",
     description="Elimina una prenda del catálogo.",
@@ -128,6 +131,7 @@ async def get_producto_stock(
 
 @router.post(
     "/{codigo}/stock",
+    dependencies=[Depends(require_plan_capability("productos"))],
     response_model=list[StockInventarioResponse],
     summary="Actualizar existencias de stock del producto",
     description="Actualiza las cantidades de existencias por color, talla y sucursal.",

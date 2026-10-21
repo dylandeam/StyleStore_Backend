@@ -27,7 +27,7 @@ from app.schemas.pago_envio import (
     QRConfigDTO,
     QRConfigResponse,
 )
-from app.api.deps import get_current_user, get_optional_current_user, require_permission
+from app.api.deps import get_current_user, get_optional_current_user, require_permission, require_plan_capability
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.bitacora_service import BitacoraService
 from app.services.paypal_service import paypal_service
@@ -61,7 +61,7 @@ def _scoped_payment(db: Session, current_user: User, payment_id: int) -> Pago | 
 # 1. PAYPAL ORDERS V2
 # ==========================================
 
-@router.post("/paypal/crear-orden", summary="Crear orden en PayPal Orders v2")
+@router.post("/paypal/crear-orden", summary="Crear orden en PayPal Orders v2", dependencies=[Depends(require_plan_capability("ventas"))])
 async def create_paypal_order(
     payload: PayPalCrearOrdenRequest,
     current_user: User = Depends(get_current_user),
@@ -118,7 +118,7 @@ async def create_paypal_order(
     return order_data
 
 
-@router.post("/paypal/capturar-orden", response_model=PagoResponse, summary="Capturar fondos de PayPal")
+@router.post("/paypal/capturar-orden", response_model=PagoResponse, summary="Capturar fondos de PayPal", dependencies=[Depends(require_plan_capability("ventas"))])
 async def capture_paypal_order(
     payload: PayPalCapturarOrdenRequest,
     current_user: User | None = Depends(get_optional_current_user),
@@ -228,7 +228,7 @@ async def capture_paypal_order(
 # 2. COBRO EN CAJA (POS / EFECTIVO)
 # ==========================================
 
-@router.post("/caja", response_model=CobroCajaResponse, summary="Procesar cobro en caja con cálculo de vuelto")
+@router.post("/caja", response_model=CobroCajaResponse, summary="Procesar cobro en caja con cálculo de vuelto", dependencies=[Depends(require_plan_capability("ventas"))])
 async def process_caja_payment(
     payload: CobroCajaRequest,
     current_user: User = Depends(get_current_user),
@@ -305,7 +305,7 @@ async def process_caja_payment(
 # 3. PROCESAR PAGO GENÉRICO / HISTORIAL
 # ==========================================
 
-@router.post("", response_model=PagoResponse, status_code=status.HTTP_201_CREATED, summary="Procesar pago general")
+@router.post("", response_model=PagoResponse, status_code=status.HTTP_201_CREATED, summary="Procesar pago general", dependencies=[Depends(require_plan_capability("ventas"))])
 async def process_payment(
     payload: PagoCreateRequest,
     current_user: User = Depends(get_current_user),
@@ -525,7 +525,7 @@ async def list_all_payments(
     return resultado
 
 
-@router.post("/confirmar-online/{orden_id}", response_model=CobroCajaResponse, summary="Confirmar cobro de orden online y emitir ticket (sin vuelto)")
+@router.post("/confirmar-online/{orden_id}", response_model=CobroCajaResponse, summary="Confirmar cobro de orden online y emitir ticket (sin vuelto)", dependencies=[Depends(require_plan_capability("ventas"))])
 async def confirmar_cobro_online(
     orden_id: int,
     current_user: User = Depends(get_current_user),

@@ -20,7 +20,7 @@ from app.schemas.carrito import (
     ConfirmarCarritoRequest,
     CheckoutRequest,
 )
-from app.api.deps import get_current_user, require_permission
+from app.api.deps import get_current_user, require_permission, require_plan_capability
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.bitacora_service import BitacoraService
 from app.services.tenant_scope import get_scoped_sucursal, scope_by_empresa, scope_by_sucursal
@@ -260,7 +260,7 @@ async def remove_cart_item(
     return _serialize_carrito(carrito)
 
 
-@router.post("/confirmar", summary="Confirmar carrito y generar Orden de Venta")
+@router.post("/confirmar", summary="Confirmar carrito y generar Orden de Venta", dependencies=[Depends(require_plan_capability("ventas"))])
 async def confirm_cart(
     payload: ConfirmarCarritoRequest,
     current_user: User = Depends(get_current_user),
@@ -403,7 +403,7 @@ async def confirm_cart(
         )
 
 
-@router.post("/checkout", summary="Checkout integral con Delivery StyleStore para Web y Móvil")
+@router.post("/checkout", summary="Checkout integral con Delivery StyleStore para Web y Móvil", dependencies=[Depends(require_plan_capability("ventas"))])
 async def checkout_cart(
     payload: CheckoutRequest,
     current_user: User = Depends(get_current_user),

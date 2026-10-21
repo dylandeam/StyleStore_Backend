@@ -16,7 +16,7 @@ from app.models.stock_inventario import StockInventario
 from app.models.producto_color import ProductoColor
 from app.models.producto import Producto
 from app.models.talla import Talla
-from app.api.deps import require_permission
+from app.api.deps import require_permission, require_plan_capability
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.bitacora_service import BitacoraService
 from app.services.tenant_scope import get_scoped_sucursal, scope_by_empresa, scope_by_sucursal
@@ -202,7 +202,11 @@ async def get_inventario_sucursal(
 
 
 
-@router.post("/ajustar", summary="Ajustar o registrar stock de inventario")
+@router.post(
+    "/ajustar",
+    summary="Ajustar o registrar stock de inventario",
+    dependencies=[Depends(require_plan_capability("productos"))],
+)
 async def ajustar_stock(
     payload: StockAdjustRequest,
     current_user: User = Depends(require_permission("inventario.editar")),

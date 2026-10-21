@@ -18,7 +18,7 @@ from app.schemas.reserva import (
     ReservaEstadoUpdate,
     DetalleReservaResponse,
 )
-from app.api.deps import get_current_user, require_permission
+from app.api.deps import get_current_user, require_permission, require_plan_capability
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.bitacora_service import BitacoraService
 from app.services.tenant_scope import get_scoped_sucursal, scope_by_sucursal
@@ -192,7 +192,13 @@ async def verificar_elegibilidad_reserva(
     }
 
 
-@router.post("", response_model=ReservaResponse, status_code=status.HTTP_201_CREATED, summary="Crear reserva")
+@router.post(
+    "",
+    response_model=ReservaResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Crear reserva",
+    dependencies=[Depends(require_plan_capability("reservas"))],
+)
 async def create_reserva(
     payload: ReservaCreate,
     current_user: User = Depends(get_current_user),

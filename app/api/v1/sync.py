@@ -5,7 +5,7 @@ from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_plan_capability
 from app.api.v1.reservas import create_reserva
 from app.api.v1.ventas import create_venta_presencial
 from app.core.exceptions import ForbiddenException
@@ -195,7 +195,7 @@ async def _process(payload: SyncOperationRequest, user: User, db: Session) -> Sy
         return _response(rejected, db)
 
 
-@router.post("/operations", response_model=SyncOperationResponse)
+@router.post("/operations", response_model=SyncOperationResponse, dependencies=[Depends(require_plan_capability("offline"))])
 async def sync_operation(
     payload: SyncOperationRequest,
     current_user: User = Depends(get_current_user),
@@ -204,7 +204,7 @@ async def sync_operation(
     return await _process(payload, current_user, db)
 
 
-@router.post("/batch", response_model=list[SyncOperationResponse])
+@router.post("/batch", response_model=list[SyncOperationResponse], dependencies=[Depends(require_plan_capability("offline"))])
 async def sync_batch(
     payload: SyncBatchRequest,
     current_user: User = Depends(get_current_user),

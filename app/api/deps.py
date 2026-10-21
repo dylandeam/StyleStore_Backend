@@ -157,3 +157,17 @@ def require_permission(permission_code: str):
         return current_user
 
     return permission_checker
+
+
+def require_plan_capability(capability: str):
+    """Enforce the active tenant subscription for a protected operation."""
+    async def capability_checker(
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> User:
+        from app.services.plan_service import PlanService
+
+        PlanService(db).require_capability(current_user, capability)
+        return current_user
+
+    return capability_checker

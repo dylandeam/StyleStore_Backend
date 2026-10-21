@@ -31,6 +31,7 @@ from app.services.plan_service import PlanService
 
 @pytest.fixture
 def auth_tokens(db_session):
+    empresa = db_session.query(Empresa).filter(Empresa.codigo == "stylestore").one()
     """Crea un admin y un cliente con tokens de autenticación para pruebas v6."""
     # Admin
     admin = db_session.query(User).filter(User.email == "admin_v6@stylestore.com").first()
@@ -46,6 +47,8 @@ def auth_tokens(db_session):
         db_session.commit()
         db_session.refresh(admin)
 
+    admin.empresa_id = empresa.id
+    admin.is_platform_admin = False
     admin_token = create_access_token(data={"sub": str(admin.id), "email": admin.email, "role": admin.role})
 
     # Cliente
@@ -61,6 +64,11 @@ def auth_tokens(db_session):
         db_session.add(cliente_user)
         db_session.commit()
         db_session.refresh(cliente_user)
+
+    cliente_user.empresa_id = empresa.id
+    cliente_user.is_platform_admin = False
+    db_session.commit()
+    PlanService(db_session).contract(admin, "basico")
 
     cliente_profile = db_session.query(Cliente).filter(Cliente.user_id == cliente_user.id).first()
     if not cliente_profile:
@@ -88,6 +96,7 @@ def auth_tokens(db_session):
 @pytest.fixture
 def sample_inventory(db_session):
     """Crea una sucursal, producto y stock para probar ventas y reservas."""
+    empresa = db_session.query(Empresa).filter(Empresa.codigo == "stylestore").one()
     suc = db_session.query(Sucursal).filter(Sucursal.name == "Sucursal V6 Test").first()
     if not suc:
         suc = Sucursal(
@@ -100,6 +109,7 @@ def sample_inventory(db_session):
         db_session.add(suc)
         db_session.commit()
         db_session.refresh(suc)
+    suc.empresa_id = empresa.id
 
     cat = db_session.query(Categoria).first()
     if not cat:
@@ -107,6 +117,7 @@ def sample_inventory(db_session):
         db_session.add(cat)
         db_session.commit()
         db_session.refresh(cat)
+    cat.empresa_id = empresa.id
 
     col = db_session.query(Color).first()
     if not col:
@@ -114,6 +125,7 @@ def sample_inventory(db_session):
         db_session.add(col)
         db_session.commit()
         db_session.refresh(col)
+    col.empresa_id = empresa.id
 
     tal = db_session.query(Talla).first()
     if not tal:
@@ -121,6 +133,7 @@ def sample_inventory(db_session):
         db_session.add(tal)
         db_session.commit()
         db_session.refresh(tal)
+    tal.empresa_id = empresa.id
 
     from app.models.temporada import Temporada
     temp = db_session.query(Temporada).first()
@@ -129,6 +142,7 @@ def sample_inventory(db_session):
         db_session.add(temp)
         db_session.commit()
         db_session.refresh(temp)
+    temp.empresa_id = empresa.id
 
     prod = db_session.query(Producto).filter(Producto.codigo == "V6-PROD-01").first()
     if not prod:
@@ -144,6 +158,8 @@ def sample_inventory(db_session):
         db_session.add(prod)
         db_session.commit()
         db_session.refresh(prod)
+    prod.empresa_id = empresa.id
+    db_session.commit()
 
     pcol = db_session.query(ProductoColor).filter(ProductoColor.producto_codigo == prod.codigo).first()
     if not pcol:

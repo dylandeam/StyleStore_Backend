@@ -42,6 +42,14 @@ DEFAULT_PLANS = (
     },
 )
 
+MANDATORY_CAPABILITIES = {
+    "productos": True,
+    "ventas": True,
+    "reservas": True,
+    "offline": True,
+    "reportes": True,
+}
+
 
 class PlanService:
     def __init__(self, db: Session):
@@ -140,11 +148,11 @@ class PlanService:
         if plan.codigo == "basico":
             plan.max_sucursales = min(plan.max_sucursales or 2, 2)
             plan.ia_generativa = False
-            plan.capacidades = {**(plan.capacidades or {}), "ia_generativa": False}
+            plan.capacidades = {**(plan.capacidades or {}), **MANDATORY_CAPABILITIES, "ia_generativa": False}
         elif plan.codigo == "profesional":
             plan.max_sucursales = min(plan.max_sucursales or 10, 10)
             plan.ia_generativa = True
-            plan.capacidades = {**(plan.capacidades or {}), "ia_generativa": True}
+            plan.capacidades = {**(plan.capacidades or {}), **MANDATORY_CAPABILITIES, "ia_generativa": True}
         self.db.commit()
         self.db.refresh(plan)
         BitacoraService.registrar(
@@ -156,6 +164,10 @@ class PlanService:
         return plan
 
     def contract(self, current_user: User, codigo: str) -> ContratacionPlan:
+        if current_user.role != "administrador":
+            raise ForbiddenException(
+                "Solo el administrador del tenant puede contratar o cambiar el plan de la empresa."
+            )
         if current_user.empresa_id is None:
             raise BadRequestException("Tu cuenta no tiene una empresa asignada.")
         plan = next(
@@ -165,7 +177,7 @@ class PlanService:
         if not plan:
             raise NotFoundException("Plan no disponible.")
         self.db.query(ContratacionPlan).filter(
-            ContratacionPlan.user_id == current_user.id,
+            ContratacionPlan.empresa_id == current_user.empresa_id,
             ContratacionPlan.estado == "activa",
         ).update({ContratacionPlan.estado: "reemplazada"}, synchronize_session=False)
         contract = ContratacionPlan(
