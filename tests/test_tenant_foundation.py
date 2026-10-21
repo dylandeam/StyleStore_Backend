@@ -11,6 +11,7 @@ from app.models.plan_suscripcion import ContratacionPlan
 from app.models.user_empresa import UserEmpresa
 from app.core.security import hash_password
 from app.services.report_ai_service import ReportAIService
+from app.services.plan_service import PlanService
 
 
 def _create_empresa(client, admin_token: str, codigo: str, email: str) -> dict:
@@ -145,9 +146,8 @@ def test_platform_admin_manages_tenant_lifecycle_admin_and_subscription(
             "fecha_fin": "2027-10-20",
         },
     )
-    assert subscription.status_code == 200, subscription.text
-    assert subscription.json()["plan_codigo"] == "profesional"
-    assert subscription.json()["fecha_fin"] == "2027-10-20"
+    assert subscription.status_code == 403, subscription.text
+    assert "PayPal" in subscription.json()["detail"]
 
     tenant_login = client.post(
         "/api/v1/auth/login",
@@ -651,9 +651,11 @@ def test_plan_minimums_and_operational_capabilities_are_enforced(
         headers=master_headers,
         json={"plan_codigo": "intermedio"},
     )
-    assert assigned.status_code == 200, assigned.text
-    assert assigned.json()["plan_codigo"] == "intermedio"
-    assert assigned.json()["max_sucursales"] == 5
+    assert assigned.status_code == 403, assigned.text
+    tenant_admin = db_session.query(User).filter(User.email == "admin@capabilities.example.com").one()
+    assigned_contract = PlanService(db_session).contract(tenant_admin, "intermedio")
+    assert assigned_contract.plan.codigo == "intermedio"
+    assert assigned_contract.plan.max_sucursales == 5
 
     intermediate = client.put(
         f"/api/v1/planes/admin/intermedio?empresa_id={company['id']}",

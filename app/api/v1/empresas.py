@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_platform_admin
+from app.core.exceptions import ForbiddenException
 from app.database import get_db
 from app.models.user import User
 from app.schemas.empresa import (
@@ -120,18 +121,6 @@ async def update_tenant_subscription(
     current_user: User = Depends(require_platform_admin),
     db: Session = Depends(get_db),
 ):
-    contract = EmpresaService(db).set_subscription(empresa_id, request, current_user)
-    return {
-        "id": contract.id,
-        "plan_codigo": contract.plan.codigo,
-        "plan_nombre": contract.plan.nombre,
-        "estado": contract.estado,
-        "estado_pago": contract.estado_pago,
-        "referencia_pago": contract.referencia_pago,
-        "pagado_en": contract.pagado_en,
-        "precio": float(contract.precio_snapshot),
-        "moneda": contract.moneda_snapshot,
-        "fecha_inicio": contract.fecha_inicio,
-        "fecha_fin": contract.fecha_fin,
-        "max_sucursales": contract.plan.max_sucursales,
-    }
+    raise ForbiddenException(
+        "El plan del tenant solo puede cambiarse mediante el checkout PayPal del administrador empresarial."
+    )
