@@ -1,7 +1,7 @@
 """
 Pydantic schemas para Carrito de Compras (v5 sección 17 y 18).
 """
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from pydantic import BaseModel, Field
 
@@ -49,6 +49,9 @@ class ConfirmarCarritoRequest(BaseModel):
     direccion_envio: str | None = None
     despacho_delivery: bool | None = False
     despacho_yango: bool | None = False
+    tipo_entrega: str | None = Field(None, pattern="^(delivery|recojo)$")
+    fecha_recojo: date | None = None
+    hora_recojo: time | None = None
 
 
 class CheckoutRequest(BaseModel):
@@ -61,4 +64,3 @@ class CheckoutRequest(BaseModel):
     ciudad: str | None = None
     referencia: str | None = None
     sucursal_id: int | None = None
-

@@ -22,6 +22,7 @@ from app.core.exceptions import (
 
 
 from app.services.bitacora_service import BitacoraService
+from app.services.plan_service import PlanService
 
 
 class AuthService:
@@ -172,12 +173,17 @@ class AuthService:
         if not user.is_active:
             raise CredentialsException(detail="La cuenta de usuario está desactivada")
 
-        if (
-            not user.is_platform_admin
-            and user.empresa_id is not None
-            and (user.empresa_rel is None or not user.empresa_rel.active)
-        ):
-            raise CredentialsException(detail="La empresa se encuentra suspendida")
+        if not user.is_platform_admin and user.empresa_id is not None:
+            empresa, _ = PlanService(self.db).reconcile_tenant_access(user.empresa_id)
+            if not empresa.active:
+                if empresa.inactive_reason == "subscription_expired" and user.role == "administrador":
+                    pass
+                elif empresa.inactive_reason == "subscription_expired":
+                    raise CredentialsException(
+                        detail="La suscripción de la empresa venció. Contacta al administrador para renovarla."
+                    )
+                else:
+                    raise CredentialsException(detail="La empresa se encuentra suspendida")
 
         # Generate tokens
         token_data = {
@@ -267,6 +273,19 @@ class AuthService:
         user = self.db.query(User).filter(User.id == int(user_id), User.is_active == True).first()
         if not user:
             raise InvalidTokenException()
+
+        if not user.is_platform_admin and user.empresa_id is not None:
+            empresa, _ = PlanService(self.db).reconcile_tenant_access(user.empresa_id)
+            if not empresa.active and not (
+                empresa.inactive_reason == "subscription_expired" and user.role == "administrador"
+            ):
+                raise InvalidTokenException(
+                    detail=(
+                        "La suscripción de la empresa venció. Contacta al administrador para renovarla."
+                        if empresa.inactive_reason == "subscription_expired"
+                        else "La empresa se encuentra suspendida"
+                    )
+                )
 
         # Generate a new access token from current server-side identity data.
         token_data = {

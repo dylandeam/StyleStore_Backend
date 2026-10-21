@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User
 from app.services.chatbot_service import ChatbotService
+from app.services.plan_service import PlanService
 from app.api.deps import get_optional_current_user
 
 router = APIRouter(prefix="/chatbot", tags=["Chatbot"])
@@ -27,6 +28,8 @@ async def enviar_mensaje_chatbot(
     db: Session = Depends(get_db),
 ):
     """Procesa un mensaje con el motor local y retorna respuesta y acciones."""
+    if current_user is not None and current_user.empresa_id is not None:
+        PlanService(db).require_capability(current_user, "chatbot")
     service = ChatbotService(db)
     resultado = service.responder(payload.mensaje, user=current_user)
     return resultado

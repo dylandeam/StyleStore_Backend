@@ -21,8 +21,8 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-015 | EN_PRUEBAS | Flujos preservados y suite aprobada; falta prueba manual desplegada |
 | REQ-016 | EN_CURSO | PWA diferencia provisional/confirmado, bloquea QR offline y documenta límites; falta paridad móvil |
 | REQ-017 | EN_CURSO | Consola maestra crea/edita/suspende tenants, gestiona su administrador y muestra usuarios/sucursales aislados; falta asociación integral de recursos secundarios |
-| REQ-018 | TERMINADO_VERIFICADO | Existen exactamente Básico, Profesional y Personalizado; el tercero inicia sin beneficios inventados y es editable |
-| REQ-019 | EN_PRUEBAS | Mínimos oficiales de Básico/Profesional protegidos, cupos de sucursales y capacidades de productos, ventas, reservas, offline, reportes e IA aplicados en backend; falta demostración E2E desplegada |
+| REQ-018 | TERMINADO_VERIFICADO | Existen exactamente Básico, Intermedio y Profesional; la migración reutiliza la fila anterior para preservar IDs, contratos e historial |
+| REQ-019 | EN_PRUEBAS | Básico limita a 2 sucursales sin chatbot/predicciones; Intermedio a 5 con chatbot; Profesional a 10 o más con chatbot/predicciones. Las reglas se protegen en backend y se reflejan en Web/Mobile; falta demostración E2E desplegada |
 | REQ-020 | TERMINADO_VERIFICADO | Precio, moneda, límites, capacidades, beneficios y estilo se configuran en backend y UI por ámbito global/tenant |
 | REQ-021 | EN_PRUEBAS | Alta, cambio, renovación, estado, vigencia, snapshot y bloqueos operativos implementados; clientes no pueden cambiar el plan del tenant y el vencimiento bloquea capacidades; falta evidencia E2E desplegada |
 | REQ-022 | EN_PRUEBAS | Contratación/cambio simulado y renovación desde consola maestra implementados con auditoría; falta evidencia E2E desplegada |
@@ -62,10 +62,10 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-056 | PENDIENTE | Email idempotente por pago confirmado no comprobado |
 | REQ-057 | EN_CURSO | Notificaciones existen; falta evento de pago con deduplicación |
 | REQ-058 | EN_CURSO | Reservas cliente/staff y límite de 3 días existen; falta cierre tenant integral |
-| REQ-059 | EN_PRUEBAS | Horario configurable por sucursal y hora de retiro validados en API/web/móvil; faltan franjas libres/ocupadas y E2E |
+| REQ-059 | EN_PRUEBAS | Agenda compartida implementada para reservas y recojo web, con bloques de una hora y exclusión concurrente; falta selector de recojo en checkout móvil y E2E desplegado |
 | REQ-060 | EN_PRUEBAS | Precio por talla/color/sucursal configurable en inventario y aplicado a catálogo, carrito, POS y sync; falta E2E desplegado |
 | REQ-061 | EN_PRUEBAS | Medidas por variante configurables y visibles en web/móvil; falta evidencia E2E desplegada |
-| REQ-062 | PENDIENTE | Traspasos entre sucursales no implementados |
+| REQ-062 | EN_PRUEBAS | Entidad, API, UI web, aislamiento tenant, estados, idempotencia, bloqueo y movimiento atómico implementados; falta E2E desplegado |
 | REQ-063 | EN_CURSO | Filtros por sucursal existen; falta aislamiento tenant/comparación verificada |
 | REQ-064 | PENDIENTE | Calificaciones poscompra no implementadas |
 | REQ-065 | PENDIENTE | Favoritos/lista de deseos no implementados |
@@ -76,6 +76,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-070 | EN_CURSO | Operaciones sync conservan estado, motivo, recurso resultante y fechas; faltan métricas/alertas agregadas |
 | REQ-071 | EN_PRUEBAS | Banner global informa conexión, catálogo cacheado, última sincronización, pendientes y actualización PWA; falta E2E visual |
 | REQ-072 | EN_CURSO | Caché y cola web están separadas por empresa+usuario; falta estrategia equivalente SQLite móvil |
+| REQ-073 | EN_PRUEBAS | El vencimiento marca la contratación como vencida e inactiva el tenant; solo el administrador conserva la superficie de renovación y la reactivación exige pago confirmado con referencia. Web/Mobile muestran confirmación simulada; falta E2E desplegado y pasarela real si se exige cobro externo. |
 
 ## Decisiones bloqueadas explícitamente
 

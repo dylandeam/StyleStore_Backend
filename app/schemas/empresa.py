@@ -12,7 +12,7 @@ class EmpresaCreate(BaseModel):
     admin_email: EmailStr
     admin_name: str = Field(..., min_length=2, max_length=100)
     admin_password: str = Field(..., min_length=8, max_length=100)
-    plan_codigo: Literal["basico", "profesional", "personalizado"] = "basico"
+    plan_codigo: Literal["basico", "intermedio", "profesional"] = "basico"
 
     @field_validator("codigo")
     @classmethod
@@ -35,6 +35,7 @@ class EmpresaResponse(BaseModel):
     codigo: str
     nombre: str
     active: bool
+    inactive_reason: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -93,10 +94,12 @@ class TenantAdminResponse(BaseModel):
 
 
 class EmpresaSuscripcionUpdate(BaseModel):
-    plan_codigo: Literal["basico", "profesional", "personalizado"]
+    plan_codigo: Literal["basico", "intermedio", "profesional"]
     estado: Literal["activa", "suspendida", "vencida", "cancelada"] = "activa"
     fecha_inicio: date | None = None
     fecha_fin: date | None = None
+    pago_confirmado: bool = True
+    referencia_pago: str | None = Field(None, min_length=3, max_length=120)
 
 
 class EmpresaSuscripcionResponse(BaseModel):
@@ -104,6 +107,9 @@ class EmpresaSuscripcionResponse(BaseModel):
     plan_codigo: str
     plan_nombre: str
     estado: str
+    estado_pago: str
+    referencia_pago: str | None = None
+    pagado_en: datetime | None = None
     precio: float
     moneda: str
     fecha_inicio: date

@@ -20,8 +20,77 @@ from app.api.deps import require_permission, require_plan_capability
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.bitacora_service import BitacoraService
 from app.services.tenant_scope import get_scoped_sucursal, scope_by_empresa, scope_by_sucursal
+from app.schemas.traspaso_inventario import (
+    TraspasoCreateRequest,
+    TraspasoDecisionRequest,
+    TraspasoResponse,
+)
+from app.services.traspaso_inventario_service import TraspasoInventarioService
 
 router = APIRouter(prefix="/inventario", tags=["Inventario"])
+
+
+@router.get("/traspasos", response_model=list[TraspasoResponse], summary="Listar traspasos del tenant")
+async def listar_traspasos(
+    estado: str | None = Query(None, pattern="^(pendiente|aprobado|rechazado|cancelado)$"),
+    current_user: User = Depends(require_permission("inventario.ver")),
+    db: Session = Depends(get_db),
+):
+    service = TraspasoInventarioService(db)
+    return [service.serialize(item) for item in service.list(current_user, estado)]
+
+
+@router.post(
+    "/traspasos",
+    response_model=TraspasoResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Solicitar un traspaso entre sucursales",
+    dependencies=[Depends(require_plan_capability("productos"))],
+)
+async def crear_traspaso(
+    payload: TraspasoCreateRequest,
+    current_user: User = Depends(require_permission("inventario.editar")),
+    db: Session = Depends(get_db),
+):
+    service = TraspasoInventarioService(db)
+    return service.serialize(service.create(payload, current_user))
+
+
+@router.post("/traspasos/{traspaso_id}/aprobar", response_model=TraspasoResponse)
+async def aprobar_traspaso(
+    traspaso_id: int,
+    payload: TraspasoDecisionRequest,
+    current_user: User = Depends(require_permission("inventario.editar")),
+    db: Session = Depends(get_db),
+):
+    service = TraspasoInventarioService(db)
+    return service.serialize(service.approve(traspaso_id, payload.respuesta, current_user))
+
+
+@router.post("/traspasos/{traspaso_id}/rechazar", response_model=TraspasoResponse)
+async def rechazar_traspaso(
+    traspaso_id: int,
+    payload: TraspasoDecisionRequest,
+    current_user: User = Depends(require_permission("inventario.editar")),
+    db: Session = Depends(get_db),
+):
+    service = TraspasoInventarioService(db)
+    return service.serialize(
+        service.decide_without_movement(traspaso_id, "rechazado", payload.respuesta, current_user)
+    )
+
+
+@router.post("/traspasos/{traspaso_id}/cancelar", response_model=TraspasoResponse)
+async def cancelar_traspaso(
+    traspaso_id: int,
+    payload: TraspasoDecisionRequest,
+    current_user: User = Depends(require_permission("inventario.editar")),
+    db: Session = Depends(get_db),
+):
+    service = TraspasoInventarioService(db)
+    return service.serialize(
+        service.decide_without_movement(traspaso_id, "cancelado", payload.respuesta, current_user)
+    )
 
 
 class StockAdjustRequest(BaseModel):

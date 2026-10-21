@@ -1,5 +1,6 @@
 """Business logic for company tenant administration."""
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
+from uuid import uuid4
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -59,6 +60,7 @@ class EmpresaService:
         )
 
     def serialize_resumen(self, empresa: Empresa) -> dict:
+        empresa, _ = PlanService(self.db).reconcile_tenant_access(empresa.id)
         admin = self._tenant_admin(empresa.id)
         contract = self._active_contract(empresa.id)
         subscription = None
@@ -68,6 +70,9 @@ class EmpresaService:
                 "plan_codigo": contract.plan.codigo,
                 "plan_nombre": contract.plan.nombre,
                 "estado": contract.estado,
+                "estado_pago": contract.estado_pago,
+                "referencia_pago": contract.referencia_pago,
+                "pagado_en": contract.pagado_en,
                 "precio": float(contract.precio_snapshot),
                 "moneda": contract.moneda_snapshot,
                 "fecha_inicio": contract.fecha_inicio,
@@ -79,6 +84,7 @@ class EmpresaService:
             "codigo": empresa.codigo,
             "nombre": empresa.nombre,
             "active": empresa.active,
+            "inactive_reason": empresa.inactive_reason,
             "created_at": empresa.created_at,
             "updated_at": empresa.updated_at,
             "admin": admin,
@@ -151,7 +157,17 @@ class EmpresaService:
 
     def set_active(self, empresa_id: int, active: bool, current_user: User) -> Empresa:
         empresa = self.get_empresa(empresa_id)
-        empresa.active = active
+        if active:
+            _, valid_contract = PlanService(self.db).reconcile_tenant_access(empresa_id)
+            if not valid_contract:
+                raise ConflictException(
+                    "No se puede reactivar el tenant sin una suscripción vigente y pagada."
+                )
+            empresa.active = True
+            empresa.inactive_reason = None
+        else:
+            empresa.active = False
+            empresa.inactive_reason = "manual"
         self.db.commit()
         self.db.refresh(empresa)
         estado = "reactivó" if active else "suspendió"
@@ -197,6 +213,10 @@ class EmpresaService:
         end = data.fecha_fin or (start + timedelta(days=30))
         if end < start:
             raise ConflictException("La fecha de vencimiento no puede ser anterior al inicio.")
+        if data.estado == "activa" and not data.pago_confirmado:
+            raise ConflictException(
+                "Una suscripción activa requiere la confirmación del pago."
+            )
         self.db.query(ContratacionPlan).filter(
             ContratacionPlan.empresa_id == empresa_id,
             ContratacionPlan.estado == "activa",
@@ -206,12 +226,25 @@ class EmpresaService:
             user_id=admin.id,
             plan_id=plan.id,
             estado=data.estado,
+            estado_pago="pagado" if data.pago_confirmado else "pendiente",
+            referencia_pago=(
+                data.referencia_pago
+                or (f"ADMIN-{uuid4().hex[:16].upper()}" if data.pago_confirmado else None)
+            ),
+            pagado_en=datetime.now(timezone.utc) if data.pago_confirmado else None,
             precio_snapshot=plan.precio_mensual,
             moneda_snapshot=plan.moneda,
             fecha_inicio=start,
             fecha_fin=end,
         )
         self.db.add(contract)
+        if data.estado == "activa" and data.pago_confirmado:
+            if empresa.inactive_reason in {"subscription_expired", "payment_pending"}:
+                empresa.active = True
+                empresa.inactive_reason = None
+        elif empresa.active:
+            empresa.active = False
+            empresa.inactive_reason = "payment_pending"
         self.db.commit()
         self.db.refresh(contract)
         BitacoraService.registrar(

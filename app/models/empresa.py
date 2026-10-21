@@ -16,6 +16,7 @@ class Empresa(Base):
     codigo: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
     nombre: Mapped[str] = mapped_column(String(150), unique=True, index=True, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
+    inactive_reason: Mapped[str | None] = mapped_column(String(40), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

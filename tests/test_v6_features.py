@@ -234,7 +234,46 @@ def test_variant_price_and_measurements_flow(client: TestClient, auth_tokens, sa
     assert float(cart.json()["items"][0]["precio_unitario"]) == 279.9
 
 
-def test_chatbot_local_inteligente(client: TestClient, auth_tokens):
+def test_checkout_recojo_ocupa_agenda_compartida(client: TestClient, auth_tokens, sample_inventory, db_session):
+    headers = {"Authorization": f"Bearer {auth_tokens['client_token']}"}
+    stock = sample_inventory["stock"]
+    pickup_date = date.today() + timedelta(days=1)
+    added = client.post(
+        "/api/v1/carrito/items",
+        headers=headers,
+        json={"stock_inventario_id": stock.id, "cantidad": 1},
+    )
+    assert added.status_code == 200, added.text
+
+    confirmed = client.post(
+        "/api/v1/carrito/confirmar",
+        headers=headers,
+        json={
+            "sucursal_id": sample_inventory["sucursal"].id,
+            "metodo_pago": "paypal",
+            "tipo_entrega": "recojo",
+            "fecha_recojo": pickup_date.isoformat(),
+            "hora_recojo": "10:00:00",
+        },
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    orden = db_session.query(OrdenVenta).filter(OrdenVenta.id == confirmed.json()["orden_venta_id"]).one()
+    assert orden.tipo_entrega == "recojo"
+    assert orden.fecha_recojo == pickup_date
+    assert orden.hora_recojo.strftime("%H:%M") == "10:00"
+
+    agenda = client.get(
+        "/api/v1/reservas/disponibilidad",
+        headers=headers,
+        params={"sucursal_id": sample_inventory["sucursal"].id, "fecha": pickup_date.isoformat()},
+    )
+    assert agenda.status_code == 200, agenda.text
+    blocks = {block["inicio"]: block["disponible"] for block in agenda.json()["bloques"]}
+    assert blocks["10:00"] is False
+
+
+def test_chatbot_local_inteligente(client: TestClient, db_session, auth_tokens):
+    PlanService(db_session).contract(auth_tokens["admin"], "intermedio")
     headers = {"Authorization": f"Bearer {auth_tokens['client_token']}"}
     
     # 1. Saludo
@@ -394,12 +433,39 @@ def test_reserva_respeta_horario_y_maximo_tres_dias(client: TestClient, auth_tok
         json={
             "sucursal_id": sucursal_id,
             "fecha_limite": (date.today() + timedelta(days=1)).isoformat(),
-            "hora_retiro": "11:30:00",
+            "hora_retiro": "11:00:00",
             "items": [{"stock_inventario_id": stock_id, "cantidad": 1}],
         },
     )
     assert valid.status_code == 201, valid.text
-    assert valid.json()["hora"] == "11:30:00"
+    assert valid.json()["hora"] == "11:00:00"
+
+    availability = client.get(
+        "/api/v1/reservas/disponibilidad",
+        headers=client_headers,
+        params={
+            "sucursal_id": sucursal_id,
+            "fecha": (date.today() + timedelta(days=1)).isoformat(),
+        },
+    )
+    assert availability.status_code == 200, availability.text
+    blocks = {block["inicio"]: block["disponible"] for block in availability.json()["bloques"]}
+    assert blocks["10:00"] is True
+    assert blocks["11:00"] is False
+    assert blocks["15:00"] is True
+
+    occupied = client.post(
+        "/api/v1/reservas",
+        headers=client_headers,
+        json={
+            "sucursal_id": sucursal_id,
+            "fecha_limite": (date.today() + timedelta(days=1)).isoformat(),
+            "hora_retiro": "11:00:00",
+            "items": [{"stock_inventario_id": stock_id, "cantidad": 1}],
+        },
+    )
+    assert occupied.status_code == 400
+    assert "ocupado" in occupied.json()["detail"]
 
 
 

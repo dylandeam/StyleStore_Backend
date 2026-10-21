@@ -2,10 +2,11 @@
 Reservas endpoints (v5 sección 16).
 Incluye transacción atómica con descuento automático de inventario.
 """
-from datetime import datetime
+from datetime import datetime, date, time, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, status, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
 from app.models.user import User
@@ -22,8 +23,55 @@ from app.api.deps import get_current_user, require_permission, require_plan_capa
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.bitacora_service import BitacoraService
 from app.services.tenant_scope import get_scoped_sucursal, scope_by_sucursal
+from app.services.agenda_service import hour_blocks
 
 router = APIRouter(prefix="/reservas", tags=["Reservas"])
+
+
+def _hour_blocks(opening: time, closing: time) -> list[tuple[time, time]]:
+    return hour_blocks(opening, closing)
+
+
+def _is_slot_conflict(exc: IntegrityError) -> bool:
+    detail = str(getattr(exc, "orig", exc)).lower()
+    return "uq_reserva_bloque_activo" in detail or "sucursal_id, fecha, hora" in detail
+
+
+@router.get("/disponibilidad", summary="Bloques horarios disponibles para una sucursal")
+async def disponibilidad_reserva(
+    sucursal_id: int = Query(...),
+    fecha: date = Query(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    sucursal = get_scoped_sucursal(db, current_user, sucursal_id)
+    hoy = date.today()
+    if fecha < hoy or fecha > hoy + timedelta(days=3):
+        raise BadRequestException("La fecha debe estar entre hoy y los próximos 3 días.")
+    occupied = {
+        row[0]
+        for row in db.query(Reserva.hora).filter(
+            Reserva.sucursal_id == sucursal_id,
+            Reserva.fecha == fecha,
+            Reserva.estado == "pendiente",
+        ).all()
+    }
+    now = datetime.now()
+    return {
+        "sucursal_id": sucursal.id,
+        "fecha": fecha,
+        "hora_apertura": sucursal.hora_apertura,
+        "hora_cierre": sucursal.hora_cierre,
+        "bloques": [
+            {
+                "inicio": start.strftime("%H:%M"),
+                "fin": end.strftime("%H:%M"),
+                "disponible": start not in occupied
+                and not (fecha == hoy and datetime.combine(fecha, start) <= now),
+            }
+            for start, end in _hour_blocks(sucursal.hora_apertura, sucursal.hora_cierre)
+        ],
+    }
 
 
 def _serialize_reserva(res: Reserva) -> dict:
@@ -70,6 +118,8 @@ def _serialize_reserva(res: Reserva) -> dict:
         "sucursal_direccion": res.sucursal.direccion if res.sucursal else None,
         "detalles": detalles_resp,
         "created_at": res.created_at,
+        "tipo": res.tipo,
+        "orden_venta_id": res.orden_venta_id,
     }
 
 
@@ -205,7 +255,6 @@ async def create_reserva(
     db: Session = Depends(get_db),
 ):
     """Crea una reserva desde el catálogo descontando stock atómicamente (requiere ≥ 1 compra previa)."""
-    from datetime import date, timedelta
     from app.models.orden_venta import OrdenVenta
     from app.models.carrito import Carrito
     from sqlalchemy import or_, func
@@ -251,10 +300,11 @@ async def create_reserva(
             f"La fecha de retiro no puede ser anterior a hoy ni superar el plazo máximo de 3 días ({max_fecha.strftime('%d/%m/%Y')})."
         )
 
-    hora_retiro = payload.hora_retiro or sucursal.hora_apertura
-    if hora_retiro < sucursal.hora_apertura or hora_retiro > sucursal.hora_cierre:
+    valid_starts = {start for start, _ in _hour_blocks(sucursal.hora_apertura, sucursal.hora_cierre)}
+    hora_retiro = payload.hora_retiro or min(valid_starts, default=sucursal.hora_apertura)
+    if hora_retiro not in valid_starts:
         raise BadRequestException(
-            "La hora de retiro debe estar dentro del horario de atención de la sucursal "
+            "La hora de retiro debe iniciar un bloque completo de una hora dentro del horario de atención de la sucursal "
             f"({sucursal.hora_apertura.strftime('%H:%M')} - {sucursal.hora_cierre.strftime('%H:%M')})."
         )
     if fecha_reserva == hoy and hora_retiro <= datetime.now().time():
@@ -269,7 +319,15 @@ async def create_reserva(
         sucursal_id=payload.sucursal_id,
     )
     db.add(reserva)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        if _is_slot_conflict(exc):
+            raise BadRequestException(
+                "El bloque horario acaba de ser ocupado por otra persona. Selecciona otro horario disponible."
+            ) from exc
+        raise
 
     # Descuento atómico de stock por cada ítem
     for item in payload.items:
@@ -307,7 +365,15 @@ async def create_reserva(
         )
         db.add(detalle)
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        if _is_slot_conflict(exc):
+            raise BadRequestException(
+                "El bloque horario acaba de ser ocupado por otra persona. Selecciona otro horario disponible."
+            ) from exc
+        raise
     db.refresh(reserva)
 
     try:

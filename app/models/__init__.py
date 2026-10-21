@@ -22,6 +22,7 @@ from app.models.coleccion import Coleccion
 from app.models.producto import Producto
 from app.models.producto_color import ProductoColor
 from app.models.stock_inventario import StockInventario
+from app.models.traspaso_inventario import TraspasoInventario
 from app.models.proveedor import Proveedor, proveedor_categorias, proveedor_temporadas, proveedor_colecciones
 from app.models.proximamente import Proximamente
 from app.models.reserva import Reserva, DetalleReserva
@@ -63,6 +64,7 @@ __all__ = [
     "Producto",
     "ProductoColor",
     "StockInventario",
+    "TraspasoInventario",
     "Proveedor",
     "proveedor_categorias",
     "proveedor_temporadas",

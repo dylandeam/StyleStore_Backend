@@ -6,6 +6,7 @@ from app.models.user import User
 from app.models.cliente import Cliente
 from app.models.orden_venta import OrdenVenta
 from app.models.envio import Envio
+from app.models.empresa import Empresa
 from app.models.plan_suscripcion import ContratacionPlan
 from app.core.security import hash_password
 from app.services.report_ai_service import ReportAIService
@@ -494,15 +495,15 @@ def test_three_plans_are_configurable_without_cross_tenant_changes(client, db_se
     plans_a = client.get("/api/v1/planes/admin", headers=headers_a)
     plans_b = client.get("/api/v1/planes/admin", headers=headers_b)
     assert plans_a.status_code == plans_b.status_code == 200
-    assert [plan["codigo"] for plan in plans_a.json()] == ["basico", "profesional", "personalizado"]
-    assert [plan["codigo"] for plan in plans_b.json()] == ["basico", "profesional", "personalizado"]
+    assert [plan["codigo"] for plan in plans_a.json()] == ["basico", "intermedio", "profesional"]
+    assert [plan["codigo"] for plan in plans_b.json()] == ["basico", "intermedio", "profesional"]
 
     updated = client.put(
-        "/api/v1/planes/admin/personalizado",
+        "/api/v1/planes/admin/intermedio",
         headers=headers_a,
         json={
             "nombre": "Plan Boutique A", "precio_mensual": 249.90, "moneda": "USD",
-            "beneficios": ["Atención prioritaria", "Panel personalizado"],
+            "beneficios": ["Atención prioritaria", "Panel intermedio"],
             "capacidades": {"productos": True, "ia_generativa": True},
             "estilo": {"color_primario": "#7C3AED", "destacado": True},
         },
@@ -513,9 +514,9 @@ def test_three_plans_are_configurable_without_cross_tenant_changes(client, db_se
 
     tenant_b_custom = next(
         plan for plan in client.get("/api/v1/planes/admin", headers=headers_b).json()
-        if plan["codigo"] == "personalizado"
+        if plan["codigo"] == "intermedio"
     )
-    assert tenant_b_custom["nombre"] == "Personalizado"
+    assert tenant_b_custom["nombre"] == "Intermedio"
     assert tenant_b_custom["precio_mensual"] == "0.00"
 
     cross_update = client.put(
@@ -538,17 +539,21 @@ def test_three_plans_are_configurable_without_cross_tenant_changes(client, db_se
     )
     client_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
     public_plans = client.get("/api/v1/planes", headers=client_headers)
-    assert next(plan for plan in public_plans.json() if plan["codigo"] == "personalizado")["nombre"] == "Plan Boutique A"
+    assert next(plan for plan in public_plans.json() if plan["codigo"] == "intermedio")["nombre"] == "Plan Boutique A"
 
     forbidden_client_contract = client.post(
         "/api/v1/planes/contratar", headers=client_headers,
-        json={"plan_codigo": "personalizado"},
+        json={"plan_codigo": "intermedio"},
     )
     assert forbidden_client_contract.status_code == 403
 
     contracted = client.post(
         "/api/v1/planes/contratar", headers=headers_a,
-        json={"plan_codigo": "personalizado"},
+        json={
+            "plan_codigo": "intermedio",
+            "pago_confirmado": True,
+            "referencia_pago": "TEST-CONTRACT-001",
+        },
     )
     assert contracted.status_code == 200, contracted.text
     assert contracted.json()["plan_nombre"] == "Plan Boutique A"
@@ -615,6 +620,8 @@ def test_plan_minimums_and_operational_capabilities_are_enforced(
                 "reservas": False,
                 "offline": False,
                 "reportes": False,
+                "chatbot": True,
+                "predicciones": True,
                 "ia_generativa": True,
             }
         },
@@ -626,40 +633,42 @@ def test_plan_minimums_and_operational_capabilities_are_enforced(
     )
     assert basic.json()["ia_generativa"] is False
     assert basic.json()["capacidades"]["ia_generativa"] is False
+    assert basic.json()["capacidades"]["chatbot"] is False
+    assert basic.json()["capacidades"]["predicciones"] is False
+
+    blocked_chatbot = client.post(
+        "/api/v1/chatbot/mensaje",
+        headers=tenant_headers,
+        json={"mensaje": "Hola"},
+    )
+    assert blocked_chatbot.status_code == 403
+    assert "chatbot" in blocked_chatbot.json()["detail"]
 
     assigned = client.put(
         f"/api/v1/empresas/{company['id']}/suscripcion",
         headers=master_headers,
-        json={"plan_codigo": "personalizado"},
+        json={"plan_codigo": "intermedio"},
     )
     assert assigned.status_code == 200, assigned.text
+    assert assigned.json()["plan_codigo"] == "intermedio"
+    assert assigned.json()["max_sucursales"] == 5
 
-    blocked_report = client.get(
-        "/api/v1/reportes/dashboard-stats", headers=tenant_headers
-    )
-    assert blocked_report.status_code == 403
-    assert "reportes" in blocked_report.json()["detail"]
-
-    blocked_sync = client.post(
-        "/api/v1/sync/operations",
+    intermediate = client.put(
+        "/api/v1/planes/admin/intermedio",
         headers=tenant_headers,
-        json={
-            "operation_uuid": "a106f9bd-737a-441f-9103-78a7424a55aa",
-            "operation_type": "venta_efectivo",
-            "payload_version": 1,
-            "client_created_at": "2026-10-21T12:00:00Z",
-            "payload": {},
-        },
+        json={"capacidades": {"chatbot": False, "predicciones": True}},
     )
-    assert blocked_sync.status_code == 403
-    assert "offline" in blocked_sync.json()["detail"]
+    assert intermediate.status_code == 200, intermediate.text
+    assert intermediate.json()["max_sucursales"] == 5
+    assert intermediate.json()["capacidades"]["chatbot"] is True
+    assert intermediate.json()["capacidades"]["predicciones"] is False
 
-    custom = client.put(
-        "/api/v1/planes/admin/personalizado",
+    allowed_chatbot = client.post(
+        "/api/v1/chatbot/mensaje",
         headers=tenant_headers,
-        json={"capacidades": {"reportes": True, "offline": True}},
+        json={"mensaje": "Hola"},
     )
-    assert custom.status_code == 200, custom.text
+    assert allowed_chatbot.status_code == 200, allowed_chatbot.text
     allowed_report = client.get(
         "/api/v1/reportes/dashboard-stats", headers=tenant_headers
     )
@@ -673,3 +682,43 @@ def test_plan_minimums_and_operational_capabilities_are_enforced(
     db_session.commit()
     expired = client.get("/api/v1/reportes/dashboard-stats", headers=tenant_headers)
     assert expired.status_code == 403
+    assert "inactivo hasta renovar" in expired.json()["detail"]
+
+    db_session.refresh(contract)
+    company_row = db_session.query(Empresa).filter(Empresa.id == company["id"]).one()
+    db_session.refresh(company_row)
+    assert contract.estado == "vencida"
+    assert company_row.active is False
+    assert company_row.inactive_reason == "subscription_expired"
+
+    # The expired tenant administrator keeps only the renewal surface available.
+    plans = client.get("/api/v1/planes", headers=tenant_headers)
+    assert plans.status_code == 200, plans.text
+    unpaid = client.post(
+        "/api/v1/planes/contratar",
+        headers=tenant_headers,
+        json={"plan_codigo": "intermedio", "pago_confirmado": False},
+    )
+    assert unpaid.status_code == 400
+    assert "confirmar el pago" in unpaid.json()["detail"]
+
+    renewed = client.post(
+        "/api/v1/planes/contratar",
+        headers=tenant_headers,
+        json={
+            "plan_codigo": "intermedio",
+            "pago_confirmado": True,
+            "referencia_pago": "TEST-RENEWAL-001",
+        },
+    )
+    assert renewed.status_code == 200, renewed.text
+    assert renewed.json()["estado_pago"] == "pagado"
+    assert renewed.json()["referencia_pago"] == "TEST-RENEWAL-001"
+
+    db_session.refresh(company_row)
+    assert company_row.active is True
+    assert company_row.inactive_reason is None
+    restored_report = client.get(
+        "/api/v1/reportes/dashboard-stats", headers=tenant_headers
+    )
+    assert restored_report.status_code == 200, restored_report.text

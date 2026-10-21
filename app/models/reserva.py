@@ -3,7 +3,7 @@ Modelo Reserva y Detalle_Reserva (CU15 / Sección 16).
 Conforme a Especificación StyleStore v5.
 """
 from datetime import datetime, date, time
-from sqlalchemy import String, Integer, DateTime, Date, Time, ForeignKey, func
+from sqlalchemy import String, Integer, DateTime, Date, Time, ForeignKey, Index, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -13,6 +13,17 @@ class Reserva(Base):
     """Tabla de Reservas de prendas por clientes."""
 
     __tablename__ = "reservas"
+    __table_args__ = (
+        Index(
+            "uq_reserva_bloque_activo",
+            "sucursal_id",
+            "fecha",
+            "hora",
+            unique=True,
+            postgresql_where=text("estado = 'pendiente'"),
+            sqlite_where=text("estado = 'pendiente'"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     client_operation_uuid: Mapped[str | None] = mapped_column(String(36), unique=True, nullable=True, index=True)
@@ -25,6 +36,10 @@ class Reserva(Base):
     )
     sucursal_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("sucursales.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    tipo: Mapped[str] = mapped_column(String(30), default="reserva_prenda", server_default="reserva_prenda", nullable=False)
+    orden_venta_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("orden_venta.id", ondelete="CASCADE"), nullable=True, unique=True, index=True
     )
 
     created_at: Mapped[datetime] = mapped_column(

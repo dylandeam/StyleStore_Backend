@@ -1,5 +1,6 @@
 """Business rules for the three configurable subscription plans."""
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
+from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
@@ -8,7 +9,7 @@ from app.models.empresa import Empresa
 from app.models.plan_suscripcion import ContratacionPlan, PlanSuscripcion
 from app.models.sucursal import Sucursal
 from app.models.user import User
-from app.schemas.plan_suscripcion import PLAN_CODES, PlanUpdate
+from app.schemas.plan_suscripcion import ContratacionCreate, PLAN_CODES, PlanUpdate
 from app.services.bitacora_service import BitacoraService
 
 
@@ -20,7 +21,19 @@ DEFAULT_PLANS = (
         "ia_generativa": False,
         "capacidades": {
             "productos": True, "ventas": True, "reservas": True,
-            "offline": True, "reportes": True, "ia_generativa": False,
+            "offline": True, "reportes": True, "chatbot": False,
+            "predicciones": False, "ia_generativa": False,
+        },
+    },
+    {
+        "codigo": "intermedio",
+        "nombre": "Intermedio",
+        "max_sucursales": 5,
+        "ia_generativa": False,
+        "capacidades": {
+            "productos": True, "ventas": True, "reservas": True,
+            "offline": True, "reportes": True, "chatbot": True,
+            "predicciones": False, "ia_generativa": False,
         },
     },
     {
@@ -30,15 +43,9 @@ DEFAULT_PLANS = (
         "ia_generativa": True,
         "capacidades": {
             "productos": True, "ventas": True, "reservas": True,
-            "offline": True, "reportes": True, "ia_generativa": True,
+            "offline": True, "reportes": True, "chatbot": True,
+            "predicciones": True, "ia_generativa": True,
         },
-    },
-    {
-        "codigo": "personalizado",
-        "nombre": "Personalizado",
-        "max_sucursales": None,
-        "ia_generativa": False,
-        "capacidades": {},
     },
 )
 
@@ -60,6 +67,25 @@ class PlanService:
         return "global" if empresa_id is None else f"empresa:{empresa_id}"
 
     def seed_global_plans(self) -> None:
+        definitions = {item["codigo"]: item for item in DEFAULT_PLANS}
+        for legacy in self.db.query(PlanSuscripcion).filter(
+            PlanSuscripcion.codigo == "personalizado"
+        ).all():
+            existing = self.db.query(PlanSuscripcion).filter(
+                PlanSuscripcion.scope_key == legacy.scope_key,
+                PlanSuscripcion.codigo == "intermedio",
+            ).first()
+            if existing:
+                self.db.query(ContratacionPlan).filter(
+                    ContratacionPlan.plan_id == legacy.id
+                ).update({ContratacionPlan.plan_id: existing.id}, synchronize_session=False)
+                self.db.delete(legacy)
+            else:
+                legacy.codigo = "intermedio"
+                legacy.nombre = "Intermedio"
+
+        self.db.flush()
+
         for definition in DEFAULT_PLANS:
             exists = self.db.query(PlanSuscripcion).filter(
                 PlanSuscripcion.scope_key == "global",
@@ -76,6 +102,21 @@ class PlanService:
                     active=True,
                     **definition,
                 ))
+        self.db.flush()
+        for plan in self.db.query(PlanSuscripcion).filter(
+            PlanSuscripcion.codigo.in_(PLAN_CODES)
+        ).all():
+            definition = definitions[plan.codigo]
+            if plan.codigo == "basico":
+                plan.max_sucursales = 2
+            elif plan.codigo == "intermedio":
+                plan.max_sucursales = 5
+            else:
+                plan.max_sucursales = max(plan.max_sucursales or 10, 10)
+            plan.ia_generativa = definition["ia_generativa"]
+            plan.capacidades = dict(definition["capacidades"])
+            if plan.codigo == "intermedio" and plan.nombre == "Personalizado":
+                plan.nombre = "Intermedio"
         self.db.commit()
 
     def ensure_tenant_plans(self, empresa_id: int) -> None:
@@ -119,7 +160,7 @@ class PlanService:
         )
         if active_only:
             query = query.filter(PlanSuscripcion.active.is_(True))
-        order = {"basico": 0, "profesional": 1, "personalizado": 2}
+        order = {"basico": 0, "intermedio": 1, "profesional": 2}
         return sorted(query.all(), key=lambda item: order[item.codigo])
 
     def resolve_admin_scope(self, current_user: User, empresa_id: int | None) -> int | None:
@@ -146,13 +187,26 @@ class PlanService:
         for field, value in changes.items():
             setattr(plan, field, value)
         if plan.codigo == "basico":
-            plan.max_sucursales = min(plan.max_sucursales or 2, 2)
+            plan.max_sucursales = 2
             plan.ia_generativa = False
-            plan.capacidades = {**(plan.capacidades or {}), **MANDATORY_CAPABILITIES, "ia_generativa": False}
+            plan.capacidades = {
+                **(plan.capacidades or {}), **MANDATORY_CAPABILITIES,
+                "chatbot": False, "predicciones": False, "ia_generativa": False,
+            }
+        elif plan.codigo == "intermedio":
+            plan.max_sucursales = 5
+            plan.ia_generativa = False
+            plan.capacidades = {
+                **(plan.capacidades or {}), **MANDATORY_CAPABILITIES,
+                "chatbot": True, "predicciones": False, "ia_generativa": False,
+            }
         elif plan.codigo == "profesional":
-            plan.max_sucursales = min(plan.max_sucursales or 10, 10)
+            plan.max_sucursales = max(plan.max_sucursales or 10, 10)
             plan.ia_generativa = True
-            plan.capacidades = {**(plan.capacidades or {}), **MANDATORY_CAPABILITIES, "ia_generativa": True}
+            plan.capacidades = {
+                **(plan.capacidades or {}), **MANDATORY_CAPABILITIES,
+                "chatbot": True, "predicciones": True, "ia_generativa": True,
+            }
         self.db.commit()
         self.db.refresh(plan)
         BitacoraService.registrar(
@@ -163,13 +217,88 @@ class PlanService:
         )
         return plan
 
-    def contract(self, current_user: User, codigo: str) -> ContratacionPlan:
+    def reconcile_tenant_access(
+        self, empresa_id: int, *, commit: bool = True
+    ) -> tuple[Empresa, ContratacionPlan | None]:
+        """Synchronize the tenant operational state with its paid subscription."""
+        empresa = self.db.query(Empresa).filter(Empresa.id == empresa_id).first()
+        if not empresa:
+            raise NotFoundException("Empresa no encontrada.")
+
+        # Legacy tenants created before subscriptions existed keep their current
+        # state until the platform administrator assigns their first plan.
+        has_contract = self.db.query(ContratacionPlan.id).filter(
+            ContratacionPlan.empresa_id == empresa_id
+        ).first()
+        if not has_contract:
+            return empresa, None
+
+        today = date.today()
+        changed = False
+        expired_contracts = self.db.query(ContratacionPlan).filter(
+            ContratacionPlan.empresa_id == empresa_id,
+            ContratacionPlan.estado == "activa",
+            ContratacionPlan.fecha_fin.is_not(None),
+            ContratacionPlan.fecha_fin < today,
+        ).all()
+        for contract in expired_contracts:
+            contract.estado = "vencida"
+            changed = True
+
+        valid_contract = (
+            self.db.query(ContratacionPlan)
+            .join(PlanSuscripcion, ContratacionPlan.plan_id == PlanSuscripcion.id)
+            .filter(
+                ContratacionPlan.empresa_id == empresa_id,
+                ContratacionPlan.estado == "activa",
+                ContratacionPlan.estado_pago == "pagado",
+                ContratacionPlan.fecha_inicio <= today,
+                (ContratacionPlan.fecha_fin.is_(None)) | (ContratacionPlan.fecha_fin >= today),
+                PlanSuscripcion.active.is_(True),
+            )
+            .order_by(ContratacionPlan.id.desc())
+            .first()
+        )
+
+        managed_reasons = {"subscription_expired", "payment_pending"}
+        if valid_contract:
+            if not empresa.active and empresa.inactive_reason in managed_reasons:
+                empresa.active = True
+                empresa.inactive_reason = None
+                changed = True
+        elif empresa.active or empresa.inactive_reason in managed_reasons:
+            empresa.active = False
+            empresa.inactive_reason = "subscription_expired"
+            changed = True
+
+        if changed and commit:
+            self.db.commit()
+            self.db.refresh(empresa)
+        elif changed:
+            self.db.flush()
+        return empresa, valid_contract
+
+    def contract(self, current_user: User, payload: ContratacionCreate | str) -> ContratacionPlan:
+        # Internal fixtures and maintenance callers may pass the historical
+        # string signature. Public API callers always go through the validated
+        # schema and must confirm payment explicitly.
+        if isinstance(payload, str):
+            payload = ContratacionCreate(
+                plan_codigo=payload,
+                pago_confirmado=True,
+                referencia_pago=f"INTERNAL-{uuid4().hex[:16].upper()}",
+            )
         if current_user.role != "administrador":
             raise ForbiddenException(
                 "Solo el administrador del tenant puede contratar o cambiar el plan de la empresa."
             )
         if current_user.empresa_id is None:
             raise BadRequestException("Tu cuenta no tiene una empresa asignada.")
+        if not payload.pago_confirmado:
+            raise BadRequestException(
+                "Debes confirmar el pago de la renovación antes de activar el plan."
+            )
+        codigo = payload.plan_codigo
         plan = next(
             (item for item in self.list_plans(current_user.empresa_id, active_only=True) if item.codigo == codigo),
             None,
@@ -185,12 +314,19 @@ class PlanService:
             user_id=current_user.id,
             plan_id=plan.id,
             estado="activa",
+            estado_pago="pagado",
+            referencia_pago=payload.referencia_pago or f"SIM-{uuid4().hex[:16].upper()}",
+            pagado_en=datetime.now(timezone.utc),
             precio_snapshot=plan.precio_mensual,
             moneda_snapshot=plan.moneda,
             fecha_inicio=date.today(),
             fecha_fin=date.today() + timedelta(days=30),
         )
         self.db.add(contract)
+        empresa = self.db.query(Empresa).filter(Empresa.id == current_user.empresa_id).first()
+        if empresa and empresa.inactive_reason in {"subscription_expired", "payment_pending"}:
+            empresa.active = True
+            empresa.inactive_reason = None
         self.db.commit()
         self.db.refresh(contract)
         BitacoraService.registrar(
@@ -206,6 +342,14 @@ class PlanService:
         if current_user.empresa_id is None:
             raise ForbiddenException("La cuenta no pertenece a una empresa contratante.")
 
+        empresa, _ = self.reconcile_tenant_access(current_user.empresa_id)
+        if not empresa.active:
+            if empresa.inactive_reason == "subscription_expired":
+                raise ForbiddenException(
+                    "La suscripción venció. El tenant permanecerá inactivo hasta renovar y confirmar el pago."
+                )
+            raise ForbiddenException("La empresa se encuentra suspendida.")
+
         today = date.today()
         contract = (
             self.db.query(ContratacionPlan)
@@ -213,6 +357,7 @@ class PlanService:
             .filter(
                 ContratacionPlan.empresa_id == current_user.empresa_id,
                 ContratacionPlan.estado == "activa",
+                ContratacionPlan.estado_pago == "pagado",
                 ContratacionPlan.fecha_inicio <= today,
                 (ContratacionPlan.fecha_fin.is_(None)) | (ContratacionPlan.fecha_fin >= today),
                 PlanSuscripcion.active.is_(True),
@@ -259,6 +404,9 @@ class PlanService:
             "plan_codigo": contract.plan.codigo,
             "plan_nombre": contract.plan.nombre,
             "estado": contract.estado,
+            "estado_pago": contract.estado_pago,
+            "referencia_pago": contract.referencia_pago,
+            "pagado_en": contract.pagado_en,
             "precio": contract.precio_snapshot,
             "moneda": contract.moneda_snapshot,
             "fecha_inicio": contract.fecha_inicio,

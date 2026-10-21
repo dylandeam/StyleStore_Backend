@@ -21,6 +21,13 @@ def _run_column_migrations(db: Session):
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS bitacora_password_hash VARCHAR(255)",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS empresa_id INTEGER",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_platform_admin BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE empresas ADD COLUMN IF NOT EXISTS inactive_reason VARCHAR(40)",
+        "ALTER TABLE contrataciones_plan ADD COLUMN IF NOT EXISTS estado_pago VARCHAR(20) DEFAULT 'pagado'",
+        "ALTER TABLE contrataciones_plan ADD COLUMN IF NOT EXISTS referencia_pago VARCHAR(120)",
+        "ALTER TABLE contrataciones_plan ADD COLUMN IF NOT EXISTS pagado_en TIMESTAMP WITH TIME ZONE",
+        "UPDATE contrataciones_plan SET estado_pago = 'pagado' WHERE estado_pago IS NULL",
+        "UPDATE contrataciones_plan SET referencia_pago = 'LEGACY-' || id WHERE estado_pago = 'pagado' AND referencia_pago IS NULL",
+        "UPDATE contrataciones_plan SET pagado_en = created_at WHERE estado_pago = 'pagado' AND pagado_en IS NULL",
         # Bitacora
         "ALTER TABLE bitacora ADD COLUMN IF NOT EXISTS ip_address VARCHAR(50)",
         "ALTER TABLE bitacora ADD COLUMN IF NOT EXISTS empresa_id INTEGER",

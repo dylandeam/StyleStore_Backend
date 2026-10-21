@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-PLAN_CODES = {"basico", "profesional", "personalizado"}
+PLAN_CODES = {"basico", "intermedio", "profesional"}
 
 
 class PlanUpdate(BaseModel):
@@ -58,13 +58,15 @@ class PlanResponse(BaseModel):
 
 class ContratacionCreate(BaseModel):
     plan_codigo: str
+    pago_confirmado: bool = False
+    referencia_pago: str | None = Field(None, min_length=3, max_length=120)
 
     @field_validator("plan_codigo")
     @classmethod
     def valid_plan_code(cls, value: str):
         normalized = value.strip().lower()
         if normalized not in PLAN_CODES:
-            raise ValueError("El plan debe ser basico, profesional o personalizado.")
+            raise ValueError("El plan debe ser basico, intermedio o profesional.")
         return normalized
 
 
@@ -73,6 +75,9 @@ class ContratacionResponse(BaseModel):
     plan_codigo: str
     plan_nombre: str
     estado: str
+    estado_pago: str
+    referencia_pago: str | None
+    pagado_en: datetime | None
     precio: Decimal
     moneda: str
     fecha_inicio: date

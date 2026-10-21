@@ -16,13 +16,25 @@ from app.core.exceptions import (
 from app.models.permission import Permission
 from app.models.role_permission import RolePermission
 from app.services.auth_service import AuthService
+from app.services.plan_service import PlanService
 from app.services.user_service import UserService
 
 # HTTP Bearer scheme for extracting tokens from Authorization header
 security = HTTPBearer()
 
 
+def _renewal_access_allowed(request: Request, user: User) -> bool:
+    """Keep only the minimum account surface available to an expired tenant admin."""
+    if user.role != "administrador":
+        return False
+    path = request.url.path.rstrip("/")
+    return path.startswith("/api/v1/planes") or (
+        request.method == "GET" and path == "/api/v1/users/me"
+    )
+
+
 async def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
 ) -> User:
@@ -68,8 +80,18 @@ async def get_current_user(
         raise CredentialsException(detail="User account is deactivated")
 
     if not user.is_platform_admin and user.empresa_id is not None:
-        empresa = user.empresa_rel
+        empresa, _ = PlanService(db).reconcile_tenant_access(user.empresa_id)
         if empresa is None or not empresa.active:
+            if (
+                empresa is not None
+                and empresa.inactive_reason == "subscription_expired"
+                and _renewal_access_allowed(request, user)
+            ):
+                return user
+            if empresa is not None and empresa.inactive_reason == "subscription_expired":
+                raise ForbiddenException(
+                    "La suscripción venció. El tenant está inactivo hasta renovar y confirmar el pago."
+                )
             raise CredentialsException(detail="La empresa se encuentra suspendida")
 
     return user
@@ -86,6 +108,7 @@ optional_security = HTTPBearer(auto_error=False)
 
 
 async def get_optional_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(optional_security),
     db: Session = Depends(get_db),
 ) -> User | None:
@@ -107,12 +130,19 @@ async def get_optional_current_user(
         user_service = UserService(db)
         user = user_service.get_user_by_id(user_id)
         if user and user.is_active:
-            if (
-                not user.is_platform_admin
-                and user.empresa_id is not None
-                and (user.empresa_rel is None or not user.empresa_rel.active)
-            ):
-                raise CredentialsException(detail="La empresa se encuentra suspendida")
+            if not user.is_platform_admin and user.empresa_id is not None:
+                empresa, _ = PlanService(db).reconcile_tenant_access(user.empresa_id)
+                if not empresa.active:
+                    if (
+                        empresa.inactive_reason == "subscription_expired"
+                        and _renewal_access_allowed(request, user)
+                    ):
+                        return user
+                    if empresa.inactive_reason == "subscription_expired":
+                        raise ForbiddenException(
+                            "La suscripción venció. El tenant está inactivo hasta renovar y confirmar el pago."
+                        )
+                    raise CredentialsException(detail="La empresa se encuentra suspendida")
             return user
     except CredentialsException:
         raise

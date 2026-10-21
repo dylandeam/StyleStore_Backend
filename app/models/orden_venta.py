@@ -3,9 +3,9 @@ Modelo Orden_Venta y Detalle_Venta (Sección 18).
 Conforme a Especificación StyleStore v5.
 Fuente de verdad para ventas presenciales y en línea.
 """
-from datetime import datetime, date
+from datetime import datetime, date, time
 from decimal import Decimal
-from sqlalchemy import String, Integer, DateTime, Date, Numeric, ForeignKey, func
+from sqlalchemy import String, Integer, DateTime, Date, Time, Numeric, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -37,6 +37,9 @@ class OrdenVenta(Base):
     efectivo_recibido: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     cambio_devuelto: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     metodo_pago: Mapped[str | None] = mapped_column(String(50), default="EFECTIVO", nullable=True)
+    tipo_entrega: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    fecha_recojo: Mapped[date | None] = mapped_column(Date, nullable=True)
+    hora_recojo: Mapped[time | None] = mapped_column(Time, nullable=True)
 
 
     created_at: Mapped[datetime] = mapped_column(

@@ -1,7 +1,7 @@
 """
 Pydantic schemas para Pagos, Ventas y Envíos (v5 secciones 19, 20, 21, 22, 23, 24).
 """
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from pydantic import BaseModel, Field
 
@@ -196,5 +196,8 @@ class OrdenVentaResponse(BaseModel):
     detalles: list[DetalleVentaResponse] = []
     envio: EnvioResponse | None = None
     created_at: datetime
+    tipo_entrega: str | None = None
+    fecha_recojo: date | None = None
+    hora_recojo: time | None = None
 
     model_config = {"from_attributes": True}

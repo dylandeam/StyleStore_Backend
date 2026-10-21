@@ -2,10 +2,11 @@
 Carrito endpoints (v5 sección 17 y 18).
 Incluye carrito activo del cliente, confirmación con transacción de stock y generación de Orden de Venta.
 """
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from decimal import Decimal
 from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
 from app.models.user import User
@@ -25,6 +26,8 @@ from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.bitacora_service import BitacoraService
 from app.services.tenant_scope import get_scoped_sucursal, scope_by_empresa, scope_by_sucursal
 from app.models.sucursal import Sucursal
+from app.models.reserva import Reserva
+from app.services.agenda_service import hour_blocks
 
 router = APIRouter(prefix="/carrito", tags=["Carrito de Compras"])
 
@@ -340,7 +343,19 @@ async def confirm_cart(
 
         if not sucursal_final:
             raise BadRequestException("No existe una sucursal activa para completar la compra.")
-        get_scoped_sucursal(db, current_user, sucursal_final)
+        sucursal = get_scoped_sucursal(db, current_user, sucursal_final)
+
+        if payload.tipo_entrega == "recojo":
+            if payload.fecha_recojo is None or payload.hora_recojo is None:
+                raise BadRequestException("Selecciona la fecha y el bloque horario para recoger la compra.")
+            today = date.today()
+            if payload.fecha_recojo < today or payload.fecha_recojo > today + timedelta(days=3):
+                raise BadRequestException("La fecha de recojo debe estar entre hoy y los próximos 3 días.")
+            valid_starts = {start for start, _ in hour_blocks(sucursal.hora_apertura, sucursal.hora_cierre)}
+            if payload.hora_recojo not in valid_starts:
+                raise BadRequestException("Selecciona un bloque completo de una hora disponible para el recojo.")
+            if payload.fecha_recojo == today and payload.hora_recojo <= datetime.now().time():
+                raise BadRequestException("El bloque de recojo debe ser posterior a la hora actual.")
 
         # Crear Orden de Venta
         metodo = (payload.metodo_pago or "EFECTIVO").upper()
@@ -353,9 +368,33 @@ async def confirm_cart(
             sucursal_id=sucursal_final,
             carrito_id=carrito.id,
             metodo_pago=metodo,
+            tipo_entrega=payload.tipo_entrega,
+            fecha_recojo=payload.fecha_recojo if payload.tipo_entrega == "recojo" else None,
+            hora_recojo=payload.hora_recojo if payload.tipo_entrega == "recojo" else None,
         )
         db.add(orden)
         db.flush()
+
+        if payload.tipo_entrega == "recojo":
+            cita_recojo = Reserva(
+                fecha=payload.fecha_recojo,
+                hora=payload.hora_recojo,
+                estado="pendiente",
+                codigo_cliente=cliente.codigo,
+                sucursal_id=sucursal_final,
+                tipo="recojo_compra",
+                orden_venta_id=orden.id,
+            )
+            db.add(cita_recojo)
+            try:
+                db.flush()
+            except IntegrityError as exc:
+                db.rollback()
+                if "uq_reserva_bloque_activo" in str(getattr(exc, "orig", exc)).lower():
+                    raise BadRequestException(
+                        "El bloque de recojo acaba de ser ocupado. Selecciona otro horario disponible."
+                    ) from exc
+                raise
 
         for d in detalles_orden:
             dv = DetalleVenta(

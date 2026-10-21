@@ -50,5 +50,7 @@ class ReservaResponse(BaseModel):
     sucursal_direccion: str | None = None
     detalles: list[DetalleReservaResponse] = []
     created_at: datetime
+    tipo: str = "reserva_prenda"
+    orden_venta_id: int | None = None
 
     model_config = {"from_attributes": True}

@@ -242,8 +242,9 @@ def test_v7_punto7_cotizacion_envio_distancia(client: TestClient, auth_context_v
     assert data["costo_envio"] == round(5.0 + data["distancia_km"] * 0.6, 2)
 
 
-def test_v7_punto8_chatbot_add_to_cart(client: TestClient, auth_context_v7):
+def test_v7_punto8_chatbot_add_to_cart(client: TestClient, db_session, auth_context_v7):
     """Verifica que el chatbot procese mensajes y reconozca intención de compra."""
+    PlanService(db_session).contract(auth_context_v7["admin"], "intermedio")
     headers = {"Authorization": f"Bearer {auth_context_v7['cliente_token']}"}
     r = client.post(
         "/api/v1/chatbot/mensaje",

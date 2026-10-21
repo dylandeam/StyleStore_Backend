@@ -70,7 +70,7 @@ async def contract_plan(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    contract = PlanService(db).contract(current_user, payload.plan_codigo)
+    contract = PlanService(db).contract(current_user, payload)
     return PlanService.serialize_contract(contract)
 
 
@@ -79,8 +79,9 @@ async def get_my_contract(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if current_user.empresa_id is not None:
+        PlanService(db).reconcile_tenant_access(current_user.empresa_id)
     contract = db.query(ContratacionPlan).filter(
         ContratacionPlan.empresa_id == current_user.empresa_id,
-        ContratacionPlan.estado == "activa",
     ).order_by(ContratacionPlan.id.desc()).first()
     return PlanService.serialize_contract(contract) if contract else None
