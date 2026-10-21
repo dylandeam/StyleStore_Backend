@@ -10,6 +10,7 @@ from app.api.deps import require_permission
 from app.schemas.empleado import EmpleadoCreate, EmpleadoUpdate, EmpleadoResponse
 from app.schemas.common import MessageResponse
 from app.services.empleado_service import EmpleadoService
+from app.core.exceptions import ForbiddenException
 
 router = APIRouter(prefix="/empleados", tags=["Empleados"])
 
@@ -39,6 +40,8 @@ async def create_empleado(
     current_user: User = Depends(require_permission("empleados.crear")),
     db: Session = Depends(get_db),
 ):
+    if current_user.is_platform_admin:
+        raise ForbiddenException("El administrador SaaS tiene acceso de supervisión; cada tenant gestiona sus empleados.")
     service = EmpleadoService(db)
     return service.create_empleado(request, current_user=current_user)
 
@@ -50,6 +53,8 @@ async def update_empleado(
     current_user: User = Depends(require_permission("empleados.editar")),
     db: Session = Depends(get_db),
 ):
+    if current_user.is_platform_admin:
+        raise ForbiddenException("El administrador SaaS tiene acceso de supervisión; cada tenant gestiona sus empleados.")
     service = EmpleadoService(db)
     return service.update_empleado(codigo, request, current_user=current_user)
 
@@ -60,6 +65,8 @@ async def delete_empleado(
     current_user: User = Depends(require_permission("empleados.eliminar")),
     db: Session = Depends(get_db),
 ):
+    if current_user.is_platform_admin:
+        raise ForbiddenException("El administrador SaaS tiene acceso de supervisión; cada tenant gestiona sus empleados.")
     service = EmpleadoService(db)
     result = service.delete_empleado(codigo, current_user=current_user)
     return MessageResponse(message=result["message"])

@@ -3,6 +3,8 @@ Tests para funcionalidades oficiales de la Especificación v4 (Diagrama DB).
 Pruebas de CRUD para Categorías, Colores, Tallas, Temporadas, Empleados, Clientes, Proveedores y Stock.
 """
 import pytest
+from app.models.user import User
+from app.services.plan_service import PlanService
 
 
 def test_catalogo_maestros_crud(client, admin_token):
@@ -74,8 +76,12 @@ def test_proveedor_crud(client, admin_token):
     assert del_res.status_code == 200
 
 
-def test_empleado_generacion_codigo(client, admin_token):
+def test_empleado_generacion_codigo(client, admin_token, db_session):
     """Test de creación de Empleado con algoritmo de código: letra_ap + letra_nom + ci[:4]."""
+    admin = db_session.query(User).filter(User.email == "admin_test@stylestore.com").one()
+    admin.is_platform_admin = False
+    db_session.commit()
+    PlanService(db_session).contract(admin, "basico")
     headers = {"Authorization": f"Bearer {admin_token}"}
     import uuid
 

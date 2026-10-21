@@ -10,6 +10,7 @@ from app.api.deps import require_permission
 from app.schemas.cliente import ClienteCreate, ClienteUpdate, ClienteResponse
 from app.schemas.common import MessageResponse
 from app.services.cliente_service import ClienteService
+from app.core.exceptions import ForbiddenException
 
 router = APIRouter(prefix="/clientes", tags=["Clientes"])
 
@@ -39,6 +40,8 @@ async def create_cliente(
     current_user: User = Depends(require_permission("clientes.crear")),
     db: Session = Depends(get_db),
 ):
+    if current_user.is_platform_admin:
+        raise ForbiddenException("El administrador SaaS tiene acceso de supervisión; cada tenant gestiona sus clientes.")
     service = ClienteService(db)
     return service.create_cliente(request, current_user=current_user)
 
@@ -50,6 +53,8 @@ async def update_cliente(
     current_user: User = Depends(require_permission("clientes.editar")),
     db: Session = Depends(get_db),
 ):
+    if current_user.is_platform_admin:
+        raise ForbiddenException("El administrador SaaS tiene acceso de supervisión; cada tenant gestiona sus clientes.")
     service = ClienteService(db)
     return service.update_cliente(codigo, request, current_user=current_user)
 
@@ -60,6 +65,8 @@ async def delete_cliente(
     current_user: User = Depends(require_permission("clientes.eliminar")),
     db: Session = Depends(get_db),
 ):
+    if current_user.is_platform_admin:
+        raise ForbiddenException("El administrador SaaS tiene acceso de supervisión; cada tenant gestiona sus clientes.")
     service = ClienteService(db)
     result = service.delete_cliente(codigo, current_user=current_user)
     return MessageResponse(message=result["message"])

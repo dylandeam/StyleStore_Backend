@@ -10,6 +10,7 @@ Comprehensive tests for StyleStore v2 features:
 import pytest
 from app.models.user import User
 from app.core.security import hash_password
+from app.services.plan_service import PlanService
 
 
 
@@ -129,8 +130,12 @@ def test_bitacora_logs(client, admin_token):
     assert len(data["items"]) > 0
 
 
-def test_sucursales_crud(client, admin_token):
+def test_sucursales_crud(client, admin_token, db_session):
     """Test full CRUD cycle for store branches."""
+    admin = db_session.query(User).filter(User.email == "admin_test@stylestore.com").one()
+    admin.is_platform_admin = False
+    db_session.commit()
+    PlanService(db_session).contract(admin, "basico")
     headers = {"Authorization": f"Bearer {admin_token}"}
 
     # Create
@@ -284,4 +289,3 @@ def test_cliente_can_view_productos_and_sucursales(client):
         },
     )
     assert create_suc_res.status_code == 403
-

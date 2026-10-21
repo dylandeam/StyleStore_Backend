@@ -11,6 +11,7 @@ from app.api.deps import require_permission, get_optional_current_user
 from app.schemas.sucursal import SucursalCreate, SucursalUpdate, SucursalResponse
 from app.schemas.common import MessageResponse
 from app.services.sucursal_service import SucursalService
+from app.core.exceptions import ForbiddenException
 
 router = APIRouter(prefix="/sucursales", tags=["Sucursales"])
 
@@ -73,6 +74,8 @@ async def create_sucursal(
     current_user: User = Depends(require_permission("sucursales.crear")),
     db: Session = Depends(get_db),
 ):
+    if current_user.is_platform_admin:
+        raise ForbiddenException("El administrador SaaS tiene acceso de supervisión; cada tenant gestiona sus sucursales.")
     """Crear nueva sucursal."""
     service = SucursalService(db)
     return service.create_sucursal(request, current_user=current_user)
@@ -90,6 +93,8 @@ async def update_sucursal(
     current_user: User = Depends(require_permission("sucursales.editar")),
     db: Session = Depends(get_db),
 ):
+    if current_user.is_platform_admin:
+        raise ForbiddenException("El administrador SaaS tiene acceso de supervisión; cada tenant gestiona sus sucursales.")
     """Actualizar sucursal."""
     service = SucursalService(db)
     return service.update_sucursal(sucursal_id, request, current_user=current_user)
@@ -106,6 +111,8 @@ async def delete_sucursal(
     current_user: User = Depends(require_permission("sucursales.eliminar")),
     db: Session = Depends(get_db),
 ):
+    if current_user.is_platform_admin:
+        raise ForbiddenException("El administrador SaaS tiene acceso de supervisión; cada tenant gestiona sus sucursales.")
     """Eliminar sucursal."""
     service = SucursalService(db)
     result = service.delete_sucursal(sucursal_id, current_user=current_user)
