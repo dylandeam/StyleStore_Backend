@@ -14,11 +14,11 @@ Fuente complementaria: `REQUISITOS_NUEVAS_FUNCIONALIDADES_SAAS.md`. Esta matriz 
 | Área aclarada | Estado comprobado | Brecha concreta |
 |---|---|---|
 | Capacidades y límites de planes | En pruebas | Backend protege Básico/Intermedio/Profesional, vigencia, pago y sucursales; Web/Mobile reflejan chatbot y predicciones. Falta E2E desplegado. |
-| Vencimiento y renovación pagada | En pruebas | El backend inactiva automáticamente el tenant vencido, conserva acceso mínimo al administrador y solo reactiva con una nueva contratación pagada; falta E2E desplegado y definir si el pago final será PayPal u otra pasarela. |
+| Vencimiento y renovación pagada | En pruebas | El backend inactiva automáticamente el tenant vencido, conserva acceso mínimo al administrador y solo reactiva tras una captura PayPal `COMPLETED`; Web/Mobile usan el checkout real y falta E2E desplegado. |
 | Administración SaaS y tenants | Parcial avanzado | Consola maestra, suspensión, administrador y suscripción existen; falta reporte maestro operativo completo por tenant/sucursal. |
-| Roles y sucursales asignadas | Parcial | RBAC y ámbito tenant existen; empleado conserva una sola sucursal principal, no múltiples asignaciones. |
-| Jornadas de empleados | Pendiente | No existen jornada medio tiempo/tiempo completo ni tramos horarios por sucursal. |
-| Registro de clientes | Parcial | Se acepta `empresa_codigo`; falta selector público con logo/descripción y asociación de una identidad cliente a varios tenants. |
+| Roles y sucursales asignadas | En pruebas | RBAC y ámbito tenant se conservan; cada empleado mantiene una sucursal principal compatible y puede tener varias asignaciones horarias del mismo tenant. Falta E2E desplegado. |
+| Jornadas de empleados | En pruebas | Jornada medio tiempo/tiempo completo, días y tramos horarios por sucursal implementados en API y gestión Web; falta E2E desplegado. |
+| Registro de clientes | En pruebas | Selector público y asociación de una identidad cliente con varios tenants implementados en Web/Mobile, incluido cambio de tenant activo; falta E2E desplegado. |
 | Medidas y precios por talla | En pruebas | Precio y medidas por variante talla/color/sucursal implementados; falta evidencia E2E desplegada. |
 | Traspasos entre sucursales | En pruebas | Entidad, API y UI web implementadas con aislamiento tenant, estados, clave idempotente, bloqueo de filas, movimiento atómico y bitácora. Falta E2E desplegado. |
 | Promociones agrupadas | Pendiente | Solo existe promoción a nivel producto; faltan reglas por categoría y temporada. |

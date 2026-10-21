@@ -13,7 +13,7 @@ from app.models.bitacora import Bitacora
 from app.models.sucursal import Sucursal
 from app.models.token_blacklist import TokenBlacklist
 
-from app.models.empleado import Empleado
+from app.models.empleado import Empleado, EmpleadoSucursal
 from app.models.cliente import Cliente
 from app.models.categoria import Categoria
 from app.models.color import Color
@@ -57,6 +57,7 @@ __all__ = [
     "Bitacora",
     "Sucursal",
     "Empleado",
+    "EmpleadoSucursal",
     "Cliente",
     "Categoria",
     "Color",

@@ -1,9 +1,38 @@
 """
 Pydantic schemas para Empleados (CU8).
 """
-from datetime import datetime
+from datetime import datetime, time
 from decimal import Decimal
-from pydantic import BaseModel, EmailStr, Field
+from typing import Literal
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+
+
+DiaSemana = Literal[
+    "lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"
+]
+
+
+class EmpleadoSucursalInput(BaseModel):
+    sucursal_id: int = Field(..., gt=0)
+    hora_inicio: time
+    hora_fin: time
+    dias_semana: list[DiaSemana] = Field(..., min_length=1)
+
+    @field_validator("dias_semana")
+    @classmethod
+    def unique_days(cls, value: list[DiaSemana]):
+        return list(dict.fromkeys(value))
+
+    @model_validator(mode="after")
+    def valid_time_range(self):
+        if self.hora_inicio >= self.hora_fin:
+            raise ValueError("La hora de inicio debe ser anterior a la hora de fin.")
+        return self
+
+
+class EmpleadoSucursalResponse(EmpleadoSucursalInput):
+    id: int
+    sucursal_nombre: str | None = None
 
 
 class EmpleadoCreate(BaseModel):
@@ -22,6 +51,8 @@ class EmpleadoCreate(BaseModel):
     telefono: str = Field(..., min_length=5, max_length=20)
     direccion: str = Field(..., min_length=3, max_length=255)
     foto: str | None = None
+    jornada_tipo: Literal["tiempo_completo", "medio_tiempo"] = "tiempo_completo"
+    asignaciones: list[EmpleadoSucursalInput] | None = None
 
 
 class EmpleadoUpdate(BaseModel):
@@ -37,6 +68,8 @@ class EmpleadoUpdate(BaseModel):
     telefono: str | None = None
     direccion: str | None = None
     foto: str | None = None
+    jornada_tipo: Literal["tiempo_completo", "medio_tiempo"] | None = None
+    asignaciones: list[EmpleadoSucursalInput] | None = None
 
 
 class EmpleadoResponse(BaseModel):
@@ -50,6 +83,8 @@ class EmpleadoResponse(BaseModel):
     telefono: str
     direccion: str
     foto: str | None = None
+    jornada_tipo: Literal["tiempo_completo", "medio_tiempo"]
+    asignaciones: list[EmpleadoSucursalResponse] = Field(default_factory=list)
 
     # Datos del usuario asociado
     nombre: str | None = None

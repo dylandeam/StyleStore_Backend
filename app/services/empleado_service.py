@@ -6,10 +6,16 @@ from decimal import Decimal
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.models.empleado import Empleado
+from app.models.empleado import Empleado, EmpleadoSucursal
 from app.models.user import User
 from app.models.sucursal import Sucursal
-from app.schemas.empleado import EmpleadoCreate, EmpleadoUpdate, EmpleadoResponse
+from app.schemas.empleado import (
+    EmpleadoCreate,
+    EmpleadoSucursalInput,
+    EmpleadoSucursalResponse,
+    EmpleadoUpdate,
+    EmpleadoResponse,
+)
 from app.services.bitacora_service import BitacoraService
 from app.core.security import get_password_hash
 from app.services.tenant_scope import get_scoped_sucursal
@@ -40,6 +46,98 @@ class EmpleadoService:
                 User.is_platform_admin.is_(False),
             )
         return query
+
+    def _assignment_rows(
+        self,
+        current_user: User,
+        assignments: list[EmpleadoSucursalInput] | None,
+        primary_sucursal_id: int,
+    ) -> tuple[int, list[tuple[Sucursal, EmpleadoSucursalInput]]]:
+        primary = get_scoped_sucursal(self.db, current_user, primary_sucursal_id)
+        if assignments is None:
+            assignments = [
+                EmpleadoSucursalInput(
+                    sucursal_id=primary.id,
+                    hora_inicio=primary.hora_apertura,
+                    hora_fin=primary.hora_cierre,
+                    dias_semana=["lunes", "martes", "miercoles", "jueves", "viernes"],
+                )
+            ]
+        if not assignments:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Debes asignar al empleado al menos a una sucursal.",
+            )
+        seen: set[int] = set()
+        rows: list[tuple[Sucursal, EmpleadoSucursalInput]] = []
+        for assignment in assignments:
+            if assignment.sucursal_id in seen:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="No puedes repetir una sucursal en las asignaciones.",
+                )
+            seen.add(assignment.sucursal_id)
+            branch = get_scoped_sucursal(self.db, current_user, assignment.sucursal_id)
+            rows.append((branch, assignment))
+        if primary_sucursal_id not in seen:
+            primary_sucursal_id = rows[0][0].id
+        return primary_sucursal_id, rows
+
+    def _replace_assignments(
+        self,
+        employee: Empleado,
+        rows: list[tuple[Sucursal, EmpleadoSucursalInput]],
+    ) -> None:
+        employee.asignaciones.clear()
+        for branch, assignment in rows:
+            employee.asignaciones.append(
+                EmpleadoSucursal(
+                    empresa_id=branch.empresa_id,
+                    sucursal_id=branch.id,
+                    hora_inicio=assignment.hora_inicio,
+                    hora_fin=assignment.hora_fin,
+                    dias_semana=",".join(assignment.dias_semana),
+                )
+            )
+
+    @staticmethod
+    def _serialize(emp: Empleado) -> EmpleadoResponse:
+        return EmpleadoResponse(
+            codigo=emp.codigo,
+            user_id=emp.user_id,
+            sucursal_id=emp.sucursal_id,
+            edad=emp.edad,
+            sueldo=emp.sueldo,
+            telefono=emp.telefono,
+            direccion=emp.direccion,
+            foto=emp.foto,
+            jornada_tipo=emp.jornada_tipo,
+            asignaciones=[
+                EmpleadoSucursalResponse(
+                    id=item.id,
+                    sucursal_id=item.sucursal_id,
+                    sucursal_nombre=item.sucursal.name if item.sucursal else None,
+                    hora_inicio=item.hora_inicio,
+                    hora_fin=item.hora_fin,
+                    dias_semana=[day for day in item.dias_semana.split(",") if day],
+                )
+                for item in emp.asignaciones
+            ],
+            nombre=emp.user.name if emp.user else None,
+            apellido=emp.user.apellido if emp.user else None,
+            ci=emp.user.ci if emp.user else None,
+            email=emp.user.email if emp.user else None,
+            role=emp.user.role if emp.user else None,
+            sucursal_nombre=emp.sucursal.name if emp.sucursal else None,
+            empresa_id=emp.user.empresa_id if emp.user else None,
+            empresa_nombre=(
+                emp.user.empresa_rel.nombre
+                if emp.user and emp.user.empresa_rel
+                else None
+            ),
+            created_at=emp.created_at,
+            updated_at=emp.updated_at,
+        )
 
     def _sync_orphan_staff_users(self, current_user: User):
         """Asegura que todos los usuarios con roles de empleado/staff tengan su registro en Empleado."""
@@ -92,38 +190,25 @@ class EmpleadoService:
                 telefono="70000000",
                 direccion="Oficina Central",
                 foto=None,
+                jornada_tipo="tiempo_completo",
             )
             self.db.add(new_emp)
+            self.db.flush()
+            new_emp.asignaciones.append(
+                EmpleadoSucursal(
+                    empresa_id=default_sucursal.empresa_id,
+                    sucursal_id=default_sucursal.id,
+                    hora_inicio=default_sucursal.hora_apertura,
+                    hora_fin=default_sucursal.hora_cierre,
+                    dias_semana="lunes,martes,miercoles,jueves,viernes",
+                )
+            )
         self.db.commit()
 
     def list_empleados(self, current_user: User) -> list[EmpleadoResponse]:
         self._sync_orphan_staff_users(current_user)
         empleados = self._scope_query(current_user).all()
-        result = []
-        for emp in empleados:
-            result.append(
-                EmpleadoResponse(
-                    codigo=emp.codigo,
-                    user_id=emp.user_id,
-                    sucursal_id=emp.sucursal_id,
-                    edad=emp.edad,
-                    sueldo=emp.sueldo,
-                    telefono=emp.telefono,
-                    direccion=emp.direccion,
-                    foto=emp.foto,
-                    nombre=emp.user.name if emp.user else None,
-                    apellido=emp.user.apellido if emp.user else None,
-                    ci=emp.user.ci if emp.user else None,
-                    email=emp.user.email if emp.user else None,
-                    role=emp.user.role if emp.user else None,
-                    sucursal_nombre=emp.sucursal.name if emp.sucursal else None,
-                    empresa_id=emp.user.empresa_id if emp.user else None,
-                    empresa_nombre=emp.user.empresa_rel.nombre if emp.user and emp.user.empresa_rel else None,
-                    created_at=emp.created_at,
-                    updated_at=emp.updated_at,
-                )
-            )
-        return result
+        return [self._serialize(emp) for emp in empleados]
 
     def get_empleado_by_codigo(self, codigo: str, current_user: User) -> EmpleadoResponse:
         emp = self._scope_query(current_user).filter(Empleado.codigo == codigo).first()
@@ -132,26 +217,7 @@ class EmpleadoService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Empleado con código '{codigo}' no encontrado.",
             )
-        return EmpleadoResponse(
-            codigo=emp.codigo,
-            user_id=emp.user_id,
-            sucursal_id=emp.sucursal_id,
-            edad=emp.edad,
-            sueldo=emp.sueldo,
-            telefono=emp.telefono,
-            direccion=emp.direccion,
-            foto=emp.foto,
-            nombre=emp.user.name if emp.user else None,
-            apellido=emp.user.apellido if emp.user else None,
-            ci=emp.user.ci if emp.user else None,
-            email=emp.user.email if emp.user else None,
-            role=emp.user.role if emp.user else None,
-            sucursal_nombre=emp.sucursal.name if emp.sucursal else None,
-            empresa_id=emp.user.empresa_id if emp.user else None,
-            empresa_nombre=emp.user.empresa_rel.nombre if emp.user and emp.user.empresa_rel else None,
-            created_at=emp.created_at,
-            updated_at=emp.updated_at,
-        )
+        return self._serialize(emp)
 
     def create_empleado(self, req: EmpleadoCreate, current_user: User) -> EmpleadoResponse:
         # Verificar email único
@@ -161,8 +227,12 @@ class EmpleadoService:
                 detail=f"El correo electrónico '{req.email}' ya está registrado.",
             )
 
-        # Verificar sucursal existente
-        sucursal = get_scoped_sucursal(self.db, current_user, req.sucursal_id)
+        primary_sucursal_id, assignment_rows = self._assignment_rows(
+            current_user, req.asignaciones, req.sucursal_id
+        )
+        sucursal = next(
+            branch for branch, _ in assignment_rows if branch.id == primary_sucursal_id
+        )
 
         # Generar código
         base_codigo = self.generar_codigo(req.apellido, req.nombre, req.ci)
@@ -190,14 +260,17 @@ class EmpleadoService:
         nuevo_emp = Empleado(
             codigo=codigo,
             user_id=nuevo_user.id,
-            sucursal_id=req.sucursal_id,
+            sucursal_id=primary_sucursal_id,
             edad=req.edad,
             sueldo=req.sueldo,
             telefono=req.telefono,
             direccion=req.direccion,
             foto=req.foto,
+            jornada_tipo=req.jornada_tipo,
         )
         self.db.add(nuevo_emp)
+        self.db.flush()
+        self._replace_assignments(nuevo_emp, assignment_rows)
         self.db.commit()
         self.db.refresh(nuevo_emp)
 
@@ -221,9 +294,13 @@ class EmpleadoService:
                 detail=f"Empleado '{codigo}' no encontrado.",
             )
 
-        if req.sucursal_id is not None:
-            get_scoped_sucursal(self.db, current_user, req.sucursal_id)
-            emp.sucursal_id = req.sucursal_id
+        if req.asignaciones is not None or req.sucursal_id is not None:
+            requested_primary = req.sucursal_id or emp.sucursal_id
+            primary_id, assignment_rows = self._assignment_rows(
+                current_user, req.asignaciones, requested_primary
+            )
+            emp.sucursal_id = primary_id
+            self._replace_assignments(emp, assignment_rows)
 
         if req.edad is not None:
             emp.edad = req.edad
@@ -235,6 +312,8 @@ class EmpleadoService:
             emp.direccion = req.direccion
         if req.foto is not None:
             emp.foto = req.foto
+        if req.jornada_tipo is not None:
+            emp.jornada_tipo = req.jornada_tipo
 
         # Actualizar datos de User
         if emp.user:

@@ -350,6 +350,125 @@ def test_staff_clients_and_inventory_are_hidden_between_tenants(client, db_sessi
     ).status_code == 404
 
 
+def test_employee_has_workday_and_multiple_tenant_branch_schedules(
+    client, db_session, admin_token
+):
+    platform_admin = db_session.query(User).filter(
+        User.email == "admin_test@stylestore.com"
+    ).one()
+    platform_admin.is_platform_admin = True
+    db_session.commit()
+    _create_empresa(client, admin_token, "staff-schedule-a", "admin@staff-a.example.com")
+    _create_empresa(client, admin_token, "staff-schedule-b", "admin@staff-b.example.com")
+    headers_a = {
+        "Authorization": f"Bearer {_login(client, 'admin@staff-a.example.com')}"
+    }
+    headers_b = {
+        "Authorization": f"Bearer {_login(client, 'admin@staff-b.example.com')}"
+    }
+
+    branches_a = []
+    for name in ("Centro", "Norte"):
+        response = client.post(
+            "/api/v1/sucursales",
+            headers=headers_a,
+            json={
+                "name": f"Staff A {name}",
+                "city": "La Paz",
+                "address": f"Calle {name}",
+                "phone": "70000111",
+            },
+        )
+        assert response.status_code == 201, response.text
+        branches_a.append(response.json())
+    foreign_branch = client.post(
+        "/api/v1/sucursales",
+        headers=headers_b,
+        json={
+            "name": "Staff B Centro",
+            "city": "Tarija",
+            "address": "Calle B",
+            "phone": "70000222",
+        },
+    ).json()
+
+    created = client.post(
+        "/api/v1/empleados",
+        headers=headers_a,
+        json={
+            "nombre": "Lucia",
+            "apellido": "Flores",
+            "ci": "778899",
+            "email": "lucia@staff-a.example.com",
+            "password": "StaffPass2026!",
+            "role": "encargado_sucursal",
+            "sucursal_id": branches_a[0]["id"],
+            "jornada_tipo": "medio_tiempo",
+            "asignaciones": [
+                {
+                    "sucursal_id": branches_a[0]["id"],
+                    "hora_inicio": "08:00:00",
+                    "hora_fin": "12:00:00",
+                    "dias_semana": ["lunes", "miercoles", "viernes"],
+                },
+                {
+                    "sucursal_id": branches_a[1]["id"],
+                    "hora_inicio": "14:00:00",
+                    "hora_fin": "18:00:00",
+                    "dias_semana": ["martes", "jueves"],
+                },
+            ],
+            "edad": 27,
+            "sueldo": 2800,
+            "telefono": "70000333",
+            "direccion": "Zona Central",
+        },
+    )
+    assert created.status_code == 201, created.text
+    employee = created.json()
+    assert employee["jornada_tipo"] == "medio_tiempo"
+    assert employee["sucursal_id"] == branches_a[0]["id"]
+    assert {item["sucursal_id"] for item in employee["asignaciones"]} == {
+        branches_a[0]["id"],
+        branches_a[1]["id"],
+    }
+    assert employee["asignaciones"][0]["dias_semana"] == [
+        "lunes", "miercoles", "viernes"
+    ]
+
+    cross_tenant = client.put(
+        f"/api/v1/empleados/{employee['codigo']}",
+        headers=headers_a,
+        json={
+            "asignaciones": [
+                {
+                    "sucursal_id": foreign_branch["id"],
+                    "hora_inicio": "09:00:00",
+                    "hora_fin": "13:00:00",
+                    "dias_semana": ["lunes"],
+                }
+            ]
+        },
+    )
+    assert cross_tenant.status_code == 404
+
+    invalid_hours = client.put(
+        f"/api/v1/empleados/{employee['codigo']}",
+        headers=headers_a,
+        json={
+            "asignaciones": [
+                {
+                    "sucursal_id": branches_a[0]["id"],
+                    "hora_inicio": "18:00:00",
+                    "hora_fin": "09:00:00",
+                    "dias_semana": ["lunes"],
+                }
+            ]
+        },
+    )
+    assert invalid_hours.status_code == 422
+
+
 def test_catalog_roots_are_isolated_and_names_can_repeat_per_tenant(client, db_session, admin_token):
     platform_admin = db_session.query(User).filter(User.email == "admin_test@stylestore.com").one()
     platform_admin.is_platform_admin = True
