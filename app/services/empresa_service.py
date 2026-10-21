@@ -24,6 +24,9 @@ class EmpresaService:
     def list_empresas(self) -> list[Empresa]:
         return self.db.query(Empresa).order_by(Empresa.nombre).all()
 
+    def list_empresas_activas(self) -> list[Empresa]:
+        return self.db.query(Empresa).filter(Empresa.active.is_(True)).order_by(Empresa.nombre).all()
+
     def list_resumen(self) -> list[dict]:
         return [self.serialize_resumen(empresa) for empresa in self.list_empresas()]
 
@@ -79,6 +82,8 @@ class EmpresaService:
                 "fecha_fin": contract.fecha_fin,
                 "max_sucursales": contract.plan.max_sucursales,
             }
+        branches = self.db.query(Sucursal).filter(Sucursal.empresa_id == empresa.id).order_by(Sucursal.name).all()
+        users = self.db.query(User).filter(User.empresa_id == empresa.id).order_by(User.name).all()
         return {
             "id": empresa.id,
             "codigo": empresa.codigo,
@@ -91,6 +96,15 @@ class EmpresaService:
             "suscripcion": subscription,
             "usuarios_count": self.db.query(func.count(User.id)).filter(User.empresa_id == empresa.id).scalar() or 0,
             "sucursales_count": self.db.query(func.count(Sucursal.id)).filter(Sucursal.empresa_id == empresa.id).scalar() or 0,
+            "sucursales": [
+                {"id": item.id, "nombre": item.name, "ciudad": item.city, "active": item.active}
+                for item in branches
+            ],
+            "usuarios": [
+                {"id": item.id, "nombre": f"{item.name} {item.apellido or ''}".strip(),
+                 "email": item.email, "rol": item.role, "active": item.is_active}
+                for item in users
+            ],
         }
 
     def create_empresa(self, data: EmpresaCreate, current_user: User) -> tuple[Empresa, User]:

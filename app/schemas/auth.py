@@ -23,6 +23,19 @@ class RegisterRequest(BaseModel):
     direccion: str | None = Field(None, max_length=255, description="Dirección de domicilio")
     foto: str | None = Field(None, max_length=255, description="URL o path de la foto de perfil")
     empresa_codigo: str | None = Field(None, max_length=50, description="Código de la empresa donde se registra")
+    empresa_codigos: list[str] | None = Field(None, min_length=1, max_length=20)
+
+    @field_validator("empresa_codigos")
+    @classmethod
+    def normalize_company_codes(cls, value: list[str] | None):
+        if value is None:
+            return value
+        cleaned = list(dict.fromkeys(code.strip().lower() for code in value if code.strip()))
+        if not cleaned:
+            raise ValueError("Selecciona al menos una empresa.")
+        if any(len(code) > 50 for code in cleaned):
+            raise ValueError("Código de empresa inválido.")
+        return cleaned
 
     @field_validator("password")
     @classmethod

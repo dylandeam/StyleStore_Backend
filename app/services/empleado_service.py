@@ -117,6 +117,8 @@ class EmpleadoService:
                     email=emp.user.email if emp.user else None,
                     role=emp.user.role if emp.user else None,
                     sucursal_nombre=emp.sucursal.name if emp.sucursal else None,
+                    empresa_id=emp.user.empresa_id if emp.user else None,
+                    empresa_nombre=emp.user.empresa_rel.nombre if emp.user and emp.user.empresa_rel else None,
                     created_at=emp.created_at,
                     updated_at=emp.updated_at,
                 )
@@ -145,6 +147,8 @@ class EmpleadoService:
             email=emp.user.email if emp.user else None,
             role=emp.user.role if emp.user else None,
             sucursal_nombre=emp.sucursal.name if emp.sucursal else None,
+            empresa_id=emp.user.empresa_id if emp.user else None,
+            empresa_nombre=emp.user.empresa_rel.nombre if emp.user and emp.user.empresa_rel else None,
             created_at=emp.created_at,
             updated_at=emp.updated_at,
         )

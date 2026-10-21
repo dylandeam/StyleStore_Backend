@@ -3,18 +3,22 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_optional_current_user
-from app.core.exceptions import NotFoundException
+from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
 from app.database import get_db
+from app.config import settings
 from app.models.empresa import Empresa
 from app.models.plan_suscripcion import ContratacionPlan
 from app.models.user import User
 from app.schemas.plan_suscripcion import (
     ContratacionCreate,
+    ContratacionPayPalCapture,
+    ContratacionPayPalCreate,
     ContratacionResponse,
     PlanResponse,
     PlanUpdate,
 )
 from app.services.plan_service import PlanService
+from app.services.paypal_service import paypal_service
 
 
 router = APIRouter(prefix="/planes", tags=["Planes de Suscripción"])
@@ -70,7 +74,75 @@ async def contract_plan(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    contract = PlanService(db).contract(current_user, payload)
+    if current_user.role != "administrador":
+        raise ForbiddenException("Solo el administrador del tenant puede cambiar el plan.")
+    raise BadRequestException(
+        "Debes confirmar el pago mediante PayPal; el plan solo se activa después del cobro."
+    )
+
+
+@router.post("/paypal/crear-orden", summary="Iniciar pago PayPal de una suscripción")
+async def create_subscription_paypal_order(
+    payload: ContratacionPayPalCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    service = PlanService(db)
+    if paypal_service.is_mock_mode() and not settings.ALLOW_MOCK_PAYPAL:
+        raise BadRequestException(
+            "PayPal no está configurado. Define las credenciales PayPal del entorno antes de cobrar una suscripción."
+        )
+    pending = service.prepare_paypal_contract(current_user, payload.plan_codigo)
+    try:
+        order = await paypal_service.create_order(
+            orden_id=pending.id,
+            total=pending.precio_snapshot,
+            return_url=payload.return_url or "",
+            cancel_url=payload.cancel_url or "",
+            currency=pending.moneda_snapshot,
+            reference_prefix="PLAN",
+            description=f"Suscripción StyleStore - {pending.plan.nombre}",
+            allow_fallback=False,
+        )
+        pending.referencia_pago = order.get("id")
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise BadRequestException(f"No se pudo iniciar el cobro con PayPal: {exc}") from exc
+    order["contratacion_id"] = pending.id
+    order["plan_codigo"] = pending.plan.codigo
+    order["total"] = float(pending.precio_snapshot)
+    order["moneda"] = pending.moneda_snapshot
+    return order
+
+
+@router.post("/paypal/capturar-orden", response_model=ContratacionResponse, summary="Confirmar pago PayPal y activar plan")
+async def capture_subscription_paypal_order(
+    payload: ContratacionPayPalCapture,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    pending = db.query(ContratacionPlan).filter(
+        ContratacionPlan.referencia_pago == payload.paypal_order_id,
+        ContratacionPlan.empresa_id == current_user.empresa_id,
+    ).order_by(ContratacionPlan.id.desc()).first()
+    if not pending:
+        raise NotFoundException("No existe una suscripción pendiente asociada a esa orden PayPal.")
+    if pending.estado_pago == "pagado":
+        return PlanService.serialize_contract(pending)
+    capture = await paypal_service.capture_order(payload.paypal_order_id)
+    if capture.get("status") != "COMPLETED":
+        raise BadRequestException("PayPal no confirmó el cobro; el plan no fue modificado.")
+    capture_data = (((capture.get("purchase_units") or [{}])[0].get("payments") or {}).get("captures") or [{}])[0]
+    amount = capture_data.get("amount") or {}
+    if amount and (
+        amount.get("currency_code") != pending.moneda_snapshot
+        or str(amount.get("value")) != f"{float(pending.precio_snapshot):.2f}"
+    ):
+        raise BadRequestException("El importe capturado por PayPal no coincide con el precio del plan.")
+    contract = PlanService(db).activate_paid_contract(
+        current_user, pending, capture_data.get("id") or payload.paypal_order_id
+    )
     return PlanService.serialize_contract(contract)
 
 
@@ -83,5 +155,8 @@ async def get_my_contract(
         PlanService(db).reconcile_tenant_access(current_user.empresa_id)
     contract = db.query(ContratacionPlan).filter(
         ContratacionPlan.empresa_id == current_user.empresa_id,
-    ).order_by(ContratacionPlan.id.desc()).first()
+        ContratacionPlan.estado.in_(["activa", "vencida", "reemplazada"]),
+    ).order_by(
+        (ContratacionPlan.estado == "activa").desc(), ContratacionPlan.id.desc()
+    ).first()
     return PlanService.serialize_contract(contract) if contract else None

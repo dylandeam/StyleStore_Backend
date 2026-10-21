@@ -70,6 +70,24 @@ class ContratacionCreate(BaseModel):
         return normalized
 
 
+class ContratacionPayPalCreate(BaseModel):
+    plan_codigo: str
+    return_url: str | None = Field(None, max_length=500)
+    cancel_url: str | None = Field(None, max_length=500)
+
+    @field_validator("plan_codigo")
+    @classmethod
+    def valid_plan_code(cls, value: str):
+        normalized = value.strip().lower()
+        if normalized not in PLAN_CODES:
+            raise ValueError("El plan debe ser basico, intermedio o profesional.")
+        return normalized
+
+
+class ContratacionPayPalCapture(BaseModel):
+    paypal_order_id: str = Field(..., min_length=3, max_length=120)
+
+
 class ContratacionResponse(BaseModel):
     id: int
     plan_codigo: str

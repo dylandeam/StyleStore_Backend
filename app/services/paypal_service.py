@@ -67,7 +67,9 @@ class PayPalService:
             return "mock_access_token_fallback"
 
     async def create_order(
-        self, orden_id: int, total: Decimal | float, return_url: str = "", cancel_url: str = ""
+        self, orden_id: int, total: Decimal | float, return_url: str = "", cancel_url: str = "",
+        *, currency: str = "USD", reference_prefix: str = "ORDEN",
+        description: str | None = None, allow_fallback: bool = True,
     ) -> dict:
         """
         Crea una orden de pago en PayPal con Intent CAPTURE.
@@ -94,6 +96,8 @@ class PayPalService:
 
         token = await self.get_access_token()
         if token == "mock_access_token_fallback":
+            if not allow_fallback:
+                raise RuntimeError("PayPal no pudo autenticar las credenciales configuradas.")
             mock_id = f"PAYPAL-FALLBACK-{orden_id}-{int(time.time())}"
             return {
                 "id": mock_id,
@@ -112,9 +116,9 @@ class PayPalService:
             "intent": "CAPTURE",
             "purchase_units": [
                 {
-                    "reference_id": f"ORDEN-{orden_id}",
-                    "description": f"Compra en StyleStore - Pedido #{orden_id}",
-                    "amount": {"currency_code": "USD", "value": amount_val},
+                    "reference_id": f"{reference_prefix}-{orden_id}",
+                    "description": description or f"Compra en StyleStore - Pedido #{orden_id}",
+                    "amount": {"currency_code": currency.upper(), "value": amount_val},
                 }
             ],
             "application_context": {
@@ -140,6 +144,8 @@ class PayPalService:
                     return res.json()
                 else:
                     logger.error(f"Error creando orden PayPal: {res.text}")
+                    if not allow_fallback:
+                        raise RuntimeError(f"PayPal rechazó la creación de la orden: {res.text}")
                     # En caso de error de credenciales externas, proveer fallback para pruebas fluidas
                     mock_id = f"PAYPAL-FALLBACK-{orden_id}-{int(time.time())}"
                     return {
@@ -156,6 +162,8 @@ class PayPalService:
                     }
         except Exception as ex:
             logger.error(f"Excepción al conectar con PayPal create_order: {ex}")
+            if not allow_fallback:
+                raise
             mock_id = f"PAYPAL-FALLBACK-{orden_id}-{int(time.time())}"
             return {
                 "id": mock_id,

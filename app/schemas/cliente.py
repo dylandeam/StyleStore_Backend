@@ -42,6 +42,8 @@ class ClienteResponse(BaseModel):
     ci: str | None = None
     email: str | None = None
     role: str | None = "cliente"
+    empresa_ids: list[int] = []
+    empresas: list[str] = []
 
     created_at: datetime
     updated_at: datetime

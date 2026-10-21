@@ -10,6 +10,7 @@ from app.schemas.empresa import (
     EmpresaCreate,
     EmpresaEstadoUpdate,
     EmpresaResponse,
+    EmpresaPublicResponse,
     EmpresaResumenResponse,
     EmpresaSuscripcionResponse,
     EmpresaSuscripcionUpdate,
@@ -21,6 +22,12 @@ from app.services.empresa_service import EmpresaService
 
 
 router = APIRouter(prefix="/empresas", tags=["Empresas SaaS"])
+
+
+@router.get("/publicas/registro", response_model=list[EmpresaPublicResponse])
+async def list_empresas_publicas(db: Session = Depends(get_db)):
+    """Tenants activos que un cliente puede seleccionar al registrarse."""
+    return EmpresaService(db).list_empresas_activas()
 
 
 @router.get("/mia", response_model=EmpresaResponse)

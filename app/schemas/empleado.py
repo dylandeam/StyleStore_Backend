@@ -58,6 +58,8 @@ class EmpleadoResponse(BaseModel):
     email: str | None = None
     role: str | None = None
     sucursal_nombre: str | None = None
+    empresa_id: int | None = None
+    empresa_nombre: str | None = None
 
     created_at: datetime
     updated_at: datetime

@@ -36,16 +36,24 @@ class AuthService:
         Register a new client user.
         """
         from app.models.empresa import Empresa
+        from app.models.user_empresa import UserEmpresa
 
-        empresa = None
-        if request.empresa_codigo:
-            empresa = (
-                self.db.query(Empresa)
-                .filter(Empresa.codigo == request.empresa_codigo.strip().lower(), Empresa.active == True)
-                .first()
-            )
-            if not empresa:
-                raise BadRequestException("El código de empresa no existe o está inactivo.")
+        requested_codes = request.empresa_codigos or (
+            [request.empresa_codigo.strip().lower()] if request.empresa_codigo else []
+        )
+        empresas = []
+        if requested_codes:
+            empresas = self.db.query(Empresa).filter(
+                Empresa.codigo.in_(requested_codes), Empresa.active.is_(True)
+            ).all()
+            found_codes = {item.codigo for item in empresas}
+            missing = [code for code in requested_codes if code not in found_codes]
+            if missing:
+                raise BadRequestException(
+                    "Estas empresas no existen o están inactivas: " + ", ".join(missing)
+                )
+            empresas.sort(key=lambda item: requested_codes.index(item.codigo))
+            empresa = empresas[0]
         else:
             empresa = self.db.query(Empresa).filter(Empresa.codigo == "stylestore", Empresa.active == True).first()
             if not empresa and self.db.query(Empresa).filter(Empresa.active == True).count() == 0:
@@ -53,7 +61,8 @@ class AuthService:
                 self.db.add(empresa)
                 self.db.flush()
             elif not empresa:
-                raise BadRequestException("Debe indicar el código de empresa para registrarse.")
+                raise BadRequestException("Debe seleccionar al menos una empresa para registrarse.")
+            empresas = [empresa]
 
         # Check if user already exists by email
         existing_user = (
@@ -108,6 +117,9 @@ class AuthService:
             role_id=role_id_val,
         )
         self.db.add(user)
+        self.db.flush()
+        for tenant in empresas:
+            self.db.add(UserEmpresa(user_id=user.id, empresa_id=tenant.id, active=True))
         self.db.commit()
         self.db.refresh(user)
 

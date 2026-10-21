@@ -61,5 +61,9 @@ class Sucursal(Base):
     def ubicacion_url(self) -> str | None:
         return self.maps_url
 
+    @property
+    def empresa_nombre(self) -> str | None:
+        return self.empresa_rel.nombre if self.empresa_rel else None
+
     def __repr__(self) -> str:
         return f"<Sucursal(id={self.id}, name='{self.name}', city='{self.city}')>"

@@ -164,17 +164,11 @@ class PlanService:
         return sorted(query.all(), key=lambda item: order[item.codigo])
 
     def resolve_admin_scope(self, current_user: User, empresa_id: int | None) -> int | None:
-        if current_user.role != "administrador":
-            raise ForbiddenException("Solo los administradores pueden configurar planes.")
-        if current_user.is_platform_admin:
-            if empresa_id is not None and not self.db.query(Empresa.id).filter(Empresa.id == empresa_id).first():
-                raise NotFoundException("Empresa no encontrada.")
-            return empresa_id
-        if current_user.empresa_id is None:
-            raise ForbiddenException("El administrador no tiene una empresa asignada.")
-        if empresa_id is not None and empresa_id != current_user.empresa_id:
+        if not current_user.is_platform_admin:
+            raise ForbiddenException("Solo el administrador SaaS puede definir precios y características de los planes.")
+        if empresa_id is not None and not self.db.query(Empresa.id).filter(Empresa.id == empresa_id).first():
             raise NotFoundException("Empresa no encontrada.")
-        return current_user.empresa_id
+        return empresa_id
 
     def update_plan(self, codigo: str, payload: PlanUpdate, current_user: User, empresa_id: int | None = None):
         code = codigo.strip().lower()
@@ -334,6 +328,73 @@ class PlanService:
             action=f"Contrató el plan {plan.nombre}", module="planes",
         )
         return contract
+
+    def prepare_paypal_contract(self, current_user: User, plan_codigo: str) -> ContratacionPlan:
+        """Create a pending contract without changing the tenant's current plan."""
+        if current_user.role != "administrador" or current_user.is_platform_admin:
+            raise ForbiddenException("Solo el administrador del tenant puede cambiar su plan.")
+        if current_user.empresa_id is None:
+            raise BadRequestException("Tu cuenta no tiene una empresa asignada.")
+        plan = next(
+            (item for item in self.list_plans(current_user.empresa_id, active_only=True)
+             if item.codigo == plan_codigo),
+            None,
+        )
+        if not plan:
+            raise NotFoundException("Plan no disponible.")
+        if plan.precio_mensual <= 0:
+            raise BadRequestException("El administrador SaaS debe definir un precio mayor a cero para este plan.")
+        if plan.moneda.upper() not in {"USD", "EUR"}:
+            raise BadRequestException(
+                "PayPal no admite la moneda configurada para este plan. El administrador SaaS debe usar USD o EUR."
+            )
+        self.db.query(ContratacionPlan).filter(
+            ContratacionPlan.empresa_id == current_user.empresa_id,
+            ContratacionPlan.estado == "pendiente",
+            ContratacionPlan.estado_pago == "pendiente",
+        ).update({ContratacionPlan.estado: "cancelada"}, synchronize_session=False)
+        pending = ContratacionPlan(
+            empresa_id=current_user.empresa_id,
+            user_id=current_user.id,
+            plan_id=plan.id,
+            estado="pendiente",
+            estado_pago="pendiente",
+            precio_snapshot=plan.precio_mensual,
+            moneda_snapshot=plan.moneda.upper(),
+            fecha_inicio=date.today(),
+            fecha_fin=date.today() + timedelta(days=30),
+        )
+        self.db.add(pending)
+        self.db.flush()
+        return pending
+
+    def activate_paid_contract(
+        self, current_user: User, pending: ContratacionPlan, paypal_capture_id: str
+    ) -> ContratacionPlan:
+        """Activate a plan only after PayPal confirms a completed capture."""
+        if pending.empresa_id != current_user.empresa_id or pending.estado_pago != "pendiente":
+            raise BadRequestException("La solicitud de pago no es válida o ya fue procesada.")
+        self.db.query(ContratacionPlan).filter(
+            ContratacionPlan.empresa_id == pending.empresa_id,
+            ContratacionPlan.estado == "activa",
+        ).update({ContratacionPlan.estado: "reemplazada"}, synchronize_session=False)
+        pending.estado = "activa"
+        pending.estado_pago = "pagado"
+        pending.pagado_en = datetime.now(timezone.utc)
+        pending.fecha_inicio = date.today()
+        pending.fecha_fin = date.today() + timedelta(days=30)
+        pending.referencia_pago = paypal_capture_id
+        empresa = self.db.query(Empresa).filter(Empresa.id == pending.empresa_id).first()
+        if empresa and empresa.inactive_reason in {"subscription_expired", "payment_pending"}:
+            empresa.active = True
+            empresa.inactive_reason = None
+        self.db.commit()
+        self.db.refresh(pending)
+        BitacoraService.registrar(
+            self.db, current_user,
+            f"Pagó con PayPal y activó el plan {pending.plan.nombre}", "planes",
+        )
+        return pending
 
     def require_capability(self, current_user: User, capability: str) -> ContratacionPlan | None:
         """Require an active tenant subscription that enables a backend capability."""

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models.cliente import Cliente
 from app.models.user import User
+from app.models.user_empresa import UserEmpresa
 from app.schemas.cliente import ClienteCreate, ClienteUpdate, ClienteResponse
 from app.services.bitacora_service import BitacoraService
 from app.core.security import get_password_hash
@@ -33,7 +34,10 @@ class ClienteService:
     def _scope_query(self, current_user: User):
         query = self.db.query(Cliente).join(User, Cliente.user_id == User.id)
         if not current_user.is_platform_admin:
-            query = query.filter(User.empresa_id == current_user.empresa_id)
+            query = query.join(UserEmpresa, UserEmpresa.user_id == User.id).filter(
+                UserEmpresa.empresa_id == current_user.empresa_id,
+                UserEmpresa.active.is_(True),
+            )
         return query
 
     def _sync_orphan_cliente_users(self, current_user: User):
@@ -80,12 +84,22 @@ class ClienteService:
             n = n[:-len(a)].strip()
         return n, a
 
+    def _tenant_data(self, user_id: int) -> tuple[list[int], list[str]]:
+        memberships = self.db.query(UserEmpresa).filter(
+            UserEmpresa.user_id == user_id, UserEmpresa.active.is_(True)
+        ).all()
+        return (
+            [item.empresa_id for item in memberships],
+            [item.empresa.nombre for item in memberships if item.empresa],
+        )
+
     def list_clientes(self, current_user: User) -> list[ClienteResponse]:
         self._sync_orphan_cliente_users(current_user)
         clientes = self._scope_query(current_user).all()
         result = []
         needs_commit = False
         for cli in clientes:
+            empresa_ids, empresas = self._tenant_data(cli.user_id)
             nombre = cli.user.name if cli.user else None
             apellido = cli.user.apellido if cli.user else None
             clean_nom, clean_ap = self._sanitize_names(nombre, apellido)
@@ -107,6 +121,8 @@ class ClienteService:
                     ci=cli.user.ci if cli.user else None,
                     email=cli.user.email if cli.user else None,
                     role=cli.user.role if (cli.user and cli.user.role) else "cliente",
+                    empresa_ids=empresa_ids,
+                    empresas=empresas,
                     created_at=cli.created_at,
                     updated_at=cli.updated_at,
                 )
@@ -125,6 +141,7 @@ class ClienteService:
         nom = cli.user.name if cli.user else None
         ap = cli.user.apellido if cli.user else None
         clean_nom, clean_ap = self._sanitize_names(nom, ap)
+        empresa_ids, empresas = self._tenant_data(cli.user_id)
         if cli.user and (cli.user.name != clean_nom or cli.user.apellido != clean_ap):
             cli.user.name = clean_nom
             cli.user.apellido = clean_ap
@@ -141,6 +158,8 @@ class ClienteService:
             ci=cli.user.ci if cli.user else None,
             email=cli.user.email if cli.user else None,
             role=cli.user.role if (cli.user and cli.user.role) else "cliente",
+            empresa_ids=empresa_ids,
+            empresas=empresas,
             created_at=cli.created_at,
             updated_at=cli.updated_at,
         )
@@ -172,6 +191,7 @@ class ClienteService:
         )
         self.db.add(nuevo_user)
         self.db.flush()
+        self.db.add(UserEmpresa(user_id=nuevo_user.id, empresa_id=current_user.empresa_id, active=True))
 
         nuevo_cli = Cliente(
             codigo=codigo,

@@ -70,6 +70,7 @@ class Settings:
     PAYPAL_CLIENT_ID: str = os.getenv("PAYPAL_CLIENT_ID", "mock_paypal_client_id")
     PAYPAL_CLIENT_SECRET: str = os.getenv("PAYPAL_CLIENT_SECRET", "mock_paypal_secret")
     PAYPAL_MODE: str = os.getenv("PAYPAL_MODE", "sandbox")  # 'sandbox' | 'live'
+    ALLOW_MOCK_PAYPAL: bool = os.getenv("ALLOW_MOCK_PAYPAL", "false").lower() == "true"
 
     # Security & Master Key for Bitácora
     ADMIN_MASTER_KEY: str = os.getenv("ADMIN_MASTER_KEY", "StyleStoreMaster2025#")

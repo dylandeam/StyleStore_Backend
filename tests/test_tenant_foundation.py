@@ -8,6 +8,7 @@ from app.models.orden_venta import OrdenVenta
 from app.models.envio import Envio
 from app.models.empresa import Empresa
 from app.models.plan_suscripcion import ContratacionPlan
+from app.models.user_empresa import UserEmpresa
 from app.core.security import hash_password
 from app.services.report_ai_service import ReportAIService
 
@@ -492,15 +493,15 @@ def test_three_plans_are_configurable_without_cross_tenant_changes(client, db_se
     headers_a = {"Authorization": f"Bearer {_login(client, 'admin-a@plans.example.com')}"}
     headers_b = {"Authorization": f"Bearer {_login(client, 'admin-b@plans.example.com')}"}
 
-    plans_a = client.get("/api/v1/planes/admin", headers=headers_a)
-    plans_b = client.get("/api/v1/planes/admin", headers=headers_b)
+    plans_a = client.get("/api/v1/planes", headers=headers_a)
+    plans_b = client.get("/api/v1/planes", headers=headers_b)
     assert plans_a.status_code == plans_b.status_code == 200
     assert [plan["codigo"] for plan in plans_a.json()] == ["basico", "intermedio", "profesional"]
     assert [plan["codigo"] for plan in plans_b.json()] == ["basico", "intermedio", "profesional"]
 
     updated = client.put(
-        "/api/v1/planes/admin/intermedio",
-        headers=headers_a,
+        f"/api/v1/planes/admin/intermedio?empresa_id={empresa_a['id']}",
+        headers={"Authorization": f"Bearer {admin_token}"},
         json={
             "nombre": "Plan Boutique A", "precio_mensual": 249.90, "moneda": "USD",
             "beneficios": ["Atención prioritaria", "Panel intermedio"],
@@ -513,7 +514,7 @@ def test_three_plans_are_configurable_without_cross_tenant_changes(client, db_se
     assert updated.json()["moneda"] == "USD"
 
     tenant_b_custom = next(
-        plan for plan in client.get("/api/v1/planes/admin", headers=headers_b).json()
+        plan for plan in client.get("/api/v1/planes", headers=headers_b).json()
         if plan["codigo"] == "intermedio"
     )
     assert tenant_b_custom["nombre"] == "Intermedio"
@@ -523,7 +524,7 @@ def test_three_plans_are_configurable_without_cross_tenant_changes(client, db_se
         f"/api/v1/planes/admin/basico?empresa_id={empresa_b['id']}",
         headers=headers_a, json={"precio_mensual": 999},
     )
-    assert cross_update.status_code == 404
+    assert cross_update.status_code == 403
 
     register = client.post(
         "/api/v1/auth/register",
@@ -547,13 +548,14 @@ def test_three_plans_are_configurable_without_cross_tenant_changes(client, db_se
     )
     assert forbidden_client_contract.status_code == 403
 
+    paypal_order = client.post(
+        "/api/v1/planes/paypal/crear-orden", headers=headers_a,
+        json={"plan_codigo": "intermedio"},
+    )
+    assert paypal_order.status_code == 200, paypal_order.text
     contracted = client.post(
-        "/api/v1/planes/contratar", headers=headers_a,
-        json={
-            "plan_codigo": "intermedio",
-            "pago_confirmado": True,
-            "referencia_pago": "TEST-CONTRACT-001",
-        },
+        "/api/v1/planes/paypal/capturar-orden", headers=headers_a,
+        json={"paypal_order_id": paypal_order.json()["id"]},
     )
     assert contracted.status_code == 200, contracted.text
     assert contracted.json()["plan_nombre"] == "Plan Boutique A"
@@ -611,8 +613,8 @@ def test_plan_minimums_and_operational_capabilities_are_enforced(
     master_headers = {"Authorization": f"Bearer {admin_token}"}
 
     basic = client.put(
-        "/api/v1/planes/admin/basico",
-        headers=tenant_headers,
+        f"/api/v1/planes/admin/basico?empresa_id={company['id']}",
+        headers=master_headers,
         json={
             "capacidades": {
                 "productos": False,
@@ -654,8 +656,8 @@ def test_plan_minimums_and_operational_capabilities_are_enforced(
     assert assigned.json()["max_sucursales"] == 5
 
     intermediate = client.put(
-        "/api/v1/planes/admin/intermedio",
-        headers=tenant_headers,
+        f"/api/v1/planes/admin/intermedio?empresa_id={company['id']}",
+        headers=master_headers,
         json={"capacidades": {"chatbot": False, "predicciones": True}},
     )
     assert intermediate.status_code == 200, intermediate.text
@@ -702,18 +704,23 @@ def test_plan_minimums_and_operational_capabilities_are_enforced(
     assert unpaid.status_code == 400
     assert "confirmar el pago" in unpaid.json()["detail"]
 
+    priced = client.put(
+        f"/api/v1/planes/admin/intermedio?empresa_id={company['id']}", headers=master_headers,
+        json={"precio_mensual": 49.90, "moneda": "USD"},
+    )
+    assert priced.status_code == 200, priced.text
+    renewal_order = client.post(
+        "/api/v1/planes/paypal/crear-orden", headers=tenant_headers,
+        json={"plan_codigo": "intermedio"},
+    )
+    assert renewal_order.status_code == 200, renewal_order.text
     renewed = client.post(
-        "/api/v1/planes/contratar",
-        headers=tenant_headers,
-        json={
-            "plan_codigo": "intermedio",
-            "pago_confirmado": True,
-            "referencia_pago": "TEST-RENEWAL-001",
-        },
+        "/api/v1/planes/paypal/capturar-orden", headers=tenant_headers,
+        json={"paypal_order_id": renewal_order.json()["id"]},
     )
     assert renewed.status_code == 200, renewed.text
     assert renewed.json()["estado_pago"] == "pagado"
-    assert renewed.json()["referencia_pago"] == "TEST-RENEWAL-001"
+    assert renewed.json()["referencia_pago"].startswith("CAP-PAYPAL-")
 
     db_session.refresh(company_row)
     assert company_row.active is True
@@ -722,3 +729,35 @@ def test_plan_minimums_and_operational_capabilities_are_enforced(
         "/api/v1/reportes/dashboard-stats", headers=tenant_headers
     )
     assert restored_report.status_code == 200, restored_report.text
+
+
+def test_client_can_register_in_multiple_tenants(client, db_session, admin_token):
+    platform_admin = db_session.query(User).filter(User.email == "admin_test@stylestore.com").one()
+    platform_admin.is_platform_admin = True
+    db_session.commit()
+    company_a = _create_empresa(client, admin_token, "multi-a", "admin-a@multi.example.com")
+    company_b = _create_empresa(client, admin_token, "multi-b", "admin-b@multi.example.com")
+
+    public = client.get("/api/v1/empresas/publicas/registro")
+    assert public.status_code == 200
+    assert {"multi-a", "multi-b"}.issubset({item["codigo"] for item in public.json()})
+
+    registered = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "multi-client@example.com",
+            "password": "ClientPass2026!",
+            "name": "Cliente Multi",
+            "empresa_codigos": ["multi-a", "multi-b"],
+        },
+    )
+    assert registered.status_code == 201, registered.text
+    user = db_session.query(User).filter(User.email == "multi-client@example.com").one()
+    memberships = db_session.query(UserEmpresa).filter(UserEmpresa.user_id == user.id).all()
+    assert {item.empresa_id for item in memberships} == {company_a["id"], company_b["id"]}
+
+    for email in ("admin-a@multi.example.com", "admin-b@multi.example.com"):
+        headers = {"Authorization": f"Bearer {_login(client, email)}"}
+        listed = client.get("/api/v1/clientes", headers=headers)
+        assert listed.status_code == 200, listed.text
+        assert any(item["email"] == "multi-client@example.com" for item in listed.json())

@@ -66,6 +66,7 @@ class SucursalResponse(SucursalBase):
 
     id: int
     empresa_id: int | None = None
+    empresa_nombre: str | None = None
     created_at: datetime
     updated_at: datetime
 

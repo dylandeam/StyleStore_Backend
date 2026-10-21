@@ -7,6 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.config import settings
+settings.ALLOW_MOCK_PAYPAL = True
 from app.database import Base, get_db
 from app.main import app
 

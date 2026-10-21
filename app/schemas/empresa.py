@@ -42,6 +42,13 @@ class EmpresaResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class EmpresaPublicResponse(BaseModel):
+    codigo: str
+    nombre: str
+
+    model_config = {"from_attributes": True}
+
+
 class EmpresaConAdminResponse(EmpresaResponse):
     admin_user_id: int
 
@@ -117,8 +124,25 @@ class EmpresaSuscripcionResponse(BaseModel):
     max_sucursales: int | None = None
 
 
+class TenantBranchSummary(BaseModel):
+    id: int
+    nombre: str
+    ciudad: str
+    active: bool
+
+
+class TenantUserSummary(BaseModel):
+    id: int
+    nombre: str
+    email: EmailStr
+    rol: str
+    active: bool
+
+
 class EmpresaResumenResponse(EmpresaResponse):
     admin: TenantAdminResponse | None = None
     suscripcion: EmpresaSuscripcionResponse | None = None
     usuarios_count: int = 0
     sucursales_count: int = 0
+    sucursales: list[TenantBranchSummary] = []
+    usuarios: list[TenantUserSummary] = []

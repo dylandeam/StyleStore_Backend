@@ -7,6 +7,7 @@ from app.models.empresa import Empresa
 from app.models.permission import Permission
 from app.models.role_permission import RolePermission
 from app.models.user import User
+from app.models.user_empresa import UserEmpresa
 from app.models.password_reset_token import PasswordResetToken
 from app.models.bitacora import Bitacora
 from app.models.sucursal import Sucursal
@@ -50,6 +51,7 @@ __all__ = [
     "Permission",
     "RolePermission",
     "User",
+    "UserEmpresa",
     "TokenBlacklist",
     "PasswordResetToken",
     "Bitacora",
