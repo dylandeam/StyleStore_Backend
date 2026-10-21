@@ -28,6 +28,7 @@ from app.services.tenant_scope import get_scoped_sucursal, scope_by_empresa, sco
 from app.models.sucursal import Sucursal
 from app.models.reserva import Reserva
 from app.services.agenda_service import hour_blocks
+from app.services.promocion_service import PromocionService
 
 router = APIRouter(prefix="/carrito", tags=["Carrito de Compras"])
 
@@ -61,12 +62,17 @@ def _get_or_create_cliente(user: User, db: Session) -> Cliente:
     return cli
 
 
-def _serialize_carrito(carrito: Carrito) -> dict:
+def _serialize_carrito(carrito: Carrito, db: Session) -> dict:
     items_resp = []
     total = Decimal("0.00")
     for it in carrito.items:
         si = it.stock_inventario
-        sub = it.precio_unitario * it.cantidad
+        precio_original = it.precio_unitario
+        precio_actual = it.precio_unitario
+        porcentaje_promocion = 0
+        if si and si.producto_color and si.producto_color.producto:
+            precio_original, precio_actual, porcentaje_promocion = PromocionService(db).precio_stock(si)
+        sub = precio_actual * it.cantidad
         total += sub
 
         suc_id = None
@@ -92,7 +98,9 @@ def _serialize_carrito(carrito: Carrito) -> dict:
             "id": it.id,
             "stock_inventario_id": it.stock_inventario_id,
             "cantidad": it.cantidad,
-            "precio_unitario": it.precio_unitario,
+            "precio_unitario": precio_actual,
+            "precio_original": precio_original,
+            "porcentaje_promocion": porcentaje_promocion,
             "subtotal": sub,
             "producto_codigo": prod_cod,
             "producto_nombre": prod_nom,
@@ -138,7 +146,7 @@ async def get_my_cart(
         db.commit()
         db.refresh(carrito)
 
-    return _serialize_carrito(carrito)
+    return _serialize_carrito(carrito, db)
 
 
 @router.post("/items", response_model=CarritoResponse, summary="Agregar producto al carrito")
@@ -200,7 +208,7 @@ async def add_item_to_cart(
 
     db.commit()
     db.refresh(carrito)
-    return _serialize_carrito(carrito)
+    return _serialize_carrito(carrito, db)
 
 
 @router.patch("/items/{item_id}", response_model=CarritoResponse, summary="Actualizar cantidad de un ítem")
@@ -233,7 +241,7 @@ async def update_cart_item(
     carrito = db.query(Carrito).filter(Carrito.id == item.carrito_id).first()
     if not carrito:
         raise NotFoundException("Carrito no encontrado.")
-    return _serialize_carrito(carrito)
+    return _serialize_carrito(carrito, db)
 
 
 @router.delete("/items/{item_id}", response_model=CarritoResponse, summary="Quitar ítem del carrito")
@@ -260,7 +268,7 @@ async def remove_cart_item(
     carrito = db.query(Carrito).filter(Carrito.id == carrito_id).first()
     if not carrito:
         raise NotFoundException("Carrito no encontrado.")
-    return _serialize_carrito(carrito)
+    return _serialize_carrito(carrito, db)
 
 
 @router.post("/confirmar", summary="Confirmar carrito y generar Orden de Venta", dependencies=[Depends(require_plan_capability("ventas"))])
@@ -289,6 +297,10 @@ async def confirm_cart(
         total_venta = Decimal("0.00")
         detalles_orden = []
         sucursal_id_desde_stock = None
+        promo_service = PromocionService(db)
+        cupon = promo_service.validar_codigo(current_user.empresa_id, payload.codigo_descuento, "online", lock=True)
+        subtotal_original = Decimal("0.00")
+        descuento_promociones = Decimal("0.00")
 
         # Validar y descontar stock atómicamente
         for item in carrito.items:
@@ -309,7 +321,10 @@ async def confirm_cart(
             stock.cantidad -= item.cantidad
 
             # Datos para detalle venta
-            subtotal = item.precio_unitario * item.cantidad
+            precio_original, precio_final, _ = promo_service.precio_stock(stock)
+            subtotal = precio_final * item.cantidad
+            subtotal_original += precio_original * item.cantidad
+            descuento_promociones += (precio_original - precio_final) * item.cantidad
             total_venta += subtotal
 
             prod_nom = "Prenda"
@@ -328,9 +343,14 @@ async def confirm_cart(
                 "color_nombre": col_nom,
                 "talla_nombre": talla_nom,
                 "cantidad": item.cantidad,
-                "precio_unitario": item.precio_unitario,
+                "precio_unitario": precio_final,
                 "subtotal": subtotal,
             })
+
+        descuento_codigo = promo_service._money(total_venta * Decimal(cupon.porcentaje if cupon else 0) / Decimal(100))
+        total_venta = promo_service._money(total_venta - descuento_codigo)
+        if cupon:
+            cupon.usos_actual += 1
 
         # La orden de venta se asocia directamente a la sucursal de donde procede el stock real de las prendas
         sucursal_final = sucursal_id_desde_stock or payload.sucursal_id
@@ -363,6 +383,11 @@ async def confirm_cart(
             fecha=now.date(),
             estado="pendiente_pago",
             total=total_venta,
+            subtotal_productos=promo_service._money(subtotal_original),
+            descuento_promociones=promo_service._money(descuento_promociones),
+            descuento_codigo=descuento_codigo,
+            codigo_descuento=cupon.codigo if cupon else None,
+            porcentaje_codigo=cupon.porcentaje if cupon else 0,
             tipo_venta="en linea",
             codigo_cliente=cliente.codigo,
             sucursal_id=sucursal_final,
@@ -477,6 +502,10 @@ async def checkout_cart(
         total_prendas = Decimal("0.00")
         detalles_orden = []
         sucursal_id_desde_stock = None
+        promo_service = PromocionService(db)
+        cupon = promo_service.validar_codigo(current_user.empresa_id, payload.codigo_descuento, "online", lock=True)
+        subtotal_original = Decimal("0.00")
+        descuento_promociones = Decimal("0.00")
 
         for item in carrito.items:
             stock = _get_scoped_stock(db, current_user, item.stock_inventario_id, lock=True)
@@ -493,7 +522,10 @@ async def checkout_cart(
                 sucursal_id_desde_stock = stock.sucursal_id
 
             stock.cantidad -= item.cantidad
-            subtotal = item.precio_unitario * item.cantidad
+            precio_original, precio_final, _ = promo_service.precio_stock(stock)
+            subtotal = precio_final * item.cantidad
+            subtotal_original += precio_original * item.cantidad
+            descuento_promociones += (precio_original - precio_final) * item.cantidad
             total_prendas += subtotal
 
             prod_nom = "Prenda"
@@ -512,9 +544,14 @@ async def checkout_cart(
                 "color_nombre": col_nom,
                 "talla_nombre": talla_nom,
                 "cantidad": item.cantidad,
-                "precio_unitario": item.precio_unitario,
+                "precio_unitario": precio_final,
                 "subtotal": subtotal,
             })
+
+        descuento_codigo = promo_service._money(total_prendas * Decimal(cupon.porcentaje if cupon else 0) / Decimal(100))
+        total_prendas = promo_service._money(total_prendas - descuento_codigo)
+        if cupon:
+            cupon.usos_actual += 1
 
         sucursal_final = sucursal_id_desde_stock or payload.sucursal_id
         if not sucursal_final:
@@ -545,6 +582,11 @@ async def checkout_cart(
             fecha=now.date(),
             estado="pendiente_pago",
             total=total_prendas,
+            subtotal_productos=promo_service._money(subtotal_original),
+            descuento_promociones=promo_service._money(descuento_promociones),
+            descuento_codigo=descuento_codigo,
+            codigo_descuento=cupon.codigo if cupon else None,
+            porcentaje_codigo=cupon.porcentaje if cupon else 0,
             tipo_venta="en linea",
             codigo_cliente=cliente.codigo,
             sucursal_id=sucursal_final,
@@ -702,4 +744,4 @@ async def list_admin_carritos(
     if not current_user.is_platform_admin:
         query = query.filter(User.empresa_id == current_user.empresa_id)
     carritos = query.order_by(Carrito.created_at.desc()).all()
-    return [_serialize_carrito(c) for c in carritos]
+    return [_serialize_carrito(c, db) for c in carritos]

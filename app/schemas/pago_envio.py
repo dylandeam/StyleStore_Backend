@@ -163,6 +163,7 @@ class VentaPresencialCreate(BaseModel):
     items: list[VentaItemCreate] = Field(..., min_length=1)
     metodo_pago: str = Field("efectivo", description="'efectivo' o 'qr'")
     efectivo_recibido: Decimal | None = None
+    codigo_descuento: str | None = Field(None, max_length=40)
 
 
 class DetalleVentaResponse(BaseModel):
@@ -182,6 +183,11 @@ class OrdenVentaResponse(BaseModel):
     fecha: date
     estado: str
     total: Decimal
+    subtotal_productos: Decimal | None = None
+    descuento_promociones: Decimal = Decimal("0.00")
+    descuento_codigo: Decimal = Decimal("0.00")
+    codigo_descuento: str | None = None
+    porcentaje_codigo: int = 0
     tipo_venta: str
     codigo_cliente: str
     metodo_pago: str | None = None

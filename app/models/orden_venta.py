@@ -21,6 +21,11 @@ class OrdenVenta(Base):
     fecha: Mapped[date] = mapped_column(Date, default=func.current_date(), nullable=False)
     estado: Mapped[str] = mapped_column(String(30), default="pendiente_pago", nullable=False)  # 'pendiente_pago', 'pagada', 'en_camino', 'entregada', 'cancelada'
     total: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=0.00)
+    subtotal_productos: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    descuento_promociones: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=0.00, server_default="0")
+    descuento_codigo: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=0.00, server_default="0")
+    codigo_descuento: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    porcentaje_codigo: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     tipo_venta: Mapped[str] = mapped_column(String(30), nullable=False, default="en linea")  # 'presencial' | 'en linea'
 
     codigo_cliente: Mapped[str] = mapped_column(

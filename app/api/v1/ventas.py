@@ -22,6 +22,7 @@ from app.api.deps import get_current_user, require_permission, require_plan_capa
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.bitacora_service import BitacoraService
 from app.services.tenant_scope import get_scoped_sucursal, scope_by_sucursal
+from app.services.promocion_service import PromocionService
 
 router = APIRouter(prefix="/ventas", tags=["Ventas"])
 
@@ -85,6 +86,11 @@ def _serialize_orden(o: OrdenVenta) -> dict:
         "fecha": o.fecha,
         "estado": o.estado,
         "total": o.total,
+        "subtotal_productos": o.subtotal_productos,
+        "descuento_promociones": o.descuento_promociones,
+        "descuento_codigo": o.descuento_codigo,
+        "codigo_descuento": o.codigo_descuento,
+        "porcentaje_codigo": o.porcentaje_codigo,
         "tipo_venta": o.tipo_venta,
         "metodo_pago": o.metodo_pago,
         "tipo_entrega": o.tipo_entrega,
@@ -224,6 +230,10 @@ async def create_venta_presencial(
     now = datetime.now()
     total_venta = Decimal("0.00")
     detalles_orden = []
+    promo_service = PromocionService(db)
+    cupon = promo_service.validar_codigo(current_user.empresa_id, payload.codigo_descuento, "presencial", lock=True)
+    subtotal_original = Decimal("0.00")
+    descuento_promociones = Decimal("0.00")
 
     sucursal_id_detectada = payload.sucursal_id
     if payload.sucursal_id:
@@ -277,7 +287,9 @@ async def create_venta_presencial(
         if stock.producto_color:
             col_nom = stock.producto_color.color.nombre if stock.producto_color.color else None
             if stock.producto_color.producto:
-                precio = stock.precio_variante if stock.precio_variante is not None else stock.producto_color.producto.precio
+                precio_original, precio, _ = promo_service.precio_stock(stock)
+                subtotal_original += precio_original * item.cantidad
+                descuento_promociones += (precio_original - precio) * item.cantidad
                 prod_nom = stock.producto_color.producto.nombre
         if stock.talla:
             talla_nom = stock.talla.nombre
@@ -296,6 +308,11 @@ async def create_venta_presencial(
         })
 
     # Cálculo de vuelto y validación de efectivo si aplica
+    descuento_codigo = promo_service._money(total_venta * Decimal(cupon.porcentaje if cupon else 0) / Decimal(100))
+    total_venta = promo_service._money(total_venta - descuento_codigo)
+    if cupon:
+        cupon.usos_actual += 1
+
     metodo = (payload.metodo_pago or "efectivo").lower()
     recibido = payload.efectivo_recibido or total_venta
     cambio = Decimal("0.00")
@@ -309,6 +326,11 @@ async def create_venta_presencial(
         fecha=now.date(),
         estado="pagada",
         total=total_venta,
+        subtotal_productos=promo_service._money(subtotal_original),
+        descuento_promociones=promo_service._money(descuento_promociones),
+        descuento_codigo=descuento_codigo,
+        codigo_descuento=cupon.codigo if cupon else None,
+        porcentaje_codigo=cupon.porcentaje if cupon else 0,
         tipo_venta="presencial",
         metodo_pago=metodo,
         ticket_numero=ticket_num,

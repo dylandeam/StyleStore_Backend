@@ -20,6 +20,8 @@ class DetalleCarritoResponse(BaseModel):
     stock_inventario_id: int
     cantidad: int
     precio_unitario: Decimal
+    precio_original: Decimal | None = None
+    porcentaje_promocion: int = 0
     subtotal: Decimal = Decimal("0.00")
     producto_codigo: str | None = None
     producto_nombre: str | None = None
@@ -52,6 +54,7 @@ class ConfirmarCarritoRequest(BaseModel):
     tipo_entrega: str | None = Field(None, pattern="^(delivery|recojo)$")
     fecha_recojo: date | None = None
     hora_recojo: time | None = None
+    codigo_descuento: str | None = Field(None, max_length=40)
 
 
 class CheckoutRequest(BaseModel):
@@ -67,3 +70,4 @@ class CheckoutRequest(BaseModel):
     tipo_entrega: str | None = Field(None, pattern="^(delivery|recojo)$")
     fecha_recojo: date | None = None
     hora_recojo: time | None = None
+    codigo_descuento: str | None = Field(None, max_length=40)
