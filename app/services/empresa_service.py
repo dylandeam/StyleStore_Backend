@@ -2,7 +2,8 @@
 from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
+from app.models.user_empresa import UserEmpresa
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ConflictException, NotFoundException
@@ -83,7 +84,17 @@ class EmpresaService:
                 "max_sucursales": contract.plan.max_sucursales,
             }
         branches = self.db.query(Sucursal).filter(Sucursal.empresa_id == empresa.id).order_by(Sucursal.name).all()
-        users = self.db.query(User).filter(User.empresa_id == empresa.id).order_by(User.name).all()
+        users = (
+            self.db.query(User)
+            .outerjoin(UserEmpresa, UserEmpresa.user_id == User.id)
+            .filter(or_(
+                User.empresa_id == empresa.id,
+                (UserEmpresa.empresa_id == empresa.id) & (UserEmpresa.active.is_(True)),
+            ))
+            .distinct()
+            .order_by(User.name)
+            .all()
+        )
         return {
             "id": empresa.id,
             "codigo": empresa.codigo,
@@ -94,7 +105,7 @@ class EmpresaService:
             "updated_at": empresa.updated_at,
             "admin": admin,
             "suscripcion": subscription,
-            "usuarios_count": self.db.query(func.count(User.id)).filter(User.empresa_id == empresa.id).scalar() or 0,
+            "usuarios_count": len(users),
             "sucursales_count": self.db.query(func.count(Sucursal.id)).filter(Sucursal.empresa_id == empresa.id).scalar() or 0,
             "sucursales": [
                 {"id": item.id, "nombre": item.name, "ciudad": item.city, "active": item.active}

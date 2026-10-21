@@ -259,10 +259,31 @@ class ClienteService:
             )
 
         user_id = cli.user_id
-        self.db.delete(cli)
         user = self.db.query(User).filter(User.id == user_id).first()
-        if user:
-            user.is_active = False
+        if not current_user.is_platform_admin:
+            membership = self.db.query(UserEmpresa).filter(
+                UserEmpresa.user_id == user_id,
+                UserEmpresa.empresa_id == current_user.empresa_id,
+                UserEmpresa.active.is_(True),
+            ).first()
+            if membership:
+                membership.active = False
+            remaining = self.db.query(UserEmpresa).filter(
+                UserEmpresa.user_id == user_id,
+                UserEmpresa.empresa_id != current_user.empresa_id,
+                UserEmpresa.active.is_(True),
+            ).first()
+            if remaining:
+                if user and user.empresa_id == current_user.empresa_id:
+                    user.empresa_id = remaining.empresa_id
+            else:
+                self.db.delete(cli)
+                if user:
+                    user.is_active = False
+        else:
+            self.db.delete(cli)
+            if user:
+                user.is_active = False
 
         self.db.commit()
 
@@ -274,4 +295,4 @@ class ClienteService:
                 module="clientes",
             )
 
-        return {"message": f"Cliente '{codigo}' eliminado exitosamente."}
+        return {"message": f"Cliente '{codigo}' retirado del tenant exitosamente."}

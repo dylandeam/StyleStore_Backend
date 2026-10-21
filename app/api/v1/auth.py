@@ -6,10 +6,15 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.schemas.auth import RegisterRequest, LoginRequest, TokenResponse, RefreshTokenRequest
+from app.schemas.auth import (
+    RegisterRequest, LoginRequest, TokenResponse, RefreshTokenRequest,
+    TenantAccessResponse, TenantSelectRequest,
+)
 from app.schemas.user import UserResponse
 from app.schemas.common import MessageResponse
 from app.services.auth_service import AuthService
+from app.api.deps import get_current_user
+from app.models.user import User
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 security = HTTPBearer()
@@ -70,3 +75,20 @@ async def refresh_token(
     """Refresh the access token using a refresh token."""
     auth_service = AuthService(db)
     return auth_service.refresh_access_token(request.refresh_token)
+
+
+@router.get("/tenants", response_model=list[TenantAccessResponse], summary="Listar tenants de la cuenta")
+async def list_my_tenants(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return AuthService(db).list_tenants(current_user)
+
+
+@router.post("/tenants/select", response_model=TokenResponse, summary="Cambiar tenant activo")
+async def select_my_tenant(
+    request: TenantSelectRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return AuthService(db).select_tenant(current_user, request.empresa_id)

@@ -4,6 +4,8 @@ Authentication service — business logic for register, login, logout.
 from sqlalchemy.orm import Session
 
 from app.models.user import User
+from app.models.empresa import Empresa
+from app.models.user_empresa import UserEmpresa
 from app.models.token_blacklist import TokenBlacklist
 from app.schemas.auth import RegisterRequest, TokenResponse
 from app.core.security import (
@@ -218,6 +220,54 @@ class AuthService:
         return TokenResponse(
             access_token=access_token,
             refresh_token=refresh_token,
+            token_type="bearer",
+        )
+
+    def list_tenants(self, current_user: User) -> list[dict]:
+        memberships = (
+            self.db.query(UserEmpresa)
+            .join(Empresa, UserEmpresa.empresa_id == Empresa.id)
+            .filter(UserEmpresa.user_id == current_user.id, UserEmpresa.active.is_(True))
+            .order_by(Empresa.nombre)
+            .all()
+        )
+        return [
+            {
+                "id": membership.empresa.id,
+                "codigo": membership.empresa.codigo,
+                "nombre": membership.empresa.nombre,
+                "active": membership.empresa.active,
+                "is_current": membership.empresa_id == current_user.empresa_id,
+            }
+            for membership in memberships
+        ]
+
+    def select_tenant(self, current_user: User, empresa_id: int) -> TokenResponse:
+        membership = self.db.query(UserEmpresa).filter(
+            UserEmpresa.user_id == current_user.id,
+            UserEmpresa.empresa_id == empresa_id,
+            UserEmpresa.active.is_(True),
+        ).first()
+        if not membership:
+            raise BadRequestException("Tu cuenta no está registrada en esa empresa.")
+        empresa = self.db.query(Empresa).filter(Empresa.id == empresa_id).first()
+        if not empresa or not empresa.active:
+            raise BadRequestException("La empresa seleccionada no está disponible actualmente.")
+        current_user.empresa_id = empresa_id
+        self.db.commit()
+        token_data = {
+            "sub": str(current_user.id),
+            "role": current_user.role,
+            "email": current_user.email,
+            "empresa_id": empresa_id,
+        }
+        BitacoraService.registrar(
+            self.db, current_user,
+            f"Cambió su contexto activo al tenant '{empresa.nombre}'", "auth",
+        )
+        return TokenResponse(
+            access_token=create_access_token(data=token_data),
+            refresh_token=create_refresh_token(data={"sub": str(current_user.id)}),
             token_type="bearer",
         )
 

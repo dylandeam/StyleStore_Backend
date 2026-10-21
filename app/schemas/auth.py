@@ -64,3 +64,15 @@ class RefreshTokenRequest(BaseModel):
     """Schema for token refresh."""
 
     refresh_token: str = Field(..., description="JWT refresh token")
+
+
+class TenantSelectRequest(BaseModel):
+    empresa_id: int = Field(..., gt=0)
+
+
+class TenantAccessResponse(BaseModel):
+    id: int
+    codigo: str
+    nombre: str
+    active: bool
+    is_current: bool

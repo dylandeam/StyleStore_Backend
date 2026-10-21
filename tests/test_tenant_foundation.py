@@ -756,8 +756,42 @@ def test_client_can_register_in_multiple_tenants(client, db_session, admin_token
     memberships = db_session.query(UserEmpresa).filter(UserEmpresa.user_id == user.id).all()
     assert {item.empresa_id for item in memberships} == {company_a["id"], company_b["id"]}
 
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "multi-client@example.com", "password": "ClientPass2026!"},
+    )
+    client_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    tenants = client.get("/api/v1/auth/tenants", headers=client_headers)
+    assert tenants.status_code == 200, tenants.text
+    assert {item["id"] for item in tenants.json()} == {company_a["id"], company_b["id"]}
+    switched = client.post(
+        "/api/v1/auth/tenants/select", headers=client_headers,
+        json={"empresa_id": company_b["id"]},
+    )
+    assert switched.status_code == 200, switched.text
+    switched_headers = {"Authorization": f"Bearer {switched.json()['access_token']}"}
+    assert client.get("/api/v1/users/me", headers=switched_headers).json()["empresa_id"] == company_b["id"]
+
+    admin_headers = []
     for email in ("admin-a@multi.example.com", "admin-b@multi.example.com"):
         headers = {"Authorization": f"Bearer {_login(client, email)}"}
+        admin_headers.append(headers)
         listed = client.get("/api/v1/clientes", headers=headers)
         assert listed.status_code == 200, listed.text
         assert any(item["email"] == "multi-client@example.com" for item in listed.json())
+
+    removed = client.delete(
+        f"/api/v1/clientes/{db_session.query(Cliente).filter(Cliente.user_id == user.id).one().codigo}",
+        headers=admin_headers[0],
+    )
+    assert removed.status_code == 200, removed.text
+    assert not any(
+        item["email"] == "multi-client@example.com"
+        for item in client.get("/api/v1/clientes", headers=admin_headers[0]).json()
+    )
+    assert any(
+        item["email"] == "multi-client@example.com"
+        for item in client.get("/api/v1/clientes", headers=admin_headers[1]).json()
+    )
+    db_session.refresh(user)
+    assert user.is_active is True

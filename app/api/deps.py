@@ -25,9 +25,11 @@ security = HTTPBearer()
 
 def _renewal_access_allowed(request: Request, user: User) -> bool:
     """Keep only the minimum account surface available to an expired tenant admin."""
+    path = request.url.path.rstrip("/")
+    if path in {"/api/v1/auth/tenants", "/api/v1/auth/tenants/select"}:
+        return True
     if user.role != "administrador":
         return False
-    path = request.url.path.rstrip("/")
     return path.startswith("/api/v1/planes") or (
         request.method == "GET" and path == "/api/v1/users/me"
     )
