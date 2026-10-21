@@ -18,6 +18,6 @@ Incluye rechazo por rol, rechazo para plan Básico, acceso para Profesional y
 aislamiento del contexto analítico entre empresas A/B. El build Angular de
 producción y sus `2` pruebas también aprobaron antes del despliegue.
 
-El dominio histórico `stylestorebackend-production.up.railway.app` de la guía devuelve actualmente `Application not found`. El frontend configurado y operativo consume `web-production-07e73.up.railway.app`; no se cambió el dominio sin autorización funcional, pero se deja registrada la diferencia para corregir documentación/infraestructura final.
+El dominio histórico `stylestorebackend-production.up.railway.app` devuelve `Application not found` porque ya no está asociado al servicio. El dominio vigente y verificado es `web-production-07e73.up.railway.app`; la guía y la caché PWA fueron corregidas el 21/10/2026 para conservar una única referencia operativa.
 
 Pendiente de evidencia manual: instalación desde navegador, recarga sin red, cierre/reapertura con IndexedDB/SQLite y APK actualizado en dispositivo.
