@@ -35,7 +35,7 @@ from app.models.uploaded_file import UploadedFile
 from app.models.backup_log import BackupLog
 from app.models.backup_config import BackupConfig
 from app.models.notificacion import Notificacion, SuscripcionProximamente, SuscripcionStock
-from app.models.cambio_devolucion import CambioDevolucion
+from app.models.cambio_devolucion import CambioDevolucion, SaldoFavorCliente, MovimientoSaldoFavor
 from app.models.compra import Compra, DetalleCompra
 from app.models.outfit import Outfit, OutfitItem
 from app.models.qr_pago_config import QRPagoConfig
@@ -89,6 +89,8 @@ __all__ = [
     "SuscripcionProximamente",
     "SuscripcionStock",
     "CambioDevolucion",
+    "SaldoFavorCliente",
+    "MovimientoSaldoFavor",
     "Compra",
     "DetalleCompra",
     "Outfit",

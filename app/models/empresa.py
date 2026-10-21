@@ -1,7 +1,7 @@
 """Empresa (tenant) model for the multi-company SaaS boundary."""
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, String, func
+from sqlalchemy import Boolean, DateTime, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -17,6 +17,7 @@ class Empresa(Base):
     nombre: Mapped[str] = mapped_column(String(150), unique=True, index=True, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
     inactive_reason: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    plazo_cambios_dias: Mapped[int] = mapped_column(Integer, default=7, server_default="7", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

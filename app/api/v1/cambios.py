@@ -2,6 +2,7 @@
 Endpoints de Cambios y Devoluciones (v6 Punto 9).
 """
 from datetime import date, time
+from decimal import Decimal
 from typing import Optional
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -13,6 +14,10 @@ from app.models.empleado import Empleado
 from app.services.cambio_service import CambioService
 from app.api.deps import get_current_user
 from app.services.tenant_scope import get_scoped_sucursal
+from app.models.empresa import Empresa
+from app.models.stock_inventario import StockInventario
+from app.models.cambio_devolucion import SaldoFavorCliente, MovimientoSaldoFavor
+from app.services.tenant_scope import scope_by_sucursal
 
 router = APIRouter(prefix="/cambios", tags=["Cambios y Devoluciones"])
 
@@ -39,6 +44,83 @@ class ResponderCambioRequest(BaseModel):
 class CompletarCajaRequest(BaseModel):
     reponer_prenda_original: bool = True
     nuevo_stock_inventario_id: Optional[int] = None
+    metodo_pago_diferencia: Optional[str] = Field(None, pattern="^(efectivo|qr)$")
+    efectivo_recibido: Optional[Decimal] = Field(None, ge=0)
+    metodo_reembolso: Optional[str] = Field(None, pattern="^(efectivo|transferencia)$")
+
+
+class PoliticaCambiosRequest(BaseModel):
+    plazo_cambios_dias: int = Field(..., ge=1, le=90)
+
+
+def _campos_financieros(s):
+    return {
+        "nuevo_stock_inventario_id": s.nuevo_stock_inventario_id,
+        "precio_original": s.precio_original if s.precio_original is not None else (s.detalle_venta.precio_unitario if s.detalle_venta else None),
+        "precio_nuevo": s.precio_nuevo,
+        "monto_adicional": s.monto_adicional,
+        "saldo_favor_generado": s.saldo_favor_generado,
+        "monto_reembolsado": s.monto_reembolsado,
+        "metodo_pago_diferencia": s.metodo_pago_diferencia,
+        "nota_venta_numero": s.nota_venta_numero,
+        "orden_ajuste_id": s.orden_ajuste_id,
+    }
+
+
+@router.get("/politica", summary="Consultar plazo de cambios del tenant")
+async def consultar_politica(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    empresa = db.query(Empresa).filter(Empresa.id == current_user.empresa_id).first()
+    return {"plazo_cambios_dias": empresa.plazo_cambios_dias if empresa else 7}
+
+
+@router.put("/politica", summary="Configurar plazo de cambios del tenant")
+async def actualizar_politica(payload: PoliticaCambiosRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != "administrador" or current_user.is_platform_admin:
+        raise HTTPException(status_code=403, detail="Solo el administrador del tenant puede definir esta política.")
+    empresa = db.query(Empresa).filter(Empresa.id == current_user.empresa_id).first()
+    if not empresa:
+        raise HTTPException(status_code=404, detail="Tenant no encontrado.")
+    empresa.plazo_cambios_dias = payload.plazo_cambios_dias
+    db.commit()
+    return {"plazo_cambios_dias": empresa.plazo_cambios_dias, "message": "Política actualizada."}
+
+
+@router.get("/mi-saldo", summary="Consultar saldo a favor del cliente en el tenant")
+async def consultar_mi_saldo(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    cuenta = db.query(SaldoFavorCliente).filter(
+        SaldoFavorCliente.empresa_id == current_user.empresa_id,
+        SaldoFavorCliente.user_id == current_user.id,
+    ).first()
+    movimientos = []
+    if cuenta:
+        movimientos = db.query(MovimientoSaldoFavor).filter(
+            MovimientoSaldoFavor.saldo_favor_id == cuenta.id
+        ).order_by(MovimientoSaldoFavor.created_at.desc()).limit(20).all()
+    return {
+        "saldo": cuenta.saldo if cuenta else Decimal("0.00"),
+        "movimientos": [{
+            "id": m.id, "tipo": m.tipo, "monto": m.monto,
+            "saldo_resultante": m.saldo_resultante, "descripcion": m.descripcion,
+            "created_at": m.created_at,
+        } for m in movimientos],
+    }
+
+
+@router.get("/inventario-disponible", summary="Prendas disponibles para completar un cambio")
+async def inventario_para_cambio(sucursal_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    get_scoped_sucursal(db, current_user, sucursal_id)
+    stocks = scope_by_sucursal(db.query(StockInventario), db, current_user, StockInventario.sucursal_id).filter(
+        StockInventario.sucursal_id == sucursal_id, StockInventario.cantidad > 0
+    ).all()
+    return [{
+        "stock_inventario_id": s.id,
+        "producto_codigo": s.producto_color.producto_codigo,
+        "producto_nombre": s.producto_color.producto.nombre,
+        "color_nombre": s.producto_color.color.nombre if s.producto_color.color else None,
+        "talla_nombre": s.talla.nombre if s.talla else None,
+        "precio": s.precio_variante if s.precio_variante is not None else s.producto_color.producto.precio,
+        "cantidad": s.cantidad,
+    } for s in stocks if s.producto_color and s.producto_color.producto]
 
 
 @router.post("", summary="Registrar solicitud de cambio o devolución (Cliente)")
@@ -98,6 +180,7 @@ async def get_mis_solicitudes(
             "talla_nueva": s.talla_nueva.nombre if s.talla_nueva else None,
             "color_nuevo": s.color_nuevo.nombre if s.color_nuevo else None,
             "created_at": s.created_at.isoformat() if s.created_at else None,
+            **_campos_financieros(s),
         })
     return resultado
 
@@ -160,6 +243,7 @@ async def listar_solicitudes_staff(
             "talla_nueva": s.talla_nueva.nombre if s.talla_nueva else None,
             "color_nuevo": s.color_nuevo.nombre if s.color_nuevo else None,
             "created_at": s.created_at.isoformat() if s.created_at else None,
+            **_campos_financieros(s),
         })
     return resultado
 
@@ -198,8 +282,11 @@ async def completar_en_caja(
         solicitud_id=solicitud_id,
         reponer_prenda_original=payload.reponer_prenda_original,
         nuevo_stock_inventario_id=payload.nuevo_stock_inventario_id,
+        metodo_pago_diferencia=payload.metodo_pago_diferencia,
+        efectivo_recibido=payload.efectivo_recibido,
+        metodo_reembolso=payload.metodo_reembolso,
     )
-    return {"status": "ok", "estado": solicitud.estado, "mensaje": "Cambio/Devolución completado en caja con ajuste de stock."}
+    return {"status": "ok", "estado": solicitud.estado, "mensaje": "Cambio/Devolución completado con nota de venta.", **_campos_financieros(solicitud)}
 
 
 @router.get("/opciones-disponibles", summary="Obtener tallas con stock y colores de la prenda para cambio (Punto 5)")

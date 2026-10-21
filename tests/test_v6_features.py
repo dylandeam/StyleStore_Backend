@@ -25,6 +25,7 @@ from app.models.stock_inventario import StockInventario
 from app.models.orden_venta import OrdenVenta, DetalleVenta
 from app.models.pago import Pago
 from app.models.empresa import Empresa
+from app.models.cambio_devolucion import SaldoFavorCliente
 from app.core.security import create_access_token
 from app.services.plan_service import PlanService
 
@@ -616,6 +617,80 @@ def test_cambios_devoluciones_workflow(client: TestClient, auth_tokens, sample_i
     res_old = client.post("/api/v1/cambios", json=sol_old, headers=headers_cli)
     assert res_old.status_code == 400
     assert "7 días" in res_old.json()["detail"]
+
+
+def test_cambio_menor_genera_saldo_y_nota_venta(client: TestClient, auth_tokens, sample_inventory, db_session):
+    headers_cli = {"Authorization": f"Bearer {auth_tokens['client_token']}"}
+    headers_adm = {"Authorization": f"Bearer {auth_tokens['admin_token']}"}
+    stock = sample_inventory["stock"]
+    stock.precio_variante = Decimal("150.00")
+    stock.cantidad = max(stock.cantidad, 2)
+    orden = OrdenVenta(
+        fecha=date.today(), estado="pagada", total=Decimal("250.00"), tipo_venta="presencial",
+        codigo_cliente=auth_tokens["client_profile"].codigo, sucursal_id=sample_inventory["sucursal"].id,
+    )
+    db_session.add(orden); db_session.flush()
+    detalle = DetalleVenta(
+        orden_venta_id=orden.id, stock_inventario_id=stock.id,
+        producto_nombre=sample_inventory["producto"].nombre, cantidad=1,
+        precio_unitario=Decimal("250.00"), subtotal=Decimal("250.00"),
+    )
+    db_session.add(detalle); db_session.commit()
+    solicitud = client.post("/api/v1/cambios", json={
+        "orden_venta_id": orden.id, "detalle_venta_id": detalle.id, "tipo": "cambio",
+        "motivo": "talla_incorrecta", "sucursal_id": sample_inventory["sucursal"].id,
+        "fecha_programada": str(date.today()), "descripcion_problema": "Cambio por otra prenda",
+    }, headers=headers_cli)
+    assert solicitud.status_code == 200
+    solicitud_id = solicitud.json()["solicitud_id"]
+    assert client.put(f"/api/v1/cambios/{solicitud_id}/responder", json={
+        "nuevo_estado": "aceptada", "respuesta_encargado": "Aprobado",
+    }, headers=headers_adm).status_code == 200
+
+    completado = client.post(f"/api/v1/cambios/{solicitud_id}/completar", json={
+        "reponer_prenda_original": True, "nuevo_stock_inventario_id": stock.id,
+    }, headers=headers_adm)
+    assert completado.status_code == 200, completado.text
+    data = completado.json()
+    assert Decimal(str(data["precio_original"])) == Decimal("250.00")
+    assert Decimal(str(data["precio_nuevo"])) == Decimal("150.00")
+    assert Decimal(str(data["saldo_favor_generado"])) == Decimal("100.00")
+    assert data["nota_venta_numero"].startswith("NCJ-")
+
+    saldo = client.get("/api/v1/cambios/mi-saldo", headers=headers_cli)
+    assert saldo.status_code == 200
+    assert Decimal(str(saldo.json()["saldo"])) == Decimal("100.00")
+    assert db_session.query(SaldoFavorCliente).filter_by(user_id=auth_tokens["client_user"].id).one().saldo == Decimal("100.00")
+
+
+def test_tenant_configura_plazo_de_cambios(client: TestClient, auth_tokens):
+    headers_adm = {"Authorization": f"Bearer {auth_tokens['admin_token']}"}
+    response = client.put("/api/v1/cambios/politica", json={"plazo_cambios_dias": 15}, headers=headers_adm)
+    assert response.status_code == 200
+    assert response.json()["plazo_cambios_dias"] == 15
+
+
+def test_cambio_mayor_exige_y_registra_cobro(client: TestClient, auth_tokens, sample_inventory, db_session):
+    headers_cli = {"Authorization": f"Bearer {auth_tokens['client_token']}"}
+    headers_adm = {"Authorization": f"Bearer {auth_tokens['admin_token']}"}
+    stock = sample_inventory["stock"]
+    stock.precio_variante = Decimal("250.00")
+    stock.cantidad = max(stock.cantidad, 2)
+    orden = OrdenVenta(fecha=date.today(), estado="pagada", total=Decimal("100.00"), tipo_venta="presencial", codigo_cliente=auth_tokens["client_profile"].codigo, sucursal_id=sample_inventory["sucursal"].id)
+    db_session.add(orden); db_session.flush()
+    detalle = DetalleVenta(orden_venta_id=orden.id, stock_inventario_id=stock.id, producto_nombre="Prenda original", cantidad=1, precio_unitario=Decimal("100.00"), subtotal=Decimal("100.00"))
+    db_session.add(detalle); db_session.commit()
+    res = client.post("/api/v1/cambios", json={"orden_venta_id": orden.id, "detalle_venta_id": detalle.id, "tipo": "cambio", "motivo": "otro", "sucursal_id": sample_inventory["sucursal"].id, "fecha_programada": str(date.today()), "descripcion_problema": "Desea prenda superior"}, headers=headers_cli)
+    solicitud_id = res.json()["solicitud_id"]
+    client.put(f"/api/v1/cambios/{solicitud_id}/responder", json={"nuevo_estado": "aceptada", "respuesta_encargado": "Aprobado"}, headers=headers_adm)
+
+    sin_pago = client.post(f"/api/v1/cambios/{solicitud_id}/completar", json={"nuevo_stock_inventario_id": stock.id}, headers=headers_adm)
+    assert sin_pago.status_code == 400
+    completado = client.post(f"/api/v1/cambios/{solicitud_id}/completar", json={"nuevo_stock_inventario_id": stock.id, "metodo_pago_diferencia": "efectivo", "efectivo_recibido": 200}, headers=headers_adm)
+    assert completado.status_code == 200, completado.text
+    assert Decimal(str(completado.json()["monto_adicional"])) == Decimal("150.00")
+    orden_ajuste_id = completado.json()["orden_ajuste_id"]
+    assert db_session.query(Pago).filter(Pago.orden_venta_id == orden_ajuste_id, Pago.monto == Decimal("150.00")).one()
 
 
 def test_nuevos_reportes_previews(client: TestClient, auth_tokens):
