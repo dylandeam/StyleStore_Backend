@@ -26,6 +26,7 @@ from app.schemas.traspaso_inventario import (
     TraspasoResponse,
 )
 from app.services.traspaso_inventario_service import TraspasoInventarioService
+from app.services.promocion_service import PromocionService
 
 router = APIRouter(prefix="/inventario", tags=["Inventario"])
 
@@ -155,7 +156,8 @@ async def get_inventario_global(
             if prod:
                 p_cod = prod.codigo
                 p_nom = prod.nombre
-                p_precio = float(s.precio_variante if s.precio_variante is not None else prod.precio)
+                _, precio_promocional, porcentaje_promocion = PromocionService(db).precio_stock(s)
+                p_precio = float(precio_promocional)
                 p_foto = prod.foto
                 cat_nom = prod.categoria.nombre if prod.categoria else None
                 temp_nom = prod.temporada.nombre if prod.temporada else None
@@ -185,6 +187,7 @@ async def get_inventario_global(
             "producto_nombre": p_nom,
             "foto": p_foto,
             "precio": p_precio,
+            "porcentaje_promocion": porcentaje_promocion if prod else 0,
             "precio_variante": float(s.precio_variante) if s.precio_variante is not None else None,
             "medidas": s.medidas or {},
             "categoria": cat_nom,
@@ -228,7 +231,8 @@ async def get_inventario_sucursal(
             if s.producto_color.producto:
                 p_cod = s.producto_color.producto.codigo
                 p_nom = s.producto_color.producto.nombre
-                p_precio = float(s.precio_variante if s.precio_variante is not None else s.producto_color.producto.precio)
+                precio_original, precio_promocional, porcentaje_promocion = PromocionService(db).precio_stock(s)
+                p_precio = float(precio_promocional)
                 p_foto = s.producto_color.producto.foto
                 if s.producto_color.producto.categoria:
                     p_cat_nom = s.producto_color.producto.categoria.nombre
@@ -251,6 +255,8 @@ async def get_inventario_sucursal(
             "foto": p_foto,
             "precio": p_precio,
             "precio_unitario": p_precio,
+            "precio_original": float(precio_original) if p_precio is not None else None,
+            "porcentaje_promocion": porcentaje_promocion if p_precio is not None else 0,
             "precio_variante": float(s.precio_variante) if s.precio_variante is not None else None,
             "medidas": s.medidas or {},
             "producto_color_id": s.producto_color_id,

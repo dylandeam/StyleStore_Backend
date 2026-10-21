@@ -27,9 +27,10 @@ router = APIRouter(prefix="/promociones", tags=["promociones"])
 
 def _empresa_objetivo(current_user: User, empresa_id: int | None = None) -> int:
     if current_user.is_platform_admin:
-        if not empresa_id:
+        objetivo = empresa_id or current_user.empresa_id
+        if not objetivo:
             raise BadRequestException("El administrador SaaS debe indicar empresa_id.")
-        return empresa_id
+        return objetivo
     if not current_user.empresa_id:
         raise BadRequestException("Tu usuario no tiene un tenant asociado.")
     if empresa_id and empresa_id != current_user.empresa_id:

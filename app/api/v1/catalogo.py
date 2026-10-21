@@ -17,6 +17,7 @@ from app.models.empresa import Empresa
 from app.models.user import User
 from app.api.deps import get_optional_current_user
 from app.core.exceptions import NotFoundException
+from app.services.promocion_service import PromocionService
 
 router = APIRouter(prefix="/catalogo", tags=["Catálogo"])
 
@@ -84,6 +85,7 @@ async def get_catalogo(
             tallas_stock = []
             for s in stocks:
                 stock_total += s.cantidad
+                _, precio_stock, _ = PromocionService(db).precio_stock(s)
                 tallas_stock.append({
                     "stock_inventario_id": s.id,
                     "talla_id": s.talla_id,
@@ -92,7 +94,7 @@ async def get_catalogo(
                     "sucursal_nombre": s.sucursal.nombre if s.sucursal else None,
                     "sucursal_ciudad": s.sucursal.ciudad if s.sucursal else None,
                     "cantidad": s.cantidad,
-                    "precio": float(s.precio_variante if s.precio_variante is not None else p.precio),
+                    "precio": float(precio_stock),
                     "precio_variante": float(s.precio_variante) if s.precio_variante is not None else None,
                     "medidas": s.medidas or {},
                 })
@@ -109,9 +111,9 @@ async def get_catalogo(
         if sucursal_id is not None and stock_total <= 0:
             continue
 
-        en_promo = getattr(p, "en_promocion", False) or False
-        pct_desc = getattr(p, "porcentaje_descuento", 0) or 0
-        precio_desc = float(p.precio_descuento) if en_promo and getattr(p, "precio_descuento", None) else None
+        pct_desc = PromocionService(db).porcentaje_producto(p)
+        en_promo = pct_desc > 0
+        precio_desc = round(float(p.precio) * (100 - pct_desc) / 100, 2) if en_promo else None
 
         result.append({
             "codigo": p.codigo,
@@ -193,6 +195,7 @@ async def get_producto_detalle(
             tallas_stock = []
             for s in stocks:
                 stock_total += s.cantidad
+                _, precio_stock, _ = PromocionService(db).precio_stock(s)
                 tallas_stock.append({
                     "stock_inventario_id": s.id,
                     "talla_id": s.talla_id,
@@ -201,7 +204,7 @@ async def get_producto_detalle(
                     "sucursal_nombre": s.sucursal.nombre if s.sucursal else None,
                     "sucursal_ciudad": s.sucursal.ciudad if s.sucursal else None,
                     "cantidad": s.cantidad,
-                    "precio": float(s.precio_variante if s.precio_variante is not None else p.precio),
+                    "precio": float(precio_stock),
                     "precio_variante": float(s.precio_variante) if s.precio_variante is not None else None,
                     "medidas": s.medidas or {},
                 })
@@ -225,9 +228,9 @@ async def get_producto_detalle(
             "existencias": [],
         })
 
-    en_promo_det = getattr(p, "en_promocion", False) or False
-    pct_desc_det = getattr(p, "porcentaje_descuento", 0) or 0
-    precio_desc_det = float(p.precio_descuento) if en_promo_det and getattr(p, "precio_descuento", None) else None
+    pct_desc_det = PromocionService(db).porcentaje_producto(p)
+    en_promo_det = pct_desc_det > 0
+    precio_desc_det = round(float(p.precio) * (100 - pct_desc_det) / 100, 2) if en_promo_det else None
 
     return {
         "codigo": p.codigo,
