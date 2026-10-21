@@ -334,4 +334,18 @@ class CambioService:
         solicitud.orden_ajuste_id = orden_ajuste.id
         self.db.commit()
         self.db.refresh(solicitud)
+        resultado = (
+            f"Debes pagar Bs {monto_adicional:.2f}." if monto_adicional > 0
+            else f"Generamos Bs {saldo_generado:.2f} de saldo a favor." if saldo_generado > 0
+            else f"Se registró un reembolso de Bs {monto_reembolsado:.2f}." if monto_reembolsado > 0
+            else "El cambio no tuvo diferencia de precio."
+        )
+        NotificacionService(self.db).crear_notificacion(
+            user_id=cliente.user_id,
+            tipo="cambio_devolucion",
+            titulo="Cambio/Devolución completado",
+            mensaje=f"Operación {nota} completada. {resultado}",
+            url_accion="/cuenta/mis-compras",
+            enviar_email=True,
+        )
         return solicitud

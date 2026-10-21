@@ -18,6 +18,7 @@ from app.models.empresa import Empresa
 from app.models.stock_inventario import StockInventario
 from app.models.cambio_devolucion import SaldoFavorCliente, MovimientoSaldoFavor
 from app.services.tenant_scope import scope_by_sucursal
+from app.services.bitacora_service import BitacoraService
 
 router = APIRouter(prefix="/cambios", tags=["Cambios y Devoluciones"])
 
@@ -168,6 +169,8 @@ async def get_mis_solicitudes(
             "tipo": s.tipo,
             "motivo": s.motivo,
             "sucursal_nombre": s.sucursal.nombre if s.sucursal else "-",
+            "empresa_id": s.sucursal.empresa_id if s.sucursal else None,
+            "empresa_nombre": s.sucursal.empresa_rel.nombre if s.sucursal and s.sucursal.empresa_rel else None,
             "fecha_programada": s.fecha_programada.strftime("%d/%m/%Y") if s.fecha_programada else "",
             "hora_programada": s.hora_programada.strftime("%H:%M") if s.hora_programada else None,
             "descripcion_problema": s.descripcion_problema,
@@ -285,6 +288,10 @@ async def completar_en_caja(
         metodo_pago_diferencia=payload.metodo_pago_diferencia,
         efectivo_recibido=payload.efectivo_recibido,
         metodo_reembolso=payload.metodo_reembolso,
+    )
+    BitacoraService.registrar(
+        db=db, user=current_user, module="cambios",
+        action=f"Completó solicitud #{solicitud.id}; nota {solicitud.nota_venta_numero}; adicional Bs {solicitud.monto_adicional}; saldo Bs {solicitud.saldo_favor_generado}; reembolso Bs {solicitud.monto_reembolsado}",
     )
     return {"status": "ok", "estado": solicitud.estado, "mensaje": "Cambio/Devolución completado con nota de venta.", **_campos_financieros(solicitud)}
 
