@@ -64,3 +64,6 @@ class CheckoutRequest(BaseModel):
     ciudad: str | None = None
     referencia: str | None = None
     sucursal_id: int | None = None
+    tipo_entrega: str | None = Field(None, pattern="^(delivery|recojo)$")
+    fecha_recojo: date | None = None
+    hora_recojo: time | None = None

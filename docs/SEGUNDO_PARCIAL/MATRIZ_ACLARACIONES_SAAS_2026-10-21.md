@@ -26,7 +26,7 @@ Fuente complementaria: `REQUISITOS_NUEVAS_FUNCIONALIDADES_SAAS.md`. Esta matriz 
 | Inventario global y por sucursal | Implementado/en pruebas | Ambos niveles existen y están aislados; el flujo de traspasos está implementado y pendiente de evidencia E2E desplegada. |
 | Proveedores y compras | Parcial avanzado | Compra actualiza stock; debe mantenerse la auditoría tenant en nuevas pruebas E2E. |
 | Cambios y devoluciones | Parcial | Plazo fijo de 7 días, no configurable por tenant; falta nueva nota de venta, diferencia de precio y sucursal elegible. |
-| Reservas por bloques | En pruebas | API, reserva web/móvil y recojo web comparten bloques de una hora; un índice único parcial impide ocupar concurrentemente el mismo bloque. Falta selector de recojo en checkout móvil y E2E desplegado. |
+| Reservas por bloques | En pruebas | API, reservas y recojos web/móvil comparten bloques de una hora; un índice único parcial impide ocupar concurrentemente el mismo bloque. Falta evidencia E2E desplegada. |
 | Venta presencial | Parcial | POS y cliente general existen; falta búsqueda formal por CI y captura de nombre/CI para factura cuando no existe. |
 | Envío o recojo | Parcial | Delivery existe; falta alternativa de recojo con bloques de una hora antes del pago. |
 | Productos guardados | Pendiente | No existe lista de deseos por cliente/tenant ni accesos Web/Mobile. |

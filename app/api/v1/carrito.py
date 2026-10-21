@@ -526,7 +526,19 @@ async def checkout_cart(
 
         if not sucursal_final:
             raise BadRequestException("No existe una sucursal activa para completar la compra.")
-        get_scoped_sucursal(db, current_user, sucursal_final)
+        sucursal = get_scoped_sucursal(db, current_user, sucursal_final)
+
+        if payload.tipo_entrega == "recojo":
+            if payload.fecha_recojo is None or payload.hora_recojo is None:
+                raise BadRequestException("Selecciona la fecha y el bloque horario para recoger la compra.")
+            today = date.today()
+            if payload.fecha_recojo < today or payload.fecha_recojo > today + timedelta(days=3):
+                raise BadRequestException("La fecha de recojo debe estar entre hoy y los próximos 3 días.")
+            valid_starts = {start for start, _ in hour_blocks(sucursal.hora_apertura, sucursal.hora_cierre)}
+            if payload.hora_recojo not in valid_starts:
+                raise BadRequestException("Selecciona un bloque completo de una hora disponible para el recojo.")
+            if payload.fecha_recojo == today and payload.hora_recojo <= datetime.now().time():
+                raise BadRequestException("El bloque de recojo debe ser posterior a la hora actual.")
 
         metodo = (payload.metodo_pago or "EFECTIVO").upper()
         orden = OrdenVenta(
@@ -538,9 +550,32 @@ async def checkout_cart(
             sucursal_id=sucursal_final,
             carrito_id=carrito.id,
             metodo_pago=metodo,
+            tipo_entrega=payload.tipo_entrega or ("delivery" if payload.direccion_envio else None),
+            fecha_recojo=payload.fecha_recojo if payload.tipo_entrega == "recojo" else None,
+            hora_recojo=payload.hora_recojo if payload.tipo_entrega == "recojo" else None,
         )
         db.add(orden)
         db.flush()
+
+        if payload.tipo_entrega == "recojo":
+            db.add(Reserva(
+                fecha=payload.fecha_recojo,
+                hora=payload.hora_recojo,
+                estado="pendiente",
+                codigo_cliente=cliente.codigo,
+                sucursal_id=sucursal_final,
+                tipo="recojo_compra",
+                orden_venta_id=orden.id,
+            ))
+            try:
+                db.flush()
+            except IntegrityError as exc:
+                db.rollback()
+                if "uq_reserva_bloque_activo" in str(getattr(exc, "orig", exc)).lower():
+                    raise BadRequestException(
+                        "El bloque de recojo acaba de ser ocupado. Selecciona otro horario disponible."
+                    ) from exc
+                raise
 
         for d in detalles_orden:
             dv = DetalleVenta(

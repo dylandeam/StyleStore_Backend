@@ -12,14 +12,15 @@ Fecha: 2026-10-21
 - La colisión concurrente se revierte y devuelve un mensaje claro sin descontar stock.
 - Selectores web y móvil consumen la disponibilidad y muestran horarios ocupados deshabilitados.
 - El checkout web permite elegir delivery o recojo, guarda fecha/hora en la orden y ocupa el mismo calendario mediante una cita `recojo_compra`.
+- El checkout móvil también permite elegir delivery o recojo y consume la misma disponibilidad antes de crear la orden.
 
 ## Verificación
 
-- Suite backend: `71 passed`.
+- Suite backend: `72 passed`.
 - Build Angular: correcto.
 - `flutter analyze`: sin problemas.
 - Alembic: una sola cabeza `f2c8d9e0a711`; SQL offline PostgreSQL generado correctamente.
 
 ## Pendiente
 
-Falta incorporar el selector de recojo al checkout móvil (actualmente solo presenta delivery) y ejecutar evidencia E2E desplegada.
+Falta ejecutar evidencia E2E sobre el entorno desplegado.

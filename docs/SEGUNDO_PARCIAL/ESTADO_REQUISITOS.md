@@ -62,7 +62,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-056 | PENDIENTE | Email idempotente por pago confirmado no comprobado |
 | REQ-057 | EN_CURSO | Notificaciones existen; falta evento de pago con deduplicación |
 | REQ-058 | EN_CURSO | Reservas cliente/staff y límite de 3 días existen; falta cierre tenant integral |
-| REQ-059 | EN_PRUEBAS | Agenda compartida implementada para reservas y recojo web, con bloques de una hora y exclusión concurrente; falta selector de recojo en checkout móvil y E2E desplegado |
+| REQ-059 | EN_PRUEBAS | Agenda compartida implementada para reservas y recojo web/móvil, con bloques de una hora y exclusión concurrente; falta evidencia E2E desplegada |
 | REQ-060 | EN_PRUEBAS | Precio por talla/color/sucursal configurable en inventario y aplicado a catálogo, carrito, POS y sync; falta E2E desplegado |
 | REQ-061 | EN_PRUEBAS | Medidas por variante configurables y visibles en web/móvil; falta evidencia E2E desplegada |
 | REQ-062 | EN_PRUEBAS | Entidad, API, UI web, aislamiento tenant, estados, idempotencia, bloqueo y movimiento atómico implementados; falta E2E desplegado |

@@ -272,6 +272,32 @@ def test_checkout_recojo_ocupa_agenda_compartida(client: TestClient, auth_tokens
     assert blocks["10:00"] is False
 
 
+def test_checkout_integral_movil_programa_recojo(client: TestClient, auth_tokens, sample_inventory, db_session):
+    headers = {"Authorization": f"Bearer {auth_tokens['client_token']}"}
+    pickup_date = date.today() + timedelta(days=2)
+    added = client.post(
+        "/api/v1/carrito/items",
+        headers=headers,
+        json={"stock_inventario_id": sample_inventory["stock"].id, "cantidad": 1},
+    )
+    assert added.status_code == 200, added.text
+    result = client.post(
+        "/api/v1/carrito/checkout",
+        headers=headers,
+        json={
+            "metodo_pago": "paypal",
+            "sucursal_id": sample_inventory["sucursal"].id,
+            "tipo_entrega": "recojo",
+            "fecha_recojo": pickup_date.isoformat(),
+            "hora_recojo": "12:00:00",
+        },
+    )
+    assert result.status_code == 200, result.text
+    order = db_session.query(OrdenVenta).filter_by(id=result.json()["orden_venta_id"]).one()
+    assert order.tipo_entrega == "recojo"
+    assert order.hora_recojo.strftime("%H:%M") == "12:00"
+
+
 def test_chatbot_local_inteligente(client: TestClient, db_session, auth_tokens):
     PlanService(db_session).contract(auth_tokens["admin"], "intermedio")
     headers = {"Authorization": f"Bearer {auth_tokens['client_token']}"}
