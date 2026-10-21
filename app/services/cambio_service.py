@@ -55,6 +55,8 @@ class CambioService:
         ).first()
         if not orden:
             raise HTTPException(status_code=404, detail="Orden de venta no encontrada o no pertenece a este usuario.")
+        if orden.sucursal_id:
+            get_scoped_sucursal(self.db, user, orden.sucursal_id)
         get_scoped_sucursal(self.db, user, sucursal_id)
 
         # 3. Validar el plazo configurable del tenant
