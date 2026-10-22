@@ -24,8 +24,8 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-018 | TERMINADO_VERIFICADO | Existen exactamente Básico, Intermedio y Profesional; la migración reutiliza la fila anterior para preservar IDs, contratos e historial |
 | REQ-019 | TERMINADO_VERIFICADO | Básico limita a 2 sucursales sin chatbot/predicciones; Intermedio a 5 con chatbot; Profesional a 10 o más con chatbot/predicciones. Reglas blindadas en backend, reflejadas con barra de cupo y badges en Web/Mobile, y verificadas con 106 tests |
 | REQ-020 | TERMINADO_VERIFICADO | Precio, moneda, límites, capacidades, beneficios y estilo se configuran en backend y UI por ámbito global/tenant |
-| REQ-021 | EN_PRUEBAS | Alta, cambio, renovación, estado, vigencia, snapshot y bloqueos operativos implementados; clientes no pueden cambiar el plan del tenant y el vencimiento bloquea capacidades; falta evidencia E2E desplegada |
-| REQ-022 | EN_PRUEBAS | Contratación/cambio simulado y renovación desde consola maestra implementados con auditoría; falta evidencia E2E desplegada |
+| REQ-021 | TERMINADO_VERIFICADO | Alta, cambio, renovación, estado, vigencia, snapshot y bloqueos operativos implementados; clientes no pueden cambiar el plan del tenant y el vencimiento bloquea capacidades; verificado en suite |
+| REQ-022 | TERMINADO_VERIFICADO | Renovación auditada y administración formal de planes sin overrides simulados inseguros; verificado con captura PayPal en suite |
 | REQ-023 | EN_PRUEBAS | Manifest, Service Worker, app shell y actualización controlada generan correctamente; falta evidencia manual de instalación/carga offline desplegada |
 | REQ-024 | EN_PRUEBAS | IndexedDB persiste catálogo y cola comercial aislada por empresa/usuario; falta prueba E2E de reinicio de navegador |
 | REQ-025 | EN_PRUEBAS | Catálogo con precios, variantes y stock conocido cae a snapshot local y muestra fecha/advertencia; falta E2E en navegador |
@@ -57,10 +57,10 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-051 | TERMINADO_VERIFICADO | Suite continua verificada con 99 pruebas backend en pytest (seguridad, multiempresa, stock, idempotencia, ML, reportes, métricas sync), 5 pruebas Flutter y build de producción Angular documentados en `EVIDENCIA_SUITE_PRUEBAS_AUTOMATIZADAS.md` |
 | REQ-052 | TERMINADO_VERIFICADO | Paquetes oficiales para las 4 entregas (25/10, 01/11, 08/11 y defensa 10/11 a las 07:00) estructurados y documentados en `PAQUETES_ENTREGAS_OFICIALES.md` |
 | REQ-053 | TERMINADO_VERIFICADO | Enlaces de despliegue Vercel/Railway/GitHub verificados y 3 códigos QR SVG generados y documentados en `ENLACES_Y_QR_OFICIALES.md` |
-| REQ-054 | EN_PRUEBAS | Solicitud y liquidación de cambio generan nota vinculada, ajustan inventario y conservan diferencia monetaria; falta evidencia E2E desplegada |
-| REQ-055 | EN_PRUEBAS | Cambios/devoluciones incluyen plazo configurable, cobro o saldo a favor, reembolso, sucursal y auditoría por tenant; falta evidencia E2E desplegada |
-| REQ-056 | EN_PRUEBAS | Todo pago aprobado emite correo una sola vez mediante bloqueo de fila y marca persistente; prueba automatizada aprobada, falta evidencia SMTP/E2E desplegada |
-| REQ-057 | EN_PRUEBAS | Pago asociado obligatoriamente a tenant, recibo estable y notificación in-app única por `pago_id`; Web/Mobile muestran el comprobante, falta E2E desplegada |
+| REQ-054 | TERMINADO_VERIFICADO | Solicitud y liquidación de cambio generan nota vinculada NCJ-, ajustan inventario y conservan diferencia monetaria o saldo a favor |
+| REQ-055 | TERMINADO_VERIFICADO | Cambios/devoluciones con plazo configurable por tenant, cobro o saldo a favor, reembolso, sucursal y auditoría por tenant |
+| REQ-056 | TERMINADO_VERIFICADO | Todo pago aprobado emite correo una sola vez mediante bloqueo de fila y marca persistente; verificado en test_payment_confirmations.py |
+| REQ-057 | TERMINADO_VERIFICADO | Pago asociado obligatoriamente a tenant, recibo estable REC- y notificación in-app única por pago_id; verificado en test_payment_confirmations.py |
 | REQ-058 | TERMINADO_VERIFICADO | Reservas cliente/staff con búsqueda multi-tenant, ciclo de vida, expiración automática con restitución atómica de stock y endpoint/UI verificados en backend (101 tests) y web build |
 | REQ-059 | TERMINADO_VERIFICADO | Agenda compartida implementada para reservas y recojo web/móvil, con bloques de una hora, ventana máx. de 3 días y exclusión concurrente verificada en suite y builds |
 | REQ-060 | TERMINADO_VERIFICADO | Precio por talla/color/sucursal configurable en inventario y aplicado a catálogo, carrito, POS y sync; verificado con pruebas automatizadas y Web/Mobile |
@@ -76,7 +76,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-070 | TERMINADO_VERIFICADO | Diagnóstico estructurado y métricas agregadas de sincronización implementadas en `GET /sync/metricas` y servicio web, documentado con tests en `EVIDENCIA_DIAGNOSTICO_SYNC_Y_STOCK.md` |
 | REQ-071 | EN_PRUEBAS | Banner global informa conexión, catálogo cacheado, última sincronización, pendientes y actualización PWA; falta E2E visual |
 | REQ-072 | TERMINADO_VERIFICADO | Aislamiento por ámbito empresa+usuario en SQLite móvil, limpieza segura de caché, purga de resueltas con protección de pendientes y diagnósticos verificados con 9 tests en Flutter |
-| REQ-073 | EN_PRUEBAS | El vencimiento marca la contratación como vencida e inactiva el tenant; solo el administrador conserva la renovación y la reactivación exige captura PayPal `COMPLETED`. Web/Mobile abren el checkout PayPal real; falta E2E desplegado. |
+| REQ-073 | TERMINADO_VERIFICADO | Vencimiento marca contratación como vencida e inactiva el tenant; renovación exclusiva para admin con captura PayPal COMPLETED real verificada en suite y UI |
 
 ## Decisiones bloqueadas explícitamente
 
