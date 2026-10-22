@@ -211,4 +211,6 @@ def validar_codigo(
     if not current_user or not current_user.empresa_id:
         raise BadRequestException("Inicia sesión y selecciona un tenant para usar un código.")
     item = PromocionService(db).validar_codigo(current_user.empresa_id, req.codigo, req.canal)
+    if not item:
+        raise NotFoundException("Código de descuento no encontrado o no disponible.")
     return {"valido": True, "codigo": item.codigo, "porcentaje": item.porcentaje, "descripcion": item.descripcion}

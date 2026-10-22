@@ -53,10 +53,13 @@ class PayPalService:
                 )
                 if response.status_code == 200:
                     data = response.json()
-                    self._access_token = data.get("access_token")
-                    expires_in = data.get("expires_in", 3600)
-                    self._token_expiry = time.time() + expires_in - 60
-                    return self._access_token
+                    token = data.get("access_token")
+                    if token:
+                        self._access_token = str(token)
+                        expires_in = data.get("expires_in", 3600)
+                        self._token_expiry = time.time() + expires_in - 60
+                        return self._access_token
+                    return "mock_access_token_fallback"
                 else:
                     logger.warning(
                         f"PayPal OAuth falló con status {response.status_code}: {response.text}. Activando fallback."

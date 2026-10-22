@@ -106,7 +106,7 @@ class EmpresaSuscripcionUpdate(BaseModel):
     fecha_inicio: date | None = None
     fecha_fin: date | None = None
     pago_confirmado: bool = True
-    referencia_pago: str | None = Field(None, min_length=3, max_length=120)
+    referencia_pago: str | None = Field(default=None, min_length=3, max_length=120)
 
 
 class EmpresaSuscripcionResponse(BaseModel):

@@ -79,6 +79,11 @@ def _serialize_carrito(carrito: Carrito, db: Session) -> dict:
         suc_nom = None
         suc_ciudad = None
         suc_dir = None
+        prod_cod = None
+        prod_nom = None
+        col_nom = None
+        talla_nom = None
+        foto = None
         if si:
             if si.producto_color:
                 col_nom = si.producto_color.color.nombre if si.producto_color.color else None

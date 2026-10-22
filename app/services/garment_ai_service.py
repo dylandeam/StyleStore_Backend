@@ -52,7 +52,8 @@ class GarmentAIService:
                     row_right = None
                     for x in range(min_x, max_x, max(1, garment_w // 80)):
                         pixel = alpha.getpixel((x, y))
-                        if pixel > 50:
+                        val = pixel[0] if isinstance(pixel, (tuple, list)) else (pixel or 0)
+                        if float(val) > 50:
                             if row_left is None:
                                 row_left = x
                             row_right = x

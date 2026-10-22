@@ -166,7 +166,8 @@ class MLService:
             forecasts.append({"fecha": target.isoformat(), "ingresos_estimados": round(max(0, _predict(supervised["coefficients"], row) * calibration), 2)})
         by_client: dict[str, list[OrdenVenta]] = defaultdict(list)
         for order in completed:
-            by_client[order.codigo_cliente].append(order)
+            client_key = order.codigo_cliente or "anonimo"
+            by_client[client_key].append(order)
         segments = {"ocasional": 0, "frecuente": 0, "alto_valor": 0}
         for client_orders in by_client.values():
             latest = max(order.fecha for order in client_orders)

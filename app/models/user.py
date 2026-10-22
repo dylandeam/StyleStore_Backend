@@ -50,9 +50,9 @@ class User(Base):
     def sucursal_id(self) -> int | None:
         try:
             from app.models.empleado import Empleado
-            # Chequear relación si fue cargada
-            if hasattr(self, "empleado_rel") and self.empleado_rel:
-                emp = self.empleado_rel[0] if isinstance(self.empleado_rel, list) else self.empleado_rel
+            empleado_rel = getattr(self, "empleado_rel", None)
+            if empleado_rel:
+                emp = empleado_rel[0] if isinstance(empleado_rel, list) else empleado_rel
                 return getattr(emp, "sucursal_id", None)
         except Exception:
             pass

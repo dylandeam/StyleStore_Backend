@@ -291,7 +291,7 @@ async def save_producto_landmarks(
 ):
     from app.models.producto_landmark import ProductoLandmark
 
-    ProductoService.get_by_codigo(db, codigo, current_user)
+    ProductoService(db).get_producto_by_codigo(codigo, current_user)
 
     tipo_ar = payload.get("tipo_ar", "superior")
     landmarks = payload.get("landmarks", {})

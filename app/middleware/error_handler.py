@@ -25,8 +25,9 @@ def register_error_handlers(app: FastAPI) -> None:
         import traceback
         traceback.print_exc()
         detail = str(exc)
-        if hasattr(exc, "orig") and exc.orig:
-            detail = str(exc.orig)
+        orig = getattr(exc, "orig", None)
+        if orig:
+            detail = str(orig)
         return JSONResponse(
             status_code=500,
             content={"detail": f"Database error: {detail}"},

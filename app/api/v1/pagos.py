@@ -171,9 +171,8 @@ async def capture_paypal_order(
         )
         if current_user.role == "cliente":
             cliente = db.query(Cliente).filter(Cliente.user_id == current_user.id).first()
-            order_query = order_query.filter(
-                OrdenVenta.codigo_cliente == cliente.codigo if cliente else ""
-            )
+            if cliente:
+                order_query = order_query.filter(OrdenVenta.codigo_cliente == cliente.codigo)
         orden = order_query.order_by(OrdenVenta.id.desc()).first()
 
     if not orden:

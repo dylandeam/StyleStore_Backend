@@ -28,6 +28,7 @@ class BitacoraService:
         - user: User instance, string (email/identifier), or None for system events.
         """
         user_id = None
+        empresa_id = None
         if isinstance(user, User):
             user_id = user.id
             empresa_id = user.empresa_id
@@ -36,8 +37,6 @@ class BitacoraService:
             user_snapshot = user
         else:
             user_snapshot = "Sistema"
-        if not isinstance(user, User):
-            empresa_id = None
 
         log_entry = Bitacora(
             user_id=user_id,

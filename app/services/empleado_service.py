@@ -111,7 +111,7 @@ class EmpleadoService:
             telefono=emp.telefono,
             direccion=emp.direccion,
             foto=emp.foto,
-            jornada_tipo=emp.jornada_tipo,
+            jornada_tipo=emp.jornada_tipo if emp.jornada_tipo in ("tiempo_completo", "medio_tiempo") else "tiempo_completo",
             asignaciones=[
                 EmpleadoSucursalResponse(
                     id=item.id,

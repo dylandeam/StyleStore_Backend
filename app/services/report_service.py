@@ -760,11 +760,11 @@ class ReportService:
 
     # Reporte de Caducidad / Obsolescencia y Temporadas
     def get_caducidad_report_data(self, sucursal_id: Optional[int] = None) -> List[Dict[str, Any]]:
-        # Temporadas activas
+        # Temporadas registradas
         temporadas_q = scope_by_empresa(
             self.db.query(Temporada), self.current_user, Temporada.empresa_id
         )
-        temporadas_activas = {t.id for t in temporadas_q.filter(Temporada.activa == True).all()}
+        temporadas_activas = {t.id for t in temporadas_q.all()}
         
         q = (
             self.db.query(StockInventario)
@@ -809,7 +809,6 @@ class ReportService:
         )
         logs = (
             logs_query
-            .options(joinedload(Bitacora.user))
             .order_by(Bitacora.created_at.desc())
             .limit(limit)
             .all()
@@ -818,7 +817,7 @@ class ReportService:
         for b in logs:
             res.append({
                 "id": b.id,
-                "usuario": f"{b.user.name} ({b.user.role})" if b.user else "Sistema",
+                "usuario": b.user_snapshot or "Sistema",
                 "modulo": b.module.upper() if b.module else "SISTEMA",
                 "accion": b.action,
                 "ip": getattr(b, "ip_address", None) or "127.0.0.1",

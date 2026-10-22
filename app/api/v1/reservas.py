@@ -162,7 +162,7 @@ async def list_my_reservas(
     codigos = set()
     cliente = db.query(Cliente).filter(Cliente.user_id == current_user.id).first()
     if not cliente and current_user.ci:
-        cliente = db.query(Cliente).filter(Cliente.ci == current_user.ci).first()
+        cliente = db.query(Cliente).join(User).filter(User.ci == current_user.ci).first()
         if cliente:
             cliente.user_id = current_user.id
             db.commit()
@@ -173,7 +173,6 @@ async def list_my_reservas(
         cliente = Cliente(
             codigo=cod,
             user_id=current_user.id,
-            ci=current_user.ci,
             telefono=current_user.telefono or "00000000",
             direccion=current_user.direccion or "Sin dirección",
         )
@@ -183,7 +182,7 @@ async def list_my_reservas(
 
     codigos.add(cliente.codigo)
     if current_user.ci:
-        for c in db.query(Cliente).filter(Cliente.ci == current_user.ci).all():
+        for c in db.query(Cliente).join(User).filter(User.ci == current_user.ci).all():
             codigos.add(c.codigo)
 
     reservas_query = db.query(Reserva).filter(Reserva.codigo_cliente.in_(list(codigos)))

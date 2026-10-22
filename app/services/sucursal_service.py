@@ -1,6 +1,7 @@
 """
 Sucursal Service for Branch CRUD and business logic.
 """
+from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.models.sucursal import Sucursal
@@ -59,14 +60,15 @@ class SucursalService:
         if existing:
             raise ConflictException(f"Ya existe una sucursal con el nombre '{data.name}'.")
 
-        maps_url = data.maps_url.strip() if getattr(data, "maps_url", None) else None
-        lat = data.latitud
-        lon = data.longitud
+        data_maps = getattr(data, "maps_url", None)
+        maps_url = data_maps.strip() if isinstance(data_maps, str) and data_maps.strip() else None
+        lat = Decimal(str(data.latitud)) if data.latitud is not None else None
+        lon = Decimal(str(data.longitud)) if data.longitud is not None else None
         if (lat is None or lon is None) and maps_url:
             from app.core.geo import extraer_coordenadas_de_url
             plat, plon = extraer_coordenadas_de_url(maps_url)
             if plat is not None and plon is not None:
-                lat, lon = plat, plon
+                lat, lon = Decimal(str(plat)), Decimal(str(plon))
 
         sucursal = Sucursal(
             empresa_id=current_user.empresa_id,
@@ -134,12 +136,12 @@ class SucursalService:
                 from app.core.geo import extraer_coordenadas_de_url
                 plat, plon = extraer_coordenadas_de_url(sucursal.maps_url)
                 if plat is not None and plon is not None:
-                    sucursal.latitud = plat
-                    sucursal.longitud = plon
+                    sucursal.latitud = Decimal(str(plat))
+                    sucursal.longitud = Decimal(str(plon))
         if hasattr(data, "latitud") and data.latitud is not None:
-            sucursal.latitud = data.latitud
+            sucursal.latitud = Decimal(str(data.latitud))
         if hasattr(data, "longitud") and data.longitud is not None:
-            sucursal.longitud = data.longitud
+            sucursal.longitud = Decimal(str(data.longitud))
 
         self.db.commit()
         self.db.refresh(sucursal)

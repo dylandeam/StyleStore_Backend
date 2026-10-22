@@ -149,6 +149,7 @@ async def get_inventario_global(
         talla_nom = None
         suc_nom = None
         prod = None
+        porcentaje_promocion = 0
 
         if s.producto_color:
             color_nom = s.producto_color.color.nombre if s.producto_color.color else None
@@ -225,6 +226,8 @@ async def get_inventario_sucursal(
         color_nom = None
         talla_nom = None
         suc_nom = None
+        precio_original = None
+        porcentaje_promocion = 0
 
         if s.producto_color:
             color_nom = s.producto_color.color.nombre if s.producto_color.color else None
@@ -255,7 +258,7 @@ async def get_inventario_sucursal(
             "foto": p_foto,
             "precio": p_precio,
             "precio_unitario": p_precio,
-            "precio_original": float(precio_original) if p_precio is not None else None,
+            "precio_original": float(precio_original) if precio_original is not None else None,
             "porcentaje_promocion": porcentaje_promocion if p_precio is not None else 0,
             "precio_variante": float(s.precio_variante) if s.precio_variante is not None else None,
             "medidas": s.medidas or {},

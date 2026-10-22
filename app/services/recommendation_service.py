@@ -53,7 +53,7 @@ class RecommendationService:
         Retorna los productos recomendados más similares al producto con el código dado.
         """
         clean_cod = codigo.strip().lower()
-        target = (
+        target_query = (
             self.db.query(Producto)
             .options(
                 joinedload(Producto.categoria),
@@ -62,9 +62,10 @@ class RecommendationService:
                 joinedload(Producto.colores_rel).joinedload(ProductoColor.color),
             )
             .filter(func.lower(Producto.codigo) == clean_cod)
-            .filter(Producto.empresa_id == empresa_id if empresa_id is not None else True)
-            .first()
         )
+        if empresa_id is not None:
+            target_query = target_query.filter(Producto.empresa_id == empresa_id)
+        target = target_query.first()
         if not target:
             return []
 

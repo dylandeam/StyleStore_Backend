@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_platform_admin
-from app.core.exceptions import ForbiddenException
+from app.core.exceptions import BadRequestException, ForbiddenException
 from app.database import get_db
 from app.models.user import User
 from app.schemas.empresa import (
@@ -33,6 +33,8 @@ async def list_empresas_publicas(db: Session = Depends(get_db)):
 
 @router.get("/mia", response_model=EmpresaResponse)
 async def get_mi_empresa(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not current_user.empresa_id:
+        raise BadRequestException("El usuario actual no pertenece a ninguna empresa.")
     return EmpresaService(db).get_empresa(current_user.empresa_id)
 
 

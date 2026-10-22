@@ -80,7 +80,10 @@ async def list_proximamente(
         query = query.filter(Proximamente.empresa_id == current_user.empresa_id)
     else:
         default = db.query(Empresa).filter(Empresa.codigo == "stylestore").first()
-        query = query.filter(Proximamente.empresa_id == default.id, Proximamente.active.is_(True)) if default else query.filter(False)
+        if default:
+            query = query.filter(Proximamente.empresa_id == default.id, Proximamente.active.is_(True))
+        else:
+            return []
     items = query.order_by(Proximamente.fecha_estimada_llegada.asc().nulls_last()).all()
     return [_serialize_proximamente(i) for i in items]
 

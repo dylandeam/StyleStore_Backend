@@ -263,11 +263,12 @@ async def get_sync_metrics(
 
     tasa_exito = round((total_confirmadas / total_operaciones * 100.0), 2) if total_operaciones > 0 else 100.0
 
-    operaciones_por_tipo = dict(
+    operaciones_rows = (
         query.with_entities(SyncOperation.operation_type, func.count(SyncOperation.id))
         .group_by(SyncOperation.operation_type)
         .all()
     )
+    operaciones_por_tipo: dict[str, int] = {str(row[0]): int(row[1]) for row in operaciones_rows}
 
     reembolsos_query = db.query(ReembolsoOffline)
     if not current_user.is_platform_admin or current_user.empresa_id is not None:

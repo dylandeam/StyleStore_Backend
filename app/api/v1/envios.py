@@ -25,6 +25,12 @@ from app.services.bitacora_service import BitacoraService
 from app.services.tenant_scope import get_scoped_sucursal, scope_by_empresa, scope_by_sucursal
 from app.models.sucursal import Sucursal
 from app.services.notificacion_service import NotificacionService
+from app.core.geo import (
+    geocodificar_aproximado,
+    extraer_coordenadas_de_url,
+    calcular_distancia_haversine,
+    estimar_tiempo_entrega,
+)
 
 router = APIRouter(prefix="/envios", tags=["Envíos"])
 
@@ -617,7 +623,7 @@ async def cotizar_por_distancia(
     if sucursal_id:
         sucursal = sucursal_query.filter(Sucursal.id == sucursal_id).first()
     if not sucursal and sucursal_nombre_in:
-        sucursal = sucursal_query.filter(Sucursal.nombre.ilike(f"%{sucursal_nombre_in}%")).first()
+        sucursal = sucursal_query.filter(Sucursal.name.ilike(f"%{sucursal_nombre_in}%")).first()
     if not sucursal:
         sucursal = sucursal_query.first()
 
