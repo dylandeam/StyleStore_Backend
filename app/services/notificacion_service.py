@@ -52,6 +52,28 @@ class NotificacionService:
 
         return notif
 
+    def notificar_experiencia_poscompra(self, orden) -> Notificacion | None:
+        """Envía una sola invitación a calificar por orden completada/pagada."""
+        if not orden or not orden.cliente or not orden.cliente.user_id:
+            return None
+        user_id = orden.cliente.user_id
+        action_url = f"/cuenta/experiencia?orden_id={orden.id}"
+        existing = self.db.query(Notificacion).filter(
+            Notificacion.user_id == user_id,
+            Notificacion.tipo == "experiencia_poscompra",
+            Notificacion.url_accion == action_url,
+        ).first()
+        if existing:
+            return existing
+        return self.crear_notificacion(
+            user_id=user_id,
+            tipo="experiencia_poscompra",
+            titulo="¡Gracias por tu compra!",
+            mensaje="Tu compra fue completada. Cuéntanos cómo fue tu experiencia o registra un reclamo si necesitas ayuda.",
+            url_accion=action_url,
+            enviar_email=True,
+        )
+
     def listar_notificaciones_usuario(
         self, user_id: int, limit: int = 30, offset: int = 0
     ) -> List[Dict[str, Any]]:

@@ -46,6 +46,7 @@ from app.models.sync_operation import SyncOperation
 from app.models.reembolso_offline import ReembolsoOffline
 from app.models.promocion import PromocionAgrupada, CodigoDescuento
 from app.models.favorito import Favorito
+from app.models.experiencia import CalificacionServicio, Reclamo
 
 __all__ = [
     "Role",
@@ -106,4 +107,6 @@ __all__ = [
     "PromocionAgrupada",
     "CodigoDescuento",
     "Favorito",
+    "CalificacionServicio",
+    "Reclamo",
 ]

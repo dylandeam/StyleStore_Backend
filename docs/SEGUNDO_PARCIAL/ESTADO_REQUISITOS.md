@@ -67,7 +67,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-061 | EN_PRUEBAS | Medidas por variante configurables y visibles en web/móvil; falta evidencia E2E desplegada |
 | REQ-062 | EN_PRUEBAS | Entidad, API, UI web, aislamiento tenant, estados, idempotencia, bloqueo y movimiento atómico implementados; falta E2E desplegado |
 | REQ-063 | EN_CURSO | Filtros por sucursal existen; falta aislamiento tenant/comparación verificada |
-| REQ-064 | PENDIENTE | Calificaciones poscompra no implementadas |
+| REQ-064 | EN_PRUEBAS | Calificaciones y reclamos poscompra implementados por tenant con notificación, seguimiento Web/Mobile y conservación de nota baja; falta evidencia E2E desplegada |
 | REQ-065 | EN_PRUEBAS | Favoritos por usuario y tenant implementados en API, catálogo Web y móvil; falta evidencia E2E con backend desplegado |
 | REQ-066 | EN_CURSO | Bloqueo online de stock existe; falta mensaje uniforme y conflicto offline |
 | REQ-067 | EN_PRUEBAS | Estados pendiente/entregado/cancelado, gestión tenant en Web y aviso del monto en colas Web/Android implementados; falta evidencia E2E con venta cobrada físicamente en modo avión |

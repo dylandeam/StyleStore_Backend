@@ -31,7 +31,7 @@ Fuente complementaria: `REQUISITOS_NUEVAS_FUNCIONALIDADES_SAAS.md`. Esta matriz 
 | Envío o recojo | Parcial | Delivery existe; falta alternativa de recojo con bloques de una hora antes del pago. |
 | Productos guardados | Implementado/en pruebas | Lista única por usuario, tenant y producto, integrada con catálogo Web/Mobile; falta evidencia E2E con backend desplegado. |
 | Pago y tenant | Parcial | Pago deriva de orden/sucursal; falta evidencia de notificación y correo idempotentes por confirmación. |
-| Calificaciones y reclamos | Pendiente | No existen entidades, API ni flujo poscompra; debe conservarse una calificación baja aunque se cancele el reclamo sugerido. |
+| Calificaciones y reclamos | Implementado/en pruebas | La nota poscompra se conserva independientemente del reclamo; existen notificación con acceso, formularios Web/Mobile y seguimiento por estados aislado por tenant. Falta evidencia E2E desplegada. |
 
 ## Dependencias actualizadas
 

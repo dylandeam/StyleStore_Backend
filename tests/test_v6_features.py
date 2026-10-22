@@ -26,6 +26,8 @@ from app.models.orden_venta import OrdenVenta, DetalleVenta
 from app.models.pago import Pago
 from app.models.empresa import Empresa
 from app.models.cambio_devolucion import SaldoFavorCliente
+from app.models.envio import Envio
+from app.models.notificacion import Notificacion
 from app.core.security import create_access_token
 from app.services.plan_service import PlanService
 
@@ -804,3 +806,77 @@ def test_favorites_reject_products_from_another_tenant(
         f"/api/v1/favoritos/{sample_inventory['producto'].codigo}", headers=headers
     )
     assert response.status_code == 404
+
+
+def _completed_order_for_experience(db_session, auth_tokens, sample_inventory):
+    order = OrdenVenta(
+        fecha=date.today(), estado="entregada", total=Decimal("250.00"),
+        tipo_venta="en linea", codigo_cliente=auth_tokens["client_profile"].codigo,
+        sucursal_id=sample_inventory["sucursal"].id, metodo_pago="paypal",
+    )
+    db_session.add(order)
+    db_session.commit()
+    db_session.refresh(order)
+    return order
+
+
+def test_low_rating_persists_without_claim_and_can_create_one_later(
+    client: TestClient, auth_tokens, sample_inventory, db_session
+):
+    order = _completed_order_for_experience(db_session, auth_tokens, sample_inventory)
+    client_headers = {"Authorization": f"Bearer {auth_tokens['client_token']}"}
+
+    rating = client.post("/api/v1/experiencia/calificaciones", headers=client_headers, json={
+        "orden_venta_id": order.id, "puntuacion": 2,
+        "comentario": "La atención tardó demasiado.",
+    })
+    assert rating.status_code == 201
+    assert rating.json()["sugerir_reclamo"] is True
+    rating_id = rating.json()["id"]
+
+    # Cerrar/cancelar la sugerencia en UI no llama a ningún borrado: la nota persiste.
+    saved = client.get("/api/v1/experiencia/calificaciones", headers=client_headers)
+    assert saved.status_code == 200
+    assert saved.json()[0]["id"] == rating_id
+
+    claim = client.post("/api/v1/experiencia/reclamos", headers=client_headers, json={
+        "orden_venta_id": order.id, "calificacion_id": rating_id,
+        "sucursal_id": sample_inventory["sucursal"].id,
+        "fecha_incidente": date.today().isoformat(), "motivo": "atencion",
+        "descripcion": "Esperé más de una hora y no recibí una explicación clara.",
+    })
+    assert claim.status_code == 201
+    assert claim.json()["estado"] == "recibido"
+    assert claim.json()["calificacion_id"] == rating_id
+
+    admin_headers = {"Authorization": f"Bearer {auth_tokens['admin_token']}"}
+    updated = client.patch(
+        f"/api/v1/experiencia/reclamos/{claim.json()['id']}", headers=admin_headers,
+        json={"estado": "en_revision", "respuesta": "Estamos revisando lo sucedido."},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["respuesta"] == "Estamos revisando lo sucedido."
+
+
+def test_delivery_completion_notifies_once_with_experience_link(
+    client: TestClient, auth_tokens, sample_inventory, db_session
+):
+    order = _completed_order_for_experience(db_session, auth_tokens, sample_inventory)
+    shipment = Envio(
+        orden_venta_id=order.id, direccion="Av. Siempre Viva 123",
+        ciudad="Santa Cruz", costo=Decimal("15.00"), estado="en camino",
+    )
+    db_session.add(shipment)
+    db_session.commit()
+    db_session.refresh(shipment)
+    headers = {"Authorization": f"Bearer {auth_tokens['client_token']}"}
+
+    assert client.patch(f"/api/v1/envios/{shipment.id}/completar", headers=headers).status_code == 200
+    assert client.patch(f"/api/v1/envios/{shipment.id}/completar", headers=headers).status_code == 200
+
+    notifications = db_session.query(Notificacion).filter(
+        Notificacion.user_id == auth_tokens["client_user"].id,
+        Notificacion.tipo == "experiencia_poscompra",
+        Notificacion.url_accion == f"/cuenta/experiencia?orden_id={order.id}",
+    ).all()
+    assert len(notifications) == 1

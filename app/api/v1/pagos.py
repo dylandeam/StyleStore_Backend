@@ -32,6 +32,7 @@ from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.bitacora_service import BitacoraService
 from app.services.paypal_service import paypal_service
 from app.services.tenant_scope import scope_by_sucursal
+from app.services.notificacion_service import NotificacionService
 
 router = APIRouter(prefix="/pagos", tags=["Pagos"])
 
@@ -168,6 +169,7 @@ async def capture_paypal_order(
 
     # Si ya está aprobada, retornar directamente (idempotencia)
     if pago and pago.estado == "aprobado" and pago.paypal_capture_id:
+        NotificacionService(db).notificar_experiencia_poscompra(orden)
         return pago
 
     # Llamar a PayPal para capturar fondos
@@ -220,6 +222,8 @@ async def capture_paypal_order(
             action=f"Completó pago exitoso con PayPal ({capture_id}) para Orden #{orden.id}",
             module="pagos",
         )
+
+    NotificacionService(db).notificar_experiencia_poscompra(orden)
 
     return pago
 

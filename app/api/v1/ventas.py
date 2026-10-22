@@ -13,6 +13,7 @@ from app.models.cliente import Cliente
 from app.models.orden_venta import OrdenVenta, DetalleVenta
 from app.models.pago import Pago
 from app.models.stock_inventario import StockInventario
+from app.models.sucursal import Sucursal
 from app.schemas.pago_envio import (
     OrdenVentaResponse,
     VentaPresencialCreate,
@@ -25,6 +26,16 @@ from app.services.tenant_scope import get_scoped_sucursal, scope_by_sucursal
 from app.services.promocion_service import PromocionService
 
 router = APIRouter(prefix="/ventas", tags=["Ventas"])
+
+
+def _client_orders_query(db: Session, current_user: User, cliente: Cliente):
+    """Aísla también el historial del cliente al tenant activo."""
+    return db.query(OrdenVenta).filter(
+        OrdenVenta.codigo_cliente == cliente.codigo,
+        OrdenVenta.sucursal_id.in_(
+            db.query(Sucursal.id).filter(Sucursal.empresa_id == current_user.empresa_id)
+        ),
+    )
 
 
 def _serialize_orden(o: OrdenVenta) -> dict:
@@ -121,7 +132,7 @@ async def list_ventas(
         cliente = db.query(Cliente).filter(Cliente.user_id == current_user.id).first()
         if not cliente:
             return []
-        ventas = db.query(OrdenVenta).filter(OrdenVenta.codigo_cliente == cliente.codigo).order_by(OrdenVenta.created_at.desc()).all()
+        ventas = _client_orders_query(db, current_user, cliente).order_by(OrdenVenta.created_at.desc()).all()
         return [_serialize_orden(v) for v in ventas]
 
     ventas = scope_by_sucursal(
@@ -144,7 +155,7 @@ async def list_my_purchases(
     if not cliente:
         return {"compras_carrito": [], "compras_presenciales": []}
 
-    ventas = db.query(OrdenVenta).filter(OrdenVenta.codigo_cliente == cliente.codigo).order_by(OrdenVenta.created_at.desc()).all()
+    ventas = _client_orders_query(db, current_user, cliente).order_by(OrdenVenta.created_at.desc()).all()
 
     carrito_list = [_serialize_orden(v) for v in ventas if v.tipo_venta == "en linea"]
     presenciales_list = [_serialize_orden(v) for v in ventas if v.tipo_venta == "presencial"]
@@ -165,7 +176,7 @@ async def list_mis_compras(
     if not cliente:
         return []
 
-    ventas = db.query(OrdenVenta).filter(OrdenVenta.codigo_cliente == cliente.codigo).order_by(OrdenVenta.created_at.desc()).all()
+    ventas = _client_orders_query(db, current_user, cliente).order_by(OrdenVenta.created_at.desc()).all()
     return [_serialize_orden(v) for v in ventas]
 
 

@@ -24,6 +24,7 @@ from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.bitacora_service import BitacoraService
 from app.services.tenant_scope import get_scoped_sucursal, scope_by_empresa, scope_by_sucursal
 from app.models.sucursal import Sucursal
+from app.services.notificacion_service import NotificacionService
 
 router = APIRouter(prefix="/envios", tags=["Envíos"])
 
@@ -237,6 +238,8 @@ async def complete_envio(
     db.commit()
     db.refresh(envio)
 
+    NotificacionService(db).notificar_experiencia_poscompra(envio.orden_venta)
+
     BitacoraService.registrar(
         db=db,
         user=current_user,
@@ -289,6 +292,9 @@ async def update_delivery_tracking(
 
     db.commit()
     db.refresh(envio)
+
+    if envio.estado in ["entregado", "completado"]:
+        NotificacionService(db).notificar_experiencia_poscompra(envio.orden_venta)
 
     BitacoraService.registrar(
         db=db,
@@ -375,6 +381,7 @@ async def marcar_entregado_conductor(token: str, db: Session = Depends(get_db)):
         envio.orden_venta.estado = "entregada"
 
     db.commit()
+    NotificacionService(db).notificar_experiencia_poscompra(envio.orden_venta)
     return {"success": True, "message": "¡Pedido entregado con éxito! Transmisión de ubicación finalizada."}
 
 
@@ -527,9 +534,14 @@ async def update_envio(
         envio.costo = payload.costo
     if payload.estado is not None:
         envio.estado = payload.estado
+        if payload.estado in ["entregado", "completado"] and envio.orden_venta:
+            envio.orden_venta.estado = "entregada"
 
     db.commit()
     db.refresh(envio)
+
+    if envio.estado in ["entregado", "completado"]:
+        NotificacionService(db).notificar_experiencia_poscompra(envio.orden_venta)
 
     BitacoraService.registrar(
         db=db,
@@ -791,7 +803,12 @@ async def update_estado_despacho(
         raise BadRequestException("Se requiere 'estado'.")
 
     envio.estado = nuevo_estado
+    if nuevo_estado in ["entregado", "completado"] and envio.orden_venta:
+        envio.orden_venta.estado = "entregada"
     db.commit()
+
+    if nuevo_estado in ["entregado", "completado"]:
+        NotificacionService(db).notificar_experiencia_poscompra(envio.orden_venta)
 
     BitacoraService.registrar(
         db=db,
