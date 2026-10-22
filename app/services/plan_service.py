@@ -473,4 +473,6 @@ class PlanService:
             "fecha_inicio": contract.fecha_inicio,
             "fecha_fin": contract.fecha_fin,
             "created_at": contract.created_at,
+            "max_sucursales": contract.plan.max_sucursales if contract.plan else None,
+            "capacidades": contract.plan.capacidades or {},
         }

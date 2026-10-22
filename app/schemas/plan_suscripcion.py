@@ -101,3 +101,5 @@ class ContratacionResponse(BaseModel):
     fecha_inicio: date
     fecha_fin: date | None
     created_at: datetime
+    max_sucursales: int | None = None
+    capacidades: dict[str, bool] | None = None

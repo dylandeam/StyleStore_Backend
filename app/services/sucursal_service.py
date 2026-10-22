@@ -120,6 +120,8 @@ class SucursalService:
             sucursal.address = data.address
         if data.phone is not None:
             sucursal.phone = data.phone
+        if data.active is True and not sucursal.active:
+            PlanService(self.db).require_branch_capacity(current_user)
         if data.active is not None:
             sucursal.active = data.active
         nueva_apertura = data.hora_apertura or sucursal.hora_apertura
