@@ -54,7 +54,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-048 | EN_PRUEBAS | Backend/PWA públicos y APK `1.0.3+4` instalado/validado en Samsung S21+ con hash y modo avión; falta mecanismo público de descarga y E2E comercial completo |
 | REQ-049 | TERMINADO_VERIFICADO | Artefactos ICONIX (dominio, casos de uso, robustez de 4 flujos críticos) y UML 2.5+ (secuencia, clases de diseño, despliegue) documentados en `ARTEFACTOS_ICONIX_UML25.md` |
 | REQ-050 | TERMINADO_VERIFICADO | Documento maestro final con Capítulos I a VI, bibliografía y anexos oficiales redactado y versionado en `DOCUMENTO_FINAL_CAPITULOS_I_VI.md` |
-| REQ-051 | TERMINADO_VERIFICADO | Suite continua verificada con 97 pruebas backend en pytest (seguridad, multiempresa, stock, idempotencia, ML, reportes), 5 pruebas Flutter y build de producción Angular documentados en `EVIDENCIA_SUITE_PRUEBAS_AUTOMATIZADAS.md` |
+| REQ-051 | TERMINADO_VERIFICADO | Suite continua verificada con 99 pruebas backend en pytest (seguridad, multiempresa, stock, idempotencia, ML, reportes, métricas sync), 5 pruebas Flutter y build de producción Angular documentados en `EVIDENCIA_SUITE_PRUEBAS_AUTOMATIZADAS.md` |
 | REQ-052 | TERMINADO_VERIFICADO | Paquetes oficiales para las 4 entregas (25/10, 01/11, 08/11 y defensa 10/11 a las 07:00) estructurados y documentados en `PAQUETES_ENTREGAS_OFICIALES.md` |
 | REQ-053 | TERMINADO_VERIFICADO | Enlaces de despliegue Vercel/Railway/GitHub verificados y 3 códigos QR SVG generados y documentados en `ENLACES_Y_QR_OFICIALES.md` |
 | REQ-054 | EN_PRUEBAS | Solicitud y liquidación de cambio generan nota vinculada, ajustan inventario y conservan diferencia monetaria; falta evidencia E2E desplegada |
@@ -69,11 +69,11 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-063 | TERMINADO_VERIFICADO | Comparativa agregada entre sucursales de un mismo tenant con KPIs de participación, ticket promedio y stock; rechazo HTTP 404 ante sondas de sucursales ajenas comprobado en suite |
 | REQ-064 | EN_PRUEBAS | Calificaciones y reclamos poscompra implementados por tenant con notificación, seguimiento Web/Mobile y conservación de nota baja; falta evidencia E2E desplegada |
 | REQ-065 | EN_PRUEBAS | Favoritos por usuario y tenant implementados en API, catálogo Web y móvil; falta evidencia E2E con backend desplegado |
-| REQ-066 | EN_CURSO | Bloqueo online de stock existe; falta mensaje uniforme y conflicto offline |
+| REQ-066 | TERMINADO_VERIFICADO | Mensaje uniforme 'Prenda no disponible: Stock insuficiente...' implementado en caja POS, reservas y checkout con prueba automatizada en `EVIDENCIA_DIAGNOSTICO_SYNC_Y_STOCK.md` |
 | REQ-067 | EN_PRUEBAS | Estados pendiente/entregado/cancelado, gestión tenant en Web y aviso del monto en colas Web/Android implementados; falta evidencia E2E con venta cobrada físicamente en modo avión |
 | REQ-068 | PENDIENTE | Requiere propuesta del equipo sin desplazar obligatorios |
 | REQ-069 | EN_CURSO | Contratos compartidos preservados; offline/paridad nueva pendientes |
-| REQ-070 | EN_CURSO | Operaciones sync conservan estado, motivo, recurso resultante y fechas; faltan métricas/alertas agregadas |
+| REQ-070 | TERMINADO_VERIFICADO | Diagnóstico estructurado y métricas agregadas de sincronización implementadas en `GET /sync/metricas` y servicio web, documentado con tests en `EVIDENCIA_DIAGNOSTICO_SYNC_Y_STOCK.md` |
 | REQ-071 | EN_PRUEBAS | Banner global informa conexión, catálogo cacheado, última sincronización, pendientes y actualización PWA; falta E2E visual |
 | REQ-072 | EN_CURSO | Caché y cola web están separadas por empresa+usuario; falta estrategia equivalente SQLite móvil |
 | REQ-073 | EN_PRUEBAS | El vencimiento marca la contratación como vencida e inactiva el tenant; solo el administrador conserva la renovación y la reactivación exige captura PayPal `COMPLETED`. Web/Mobile abren el checkout PayPal real; falta E2E desplegado. |

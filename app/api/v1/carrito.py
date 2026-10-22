@@ -516,7 +516,7 @@ async def checkout_cart(
             if stock.cantidad < item.cantidad:
                 db.rollback()
                 prod_name = stock.producto_color.producto.nombre if (stock.producto_color and stock.producto_color.producto) else "Producto"
-                raise BadRequestException(f"Stock insuficiente para '{prod_name}'. Requerido: {item.cantidad}, Disponible: {stock.cantidad}")
+                raise BadRequestException(f"Prenda no disponible: stock insuficiente para '{prod_name}'. Requerido: {item.cantidad}, Disponible: {stock.cantidad}. Por favor revisa otras variantes o sucursales.")
 
             if stock.sucursal_id and not sucursal_id_desde_stock:
                 sucursal_id_desde_stock = stock.sucursal_id

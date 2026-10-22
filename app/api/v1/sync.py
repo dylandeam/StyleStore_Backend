@@ -19,7 +19,13 @@ from app.models.reembolso_offline import ReembolsoOffline
 from app.models.user import User
 from app.schemas.pago_envio import VentaPresencialCreate
 from app.schemas.reserva import ReservaCreate
-from app.schemas.sync import SyncBatchRequest, SyncOperationRequest, SyncOperationResponse
+from app.schemas.sync import (
+    SyncBatchRequest,
+    SyncDiagnosticoItem,
+    SyncMetricasResponse,
+    SyncOperationRequest,
+    SyncOperationResponse,
+)
 
 router = APIRouter(prefix="/sync", tags=["Sincronización offline"])
 
@@ -230,3 +236,87 @@ async def list_sync_operations(
     if status:
         query = query.filter(SyncOperation.status == status)
     return [_response(item, db) for item in query.order_by(SyncOperation.created_at.desc()).all()]
+
+
+@router.get("/metricas", response_model=SyncMetricasResponse, summary="Diagnóstico y métricas agregadas de sincronización offline")
+async def get_sync_metrics(
+    sucursal_id: int | None = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from sqlalchemy import func
+
+    if current_user.empresa_id is None and not current_user.is_platform_admin:
+        raise ForbiddenException("La consulta de métricas de sincronización requiere pertenecer a una empresa")
+
+    query = db.query(SyncOperation)
+    if not current_user.is_platform_admin or current_user.empresa_id is not None:
+        query = query.filter(SyncOperation.empresa_id == current_user.empresa_id)
+    if sucursal_id is not None:
+        query = query.filter(SyncOperation.sucursal_id == sucursal_id)
+
+    total_operaciones = query.count()
+    total_confirmadas = query.filter(SyncOperation.status == "confirmada").count()
+    total_conflictos = query.filter(SyncOperation.status == "conflicto").count()
+    total_rechazadas = query.filter(SyncOperation.status == "rechazada").count()
+    total_procesando = query.filter(SyncOperation.status == "procesando").count()
+
+    tasa_exito = round((total_confirmadas / total_operaciones * 100.0), 2) if total_operaciones > 0 else 100.0
+
+    operaciones_por_tipo = dict(
+        query.with_entities(SyncOperation.operation_type, func.count(SyncOperation.id))
+        .group_by(SyncOperation.operation_type)
+        .all()
+    )
+
+    reembolsos_query = db.query(ReembolsoOffline)
+    if not current_user.is_platform_admin or current_user.empresa_id is not None:
+        reembolsos_query = reembolsos_query.filter(ReembolsoOffline.empresa_id == current_user.empresa_id)
+    if sucursal_id is not None:
+        reembolsos_query = reembolsos_query.filter(ReembolsoOffline.sucursal_id == sucursal_id)
+
+    reembolsos_total = reembolsos_query.count()
+    monto_reembolsos = float(reembolsos_query.with_entities(func.coalesce(func.sum(ReembolsoOffline.monto), 0)).scalar())
+    reembolsos_pendientes = reembolsos_query.filter(ReembolsoOffline.estado == "pendiente").count()
+    reembolsos_completados = reembolsos_query.filter(ReembolsoOffline.estado == "entregado").count()
+
+    incidentes = (
+        query.filter(SyncOperation.status.in_(["conflicto", "rechazada"]))
+        .order_by(SyncOperation.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    conflictos_recientes = []
+    for inc in incidentes:
+        ref = db.query(ReembolsoOffline).filter(ReembolsoOffline.sync_operation_id == inc.id).first()
+        conflictos_recientes.append(
+            SyncDiagnosticoItem(
+                operation_uuid=str(inc.operation_uuid),
+                fecha=inc.created_at,
+                operation_type=inc.operation_type,
+                status=inc.status,
+                sucursal_id=inc.sucursal_id,
+                reason=inc.reason,
+                refund_id=ref.id if ref else None,
+                refund_status=ref.estado if ref else None,
+            )
+        )
+
+    return SyncMetricasResponse(
+        empresa_id=current_user.empresa_id,
+        total_operaciones=total_operaciones,
+        total_confirmadas=total_confirmadas,
+        total_conflictos=total_conflictos,
+        total_rechazadas=total_rechazadas,
+        total_procesando=total_procesando,
+        tasa_exito_porcentaje=tasa_exito,
+        operaciones_por_tipo=operaciones_por_tipo,
+        reembolsos_asociados={
+            "total_reembolsos": reembolsos_total,
+            "monto_total": monto_reembolsos,
+            "pendientes": reembolsos_pendientes,
+            "entregados": reembolsos_completados,
+        },
+        conflictos_recientes=conflictos_recientes,
+    )
+

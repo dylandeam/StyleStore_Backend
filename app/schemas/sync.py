@@ -1,6 +1,6 @@
 """Versioned contract for idempotent offline operations."""
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -32,3 +32,28 @@ class SyncOperationResponse(BaseModel):
 
 class SyncBatchRequest(BaseModel):
     operations: list[SyncOperationRequest] = Field(..., min_length=1, max_length=50)
+
+
+class SyncDiagnosticoItem(BaseModel):
+    operation_uuid: str
+    fecha: datetime
+    operation_type: str
+    status: str
+    sucursal_id: int | None = None
+    reason: str | None = None
+    refund_id: int | None = None
+    refund_status: str | None = None
+
+
+class SyncMetricasResponse(BaseModel):
+    empresa_id: int | None
+    total_operaciones: int
+    total_confirmadas: int
+    total_conflictos: int
+    total_rechazadas: int
+    total_procesando: int
+    tasa_exito_porcentaje: float
+    operaciones_por_tipo: dict[str, int]
+    reembolsos_asociados: dict[str, Any]
+    conflictos_recientes: list[SyncDiagnosticoItem]
+

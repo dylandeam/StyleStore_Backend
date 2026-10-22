@@ -296,8 +296,8 @@ async def create_venta_presencial(
             solicitado = item.cantidad
             db.rollback()
             raise BadRequestException(
-                "Stock insuficiente en sucursal. "
-                f"Disponible: {disponible}, solicitado: {solicitado}."
+                "Prenda no disponible: Stock insuficiente en sucursal. "
+                f"Disponible: {disponible}, solicitado: {solicitado}. Por favor revisa otras variantes o sucursales."
             )
 
         stock.cantidad -= item.cantidad
