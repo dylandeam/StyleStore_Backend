@@ -8,7 +8,10 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User
+from app.models.proximamente import Proximamente
+from app.models.stock_inventario import StockInventario
 from app.services.notificacion_service import NotificacionService
+from app.services.tenant_scope import scope_by_sucursal
 from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/notificaciones", tags=["Notificaciones"])
@@ -77,6 +80,12 @@ async def suscribir_proximamente(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    item = db.query(Proximamente).filter(
+        Proximamente.id == payload.proximamente_id,
+        Proximamente.empresa_id == current_user.empresa_id,
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Artículo próximo no encontrado")
     service = NotificacionService(db)
     resultado = service.suscribir_proximamente(
         user_id=current_user.id, proximamente_id=payload.proximamente_id
@@ -90,6 +99,14 @@ async def suscribir_stock(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    stock = scope_by_sucursal(
+        db.query(StockInventario).filter(StockInventario.id == payload.stock_inventario_id),
+        db,
+        current_user,
+        StockInventario.sucursal_id,
+    ).first()
+    if not stock:
+        raise HTTPException(status_code=404, detail="Existencia no encontrada")
     service = NotificacionService(db)
     resultado = service.suscribir_stock(
         user_id=current_user.id, stock_inventario_id=payload.stock_inventario_id

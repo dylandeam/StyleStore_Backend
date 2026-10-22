@@ -7,9 +7,14 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User
 from app.models.proximamente import Proximamente
+from app.models.empresa import Empresa
+from app.models.proveedor import Proveedor
+from app.models.categoria import Categoria
+from app.models.temporada import Temporada
+from app.models.coleccion import Coleccion
 from app.schemas.proximamente import ProximamenteCreate, ProximamenteUpdate, ProximamenteResponse
-from app.api.deps import get_current_user, require_permission
-from app.core.exceptions import NotFoundException
+from app.api.deps import get_optional_current_user, require_permission
+from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
 from app.services.bitacora_service import BitacoraService
 from app.services.notificacion_service import NotificacionService
 
@@ -19,6 +24,8 @@ router = APIRouter(prefix="/proximamente", tags=["Próximamente"])
 def _serialize_proximamente(item: Proximamente) -> dict:
     return {
         "id": item.id,
+        "empresa_id": item.empresa_id,
+        "empresa_nombre": item.empresa.nombre if item.empresa else None,
         "nombre": item.nombre,
         "descripcion": item.descripcion,
         "foto": item.foto,
@@ -37,12 +44,44 @@ def _serialize_proximamente(item: Proximamente) -> dict:
     }
 
 
+def _tenant_mutacion(current_user: User) -> int:
+    if current_user.is_platform_admin:
+        raise ForbiddenException("El administrador SaaS supervisa; cada tenant gestiona sus próximos lanzamientos.")
+    if not current_user.empresa_id:
+        raise BadRequestException("Tu usuario no tiene un tenant activo.")
+    return current_user.empresa_id
+
+
+def _validar_referencias(db: Session, empresa_id: int, payload) -> None:
+    referencias = [
+        (Proveedor, "codigo", payload.proveedor_codigo, "proveedor"),
+        (Categoria, "id", payload.categoria_id, "categoría"),
+        (Temporada, "id", payload.temporada_id, "temporada"),
+        (Coleccion, "id", payload.coleccion_id, "colección"),
+    ]
+    for model, key, value, label in referencias:
+        if value is None:
+            continue
+        exists = db.query(model).filter(getattr(model, key) == value, model.empresa_id == empresa_id).first()
+        if not exists:
+            raise NotFoundException(f"La referencia de {label} no pertenece al tenant activo.")
+
+
 @router.get("", response_model=list[ProximamenteResponse], summary="Listar prendas próximas")
 async def list_proximamente(
+    current_user: User | None = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
 ):
     """Listar todas las prendas próximas activas para catálogo y administración."""
-    items = db.query(Proximamente).order_by(Proximamente.fecha_estimada_llegada.asc().nulls_last()).all()
+    query = db.query(Proximamente)
+    if current_user and current_user.is_platform_admin:
+        pass
+    elif current_user and current_user.empresa_id:
+        query = query.filter(Proximamente.empresa_id == current_user.empresa_id)
+    else:
+        default = db.query(Empresa).filter(Empresa.codigo == "stylestore").first()
+        query = query.filter(Proximamente.empresa_id == default.id, Proximamente.active.is_(True)) if default else query.filter(False)
+    items = query.order_by(Proximamente.fecha_estimada_llegada.asc().nulls_last()).all()
     return [_serialize_proximamente(i) for i in items]
 
 
@@ -53,7 +92,10 @@ async def create_proximamente(
     db: Session = Depends(get_db),
 ):
     """Registrar una nueva prenda de próximo lanzamiento."""
+    empresa_id = _tenant_mutacion(current_user)
+    _validar_referencias(db, empresa_id, payload)
     item = Proximamente(
+        empresa_id=empresa_id,
         nombre=payload.nombre.strip(),
         descripcion=payload.descripcion.strip() if payload.descripcion else None,
         foto=payload.foto.strip() if payload.foto else None,
@@ -80,10 +122,18 @@ async def create_proximamente(
 @router.get("/{item_id}", response_model=ProximamenteResponse, summary="Obtener prenda próxima")
 async def get_proximamente(
     item_id: int,
+    current_user: User | None = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
 ):
     """Obtener detalle de una prenda próxima."""
-    item = db.query(Proximamente).filter(Proximamente.id == item_id).first()
+    query = db.query(Proximamente).filter(Proximamente.id == item_id)
+    if not (current_user and current_user.is_platform_admin):
+        empresa_id = current_user.empresa_id if current_user else None
+        if empresa_id is None:
+            default = db.query(Empresa).filter(Empresa.codigo == "stylestore").first()
+            empresa_id = default.id if default else None
+        query = query.filter(Proximamente.empresa_id == empresa_id)
+    item = query.first()
     if not item:
         raise NotFoundException(f"Prenda próxima con ID {item_id} no encontrada.")
     return _serialize_proximamente(item)
@@ -97,10 +147,14 @@ async def update_proximamente(
     db: Session = Depends(get_db),
 ):
     """Editar información de una prenda de próximo lanzamiento."""
-    item = db.query(Proximamente).filter(Proximamente.id == item_id).first()
+    empresa_id = _tenant_mutacion(current_user)
+    item = db.query(Proximamente).filter(
+        Proximamente.id == item_id, Proximamente.empresa_id == empresa_id
+    ).first()
     if not item:
         raise NotFoundException(f"Prenda próxima con ID {item_id} no encontrada.")
 
+    _validar_referencias(db, empresa_id, payload)
     if payload.nombre is not None:
         item.nombre = payload.nombre.strip()
     if payload.descripcion is not None:
@@ -139,7 +193,10 @@ async def notificar_proximamente(
     db: Session = Depends(get_db),
 ):
     """Notificar disponibilidad del artículo a todos los clientes suscritos."""
-    item = db.query(Proximamente).filter(Proximamente.id == item_id).first()
+    empresa_id = _tenant_mutacion(current_user)
+    item = db.query(Proximamente).filter(
+        Proximamente.id == item_id, Proximamente.empresa_id == empresa_id
+    ).first()
     if not item:
         raise NotFoundException(f"Prenda próxima con ID {item_id} no encontrada.")
 
@@ -169,7 +226,10 @@ async def delete_proximamente(
     db: Session = Depends(get_db),
 ):
     """Eliminar prenda próxima."""
-    item = db.query(Proximamente).filter(Proximamente.id == item_id).first()
+    empresa_id = _tenant_mutacion(current_user)
+    item = db.query(Proximamente).filter(
+        Proximamente.id == item_id, Proximamente.empresa_id == empresa_id
+    ).first()
     if not item:
         raise NotFoundException(f"Prenda próxima con ID {item_id} no encontrada.")
 

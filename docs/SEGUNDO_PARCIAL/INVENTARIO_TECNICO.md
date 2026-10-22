@@ -30,7 +30,7 @@ Cadena lineal antes del segundo parcial:
 7. `a41c7e9d2b65`: ámbito empresa en catálogo, proveedores, QR y bitácora.
 8. `b52d8f1a3c74`: tres planes configurables por ámbito y contrataciones con snapshot.
 
-Existe una sola cabeza Alembic (`b52d8f1a3c74`). La generación SQL de upgrade y downgrade fue comprobada; las migraciones conservan datos históricos asignándolos a la empresa legado `stylestore`.
+Existe una sola cabeza Alembic (`2d4e6f809123`). La cadena real completa fue aplicada desde un esquema PostgreSQL vacío y terminó con 52 tablas; las migraciones conservan datos históricos asignándolos a la empresa legado `stylestore`.
 
 ## Seguridad y permisos comprobados
 
@@ -41,7 +41,9 @@ Existe una sola cabeza Alembic (`b52d8f1a3c74`). La generación SQL de upgrade y
 - Usuarios, sucursales, catálogo, proveedores, stock, carrito, ventas, compras, pagos, envíos, cambios, bitácora, dashboard y reportes se filtran por empresa o por sus sucursales.
 - Las referencias cruzadas de catálogo y las lecturas directas de recursos operativos ajenos devuelven 404.
 - Hay pruebas negativas A/B para sucursales, usuarios, personal, clientes, catálogo, proveedores, inventario, ventas, pagos, envíos, dashboard y reporte de ventas.
-- La cobertura de archivos, respaldos globales y algunos recursos secundarios aún debe cerrarse; por eso REQ-006/007 permanecen `EN_CURSO`.
+- Archivos subidos, próximos lanzamientos y trabajos de prueba virtual tienen empresa obligatoria; las suscripciones validan la pertenencia de su objetivo.
+- Los respaldos de plataforma son exclusivos del administrador SaaS global: un administrador tenant no puede generar, descargar, restaurar ni configurar copias de otros tenants.
+- Las pruebas negativas A/B cubren también próximos lanzamientos, suscripciones y acceso directo a trabajos de prueba virtual; REQ-006/007 pasan a `EN_PRUEBAS` hasta la evidencia desplegada.
 
 ## Regresiones preservadas
 
@@ -65,7 +67,7 @@ flutter test --no-pub
 
 ## Riesgos abiertos
 
-- Falta cerrar aislamiento de archivos, respaldos globales y recursos secundarios antes de declarar completa la frontera tenant.
+- Falta comprobar en Railway la migración `2d4e6f809123` y ejecutar evidencia E2E de recursos secundarios contra el backend desplegado.
 - DDL histórico en `init_db.py` debe trasladarse gradualmente a migraciones controladas.
 - Credenciales demostrativas visibles en código histórico deben salir a variables de entorno antes de producción real.
 - Faltan PWA/IndexedDB, Flutter/SQLite, sync idempotente, planes y ML.

@@ -14,6 +14,9 @@ class PruebaVirtual(Base):
     __tablename__ = "pruebas_virtuales"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    empresa_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("empresas.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     user_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )

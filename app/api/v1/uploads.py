@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User
 from app.models.uploaded_file import UploadedFile
-from app.api.deps import get_current_user
+from app.api.deps import require_role
+from app.core.exceptions import BadRequestException
 
 router = APIRouter(prefix="/uploads", tags=["Uploads"])
 
@@ -29,9 +30,11 @@ MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 async def upload_image(
     file: UploadFile = File(...),
     folder: str = Query("productos", description="Carpeta destino: 'productos' o 'empleados'"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("administrador", "encargado_sucursal")),
     db: Session = Depends(get_db),
 ):
+    if not current_user.empresa_id:
+        raise BadRequestException("Selecciona un tenant para almacenar el archivo.")
     if folder not in ALLOWED_FOLDERS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -59,7 +62,7 @@ async def upload_image(
     os.makedirs(dest_dir, exist_ok=True)
 
     # Generar nombre único
-    safe_name = f"{uuid.uuid4().hex[:12]}{ext}"
+    safe_name = f"e{current_user.empresa_id}_{uuid.uuid4().hex[:12]}{ext}"
     dest_path = os.path.join(dest_dir, safe_name)
 
     # 1. Guardar en disco para acceso estático rápido
@@ -72,6 +75,7 @@ async def upload_image(
     # 2. Guardar en base de datos para persistencia inmutable en Railway
     try:
         file_record = UploadedFile(
+            empresa_id=current_user.empresa_id,
             filename=safe_name,
             folder=folder,
             content_type=file.content_type or "image/jpeg",

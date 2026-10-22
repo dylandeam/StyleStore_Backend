@@ -13,10 +13,14 @@ from app.models.user import User
 from app.models.backup_log import BackupLog
 from app.services.backup_service import BackupService
 from app.services.bitacora_service import BitacoraService
-from app.api.deps import get_current_user, require_permission
+from app.api.deps import get_current_user, require_permission, require_platform_admin
 from app.core.exceptions import NotFoundException, BadRequestException, ForbiddenException
 
-router = APIRouter(prefix="/backups", tags=["Backups"])
+router = APIRouter(
+    prefix="/backups",
+    tags=["Backups"],
+    dependencies=[Depends(require_platform_admin)],
+)
 
 
 class BackupConfigRequest(BaseModel):

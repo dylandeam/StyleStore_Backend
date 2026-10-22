@@ -6,11 +6,11 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 |---|---|---|
 | REQ-001 | TERMINADO_VERIFICADO | Inventario técnico versionado y contraste de los tres repositorios |
 | REQ-002 | EN_PRUEBAS | Se extendió el proyecto existente; regresión automatizada completa, falta E2E desplegado |
-| REQ-003 | EN_CURSO | Entidad `Empresa`, consola SaaS maestra y frontera tenant activa; falta cerrar recursos secundarios del dominio |
-| REQ-004 | EN_CURSO | Migraciones aditivas para empresa, usuarios, sucursales y raíces de catálogo; ida/vuelta SQL comprobada, faltan recursos secundarios |
+| REQ-003 | EN_PRUEBAS | Entidad `Empresa`, consola SaaS maestra y frontera tenant aplicada también a archivos, próximos lanzamientos y prueba virtual; falta E2E desplegado |
+| REQ-004 | EN_PRUEBAS | Migraciones aditivas cubren raíces y recursos secundarios; cadena completa validada desde PostgreSQL vacío hasta `2d4e6f809123`, falta aplicarla en Railway |
 | REQ-005 | EN_CURSO | Empresa y sucursal son entidades separadas; la consola web muestra jerarquía, uso y administrador, falta paridad móvil donde aplique |
-| REQ-006 | EN_CURSO | Aislamiento aplicado a usuarios, clientes, catálogo, stock, compras, ventas, pagos, carrito, envíos, cambios, bitácora y reportes; faltan recursos secundarios/archivos |
-| REQ-007 | EN_CURSO | Tenant derivado del JWT y regresiones A/B para IDs directos, operaciones y exportables; falta auditoría completa de archivos/sync |
+| REQ-006 | EN_PRUEBAS | Aislamiento aplicado a recursos principales y secundarios; archivos llevan tenant, respaldos son exclusivos del administrador SaaS y referencias cruzadas devuelven 404; falta E2E desplegado |
+| REQ-007 | EN_PRUEBAS | Tenant derivado del JWT y regresiones A/B cubren IDs directos, operaciones, exportables, próximos lanzamientos, suscripciones y trabajos de prueba virtual; falta E2E desplegado/dispositivo |
 | REQ-008 | EN_PRUEBAS | JWT/refresh/blacklist/guards conservados; falta prueba manual de caída de red |
 | REQ-009 | EN_PRUEBAS | Migración Alembic aditiva con una cabeza; falta aplicar/verificar en PostgreSQL desplegado |
 | REQ-010 | EN_PRUEBAS | Variante talla/color/sucursal incorpora precio propio y medidas JSON; catálogo, inventario, carrito y venta usan el valor efectivo, falta E2E físico |
@@ -54,7 +54,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-048 | EN_PRUEBAS | Backend/PWA públicos y APK `1.0.3+4` instalado/validado en Samsung S21+ con hash y modo avión; falta mecanismo público de descarga y E2E comercial completo |
 | REQ-049 | PENDIENTE | Artefactos ICONIX/UML 2.5+ del segundo parcial no creados |
 | REQ-050 | PENDIENTE | Documento final capítulos I–VI no disponible |
-| REQ-051 | EN_CURSO | 88 pruebas backend, conflicto/replay/reembolso/tenant/consola SaaS/cupos/capacidades/variantes/jornadas, builds Web/Mobile y 5 pruebas Flutter aprobados; faltan E2E comerciales en dispositivo |
+| REQ-051 | EN_CURSO | 92 pruebas backend, conflicto/replay/reembolso/tenant/consola SaaS/cupos/capacidades/variantes/jornadas/recursos secundarios, builds Web/Mobile y 5 pruebas Flutter aprobados; faltan E2E comerciales en dispositivo |
 | REQ-052 | EN_CURSO | Matriz iniciada; paquetes/capturas de entregas pendientes |
 | REQ-053 | PENDIENTE | QR y enlaces finales verificados no preparados |
 | REQ-054 | EN_PRUEBAS | Solicitud y liquidación de cambio generan nota vinculada, ajustan inventario y conservan diferencia monetaria; falta evidencia E2E desplegada |

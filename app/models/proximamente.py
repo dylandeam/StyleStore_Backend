@@ -16,6 +16,9 @@ class Proximamente(Base):
     __tablename__ = "proximamente"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    empresa_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("empresas.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     nombre: Mapped[str] = mapped_column(String(150), index=True, nullable=False)
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
     foto: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -44,6 +47,7 @@ class Proximamente(Base):
 
     # Relaciones
     proveedor = relationship("Proveedor", lazy="joined")
+    empresa = relationship("Empresa", lazy="joined")
     categoria = relationship("Categoria", lazy="joined")
     temporada = relationship("Temporada", lazy="joined")
     coleccion = relationship("Coleccion", lazy="joined")

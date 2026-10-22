@@ -34,6 +34,8 @@ class ProximamenteUpdate(BaseModel):
 
 class ProximamenteResponse(ProximamenteBase):
     id: int
+    empresa_id: int
+    empresa_nombre: str | None = None
     active: bool
     created_at: datetime
     updated_at: datetime
