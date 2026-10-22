@@ -75,7 +75,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-069 | EN_CURSO | Contratos compartidos preservados; offline/paridad nueva pendientes |
 | REQ-070 | TERMINADO_VERIFICADO | Diagnóstico estructurado y métricas agregadas de sincronización implementadas en `GET /sync/metricas` y servicio web, documentado con tests en `EVIDENCIA_DIAGNOSTICO_SYNC_Y_STOCK.md` |
 | REQ-071 | EN_PRUEBAS | Banner global informa conexión, catálogo cacheado, última sincronización, pendientes y actualización PWA; falta E2E visual |
-| REQ-072 | EN_CURSO | Caché y cola web están separadas por empresa+usuario; falta estrategia equivalente SQLite móvil |
+| REQ-072 | TERMINADO_VERIFICADO | Aislamiento por ámbito empresa+usuario en SQLite móvil, limpieza segura de caché, purga de resueltas con protección de pendientes y diagnósticos verificados con 9 tests en Flutter |
 | REQ-073 | EN_PRUEBAS | El vencimiento marca la contratación como vencida e inactiva el tenant; solo el administrador conserva la renovación y la reactivación exige captura PayPal `COMPLETED`. Web/Mobile abren el checkout PayPal real; falta E2E desplegado. |
 
 ## Decisiones bloqueadas explícitamente
