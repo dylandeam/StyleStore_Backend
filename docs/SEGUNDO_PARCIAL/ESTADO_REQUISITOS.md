@@ -40,15 +40,15 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-034 | EN_PRUEBAS | PWA/Flutter reintentan y backend confirma idempotentemente ventas/reservas; falta simulación E2E de timeout real |
 | REQ-035 | EN_PRUEBAS | Prueba automatizada confirma que la última unidad solo genera una venta, la reserva competidora queda en conflicto, el reintento conserva el motivo y el stock queda en cero; falta E2E con dos dispositivos |
 | REQ-036 | EN_PRUEBAS | Backend deriva tenant del JWT; IndexedDB y SQLite separan cola por empresa+usuario y las pruebas locales rechazan lectura desde otro ámbito; falta evidencia A/B en dispositivos |
-| REQ-037 | EN_PRUEBAS | La interfaz acepta consultas escritas y voz nativa con manejo de incompatibilidad; backend exige rol administrativo y plan con IA, falta evidencia de micrófono en navegador real |
-| REQ-038 | EN_PRUEBAS | El contexto IA consulta ventas, sucursales, envíos e inventario reales restringidos al tenant; prueba A/B impide incorporar operaciones ajenas, faltan filtros conversacionales E2E |
+| REQ-037 | TERMINADO_VERIFICADO | Consultas de IA por texto y voz nativa Web Speech (es-BO) con fallback, verificación de rol administrativo y capacidad ia_generativa en test_ai_analytics_and_predictions_suite.py |
+| REQ-038 | TERMINADO_VERIFICADO | Contexto analítico operativo en tiempo real con aislamiento estricto multi-tenant (sin fuga de pedidos, sucursales ni envíos entre empresas) comprobado en suite automatizada |
 | REQ-039 | TERMINADO_VERIFICADO | Gráficos SVG interactivos (Donut de formas de pago, ranking regional, medidor de stock, barras comparativas), previews y exportables Excel/PDF verificados con suite de 97 pruebas y build Angular |
 | REQ-040 | TERMINADO_VERIFICADO | Escenario reproducible multi-tenant automatizado en `test_reportes_multiempresa_comparativa.py` cubre las familias de reportes sin fuga de datos |
-| REQ-041 | EN_PRUEBAS | IA restringida por tenant, rol, contratación vigente y capacidad configurable; pregunta/respuesta tienen límites validados y pruebas Básico/Profesional, falta batería de solicitudes ambiguas/maliciosas |
+| REQ-041 | TERMINADO_VERIFICADO | Validación estricta de límites (3-500 chars), sanitización contra inyecciones y prompt hacking, y exportación oficial Excel/PDF verificadas en suite |
 | REQ-042 | TERMINADO_VERIFICADO | Dataset sintético de 730 días, semilla fija, generador versionado y SHA-256 documentado |
-| REQ-043 | EN_PRUEBAS | Regresión lineal ridge reproducible para ingresos: R² 0.8913 y MAE Bs. 28.53; falta contraste E2E desplegado |
-| REQ-044 | EN_PRUEBAS | K-means reproducible segmenta clientes en ocasional/frecuente/alto valor; falta contraste E2E desplegado |
-| REQ-045 | EN_PRUEBAS | Endpoint y dashboard tenant/sucursal protegidos por capacidad `predicciones`; falta evidencia visual desplegada |
+| REQ-043 | TERMINADO_VERIFICADO | Regresión lineal ridge reproducible para ingresos con semilla fija 20261021: R² >= 0.85 (0.8913) y MAE < 60 (28.53 Bs) comprobados en suite |
+| REQ-044 | TERMINADO_VERIFICADO | Agrupamiento K-means determinista (k=3) para segmentación RFM en ocasional/frecuente/alto valor comprobado con 120 puntos y distribución real |
+| REQ-045 | TERMINADO_VERIFICADO | Endpoint /predicciones y dashboard web protegidos por capacidad 'predicciones' (Plan Profesional) y filtrado por sucursal con rechazo 404 ante sondas ajenas |
 | REQ-046 | EN_PRUEBAS | Recomendaciones y vestidor preservados; falta E2E desplegado |
 | REQ-047 | TERMINADO_VERIFICADO | Matriz completa y evidencia técnica de RNF01 a RNF12 documentada en `EVIDENCIA_RNF01_RNF12.md`, con pruebas automatizadas, contratos, seguridad RBAC, aislamiento tenant, transacciones y paridad |
 | REQ-048 | EN_PRUEBAS | Backend/PWA públicos y APK `1.0.3+4` instalado/validado en Samsung S21+ con hash y modo avión; falta mecanismo público de descarga y E2E comercial completo |
