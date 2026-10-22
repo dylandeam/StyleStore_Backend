@@ -15,6 +15,7 @@ from app.models.talla import Talla
 from app.models.sucursal import Sucursal
 from app.models.empresa import Empresa
 from app.models.user import User
+from app.models.favorito import Favorito
 from app.api.deps import get_optional_current_user
 from app.core.exceptions import NotFoundException
 from app.services.promocion_service import PromocionService
@@ -69,6 +70,14 @@ async def get_catalogo(
         )
 
     prods = query.order_by(Producto.nombre.asc()).all()
+    favorite_codes: set[str] = set()
+    if current_user and empresa_id is not None and not current_user.is_platform_admin:
+        favorite_codes = {
+            code for (code,) in db.query(Favorito.producto_codigo).filter(
+                Favorito.user_id == current_user.id,
+                Favorito.empresa_id == empresa_id,
+            ).all()
+        }
     result = []
 
     for p in prods:
@@ -138,6 +147,7 @@ async def get_catalogo(
             "titulo_promocion": getattr(p, "titulo_promocion", None),
             "variantes": variantes,
             "stock_total": stock_total,
+            "es_favorito": p.codigo in favorite_codes,
         })
 
     return result
@@ -231,6 +241,13 @@ async def get_producto_detalle(
     pct_desc_det = PromocionService(db).porcentaje_producto(p)
     en_promo_det = pct_desc_det > 0
     precio_desc_det = round(float(p.precio) * (100 - pct_desc_det) / 100, 2) if en_promo_det else None
+    es_favorito = False
+    if current_user and empresa_id is not None and not current_user.is_platform_admin:
+        es_favorito = db.query(Favorito.id).filter(
+            Favorito.user_id == current_user.id,
+            Favorito.empresa_id == empresa_id,
+            Favorito.producto_codigo == p.codigo,
+        ).first() is not None
 
     return {
         "codigo": p.codigo,
@@ -255,6 +272,7 @@ async def get_producto_detalle(
         "titulo_promocion": getattr(p, "titulo_promocion", None),
         "variantes": variantes,
         "stock_total": stock_total,
+        "es_favorito": es_favorito,
     }
 
 

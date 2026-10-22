@@ -45,6 +45,7 @@ from app.models.plan_suscripcion import PlanSuscripcion, ContratacionPlan
 from app.models.sync_operation import SyncOperation
 from app.models.reembolso_offline import ReembolsoOffline
 from app.models.promocion import PromocionAgrupada, CodigoDescuento
+from app.models.favorito import Favorito
 
 __all__ = [
     "Role",
@@ -104,4 +105,5 @@ __all__ = [
     "ReembolsoOffline",
     "PromocionAgrupada",
     "CodigoDescuento",
+    "Favorito",
 ]

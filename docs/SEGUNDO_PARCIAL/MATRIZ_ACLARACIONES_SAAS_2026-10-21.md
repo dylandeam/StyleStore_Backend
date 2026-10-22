@@ -25,11 +25,11 @@ Fuente complementaria: `REQUISITOS_NUEVAS_FUNCIONALIDADES_SAAS.md`. Esta matriz 
 | Códigos de descuento | Pendiente | No existe entidad/código aplicable a venta web y presencial. |
 | Inventario global y por sucursal | Implementado/en pruebas | Ambos niveles existen y están aislados; el flujo de traspasos está implementado y pendiente de evidencia E2E desplegada. |
 | Proveedores y compras | Parcial avanzado | Compra actualiza stock; debe mantenerse la auditoría tenant en nuevas pruebas E2E. |
-| Cambios y devoluciones | Parcial | Plazo fijo de 7 días, no configurable por tenant; falta nueva nota de venta, diferencia de precio y sucursal elegible. |
+| Cambios y devoluciones | Implementado/en pruebas | Plazo configurable por tenant, nueva nota de venta, diferencia monetaria, saldo a favor y sucursal elegible implementados; falta evidencia E2E desplegada. |
 | Reservas por bloques | En pruebas | API, reservas y recojos web/móvil comparten bloques de una hora; un índice único parcial impide ocupar concurrentemente el mismo bloque. Falta evidencia E2E desplegada. |
 | Venta presencial | Parcial | POS y cliente general existen; falta búsqueda formal por CI y captura de nombre/CI para factura cuando no existe. |
 | Envío o recojo | Parcial | Delivery existe; falta alternativa de recojo con bloques de una hora antes del pago. |
-| Productos guardados | Pendiente | No existe lista de deseos por cliente/tenant ni accesos Web/Mobile. |
+| Productos guardados | Implementado/en pruebas | Lista única por usuario, tenant y producto, integrada con catálogo Web/Mobile; falta evidencia E2E con backend desplegado. |
 | Pago y tenant | Parcial | Pago deriva de orden/sucursal; falta evidencia de notificación y correo idempotentes por confirmación. |
 | Calificaciones y reclamos | Pendiente | No existen entidades, API ni flujo poscompra; debe conservarse una calificación baja aunque se cancele el reclamo sugerido. |
 
@@ -41,7 +41,7 @@ Fuente complementaria: `REQUISITOS_NUEVAS_FUNCIONALIDADES_SAAS.md`. Esta matriz 
 4. Extender cliente a membresías multi-tenant y selector público de empresa.
 5. Completar promociones agrupadas y códigos de descuento.
 6. Completar cambios con nota/diferencias monetarias tras definir el caso de menor precio.
-7. Implementar favoritos; luego calificaciones/reclamos y notificaciones poscompra.
+7. Validar favoritos en despliegue; luego implementar calificaciones/reclamos y notificaciones poscompra.
 
 ## Reglas transversales incorporadas
 

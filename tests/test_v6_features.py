@@ -764,3 +764,43 @@ def test_asistente_ia_reportes(client: TestClient, db_session, auth_tokens):
     assert "respuesta" in data
     assert "kpis" in data
     assert isinstance(data["kpis"], list)
+def test_favorites_are_idempotent_and_exposed_in_catalog(
+    client: TestClient, auth_tokens, sample_inventory, db_session
+):
+    headers = {"Authorization": f"Bearer {auth_tokens['client_token']}"}
+    code = sample_inventory["producto"].codigo
+
+    first = client.post(f"/api/v1/favoritos/{code}", headers=headers)
+    second = client.post(f"/api/v1/favoritos/{code}", headers=headers)
+    assert first.status_code == 201
+    assert second.status_code == 201
+
+    favorites = client.get("/api/v1/favoritos", headers=headers)
+    assert favorites.status_code == 200
+    assert [item["producto_codigo"] for item in favorites.json()] == [code]
+
+    catalog = client.get("/api/v1/catalogo", headers=headers)
+    assert catalog.status_code == 200
+    product = next(item for item in catalog.json() if item["codigo"] == code)
+    assert product["es_favorito"] is True
+
+    removed = client.delete(f"/api/v1/favoritos/{code}", headers=headers)
+    assert removed.status_code == 200
+    assert removed.json()["es_favorito"] is False
+    assert client.get("/api/v1/favoritos", headers=headers).json() == []
+
+
+def test_favorites_reject_products_from_another_tenant(
+    client: TestClient, auth_tokens, sample_inventory, db_session
+):
+    other = Empresa(codigo="favoritos-otro", nombre="Favoritos Otro Tenant", active=True)
+    db_session.add(other)
+    db_session.flush()
+    sample_inventory["producto"].empresa_id = other.id
+    db_session.commit()
+
+    headers = {"Authorization": f"Bearer {auth_tokens['client_token']}"}
+    response = client.post(
+        f"/api/v1/favoritos/{sample_inventory['producto'].codigo}", headers=headers
+    )
+    assert response.status_code == 404
