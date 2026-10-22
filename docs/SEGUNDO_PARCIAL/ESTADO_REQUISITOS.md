@@ -62,13 +62,13 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-056 | EN_PRUEBAS | Todo pago aprobado emite correo una sola vez mediante bloqueo de fila y marca persistente; prueba automatizada aprobada, falta evidencia SMTP/E2E desplegada |
 | REQ-057 | EN_PRUEBAS | Pago asociado obligatoriamente a tenant, recibo estable y notificación in-app única por `pago_id`; Web/Mobile muestran el comprobante, falta E2E desplegada |
 | REQ-058 | TERMINADO_VERIFICADO | Reservas cliente/staff con búsqueda multi-tenant, ciclo de vida, expiración automática con restitución atómica de stock y endpoint/UI verificados en backend (101 tests) y web build |
-| REQ-059 | EN_PRUEBAS | Agenda compartida implementada para reservas y recojo web/móvil, con bloques de una hora y exclusión concurrente; falta evidencia E2E desplegada |
+| REQ-059 | TERMINADO_VERIFICADO | Agenda compartida implementada para reservas y recojo web/móvil, con bloques de una hora, ventana máx. de 3 días y exclusión concurrente verificada en suite y builds |
 | REQ-060 | TERMINADO_VERIFICADO | Precio por talla/color/sucursal configurable en inventario y aplicado a catálogo, carrito, POS y sync; verificado con pruebas automatizadas y Web/Mobile |
 | REQ-061 | TERMINADO_VERIFICADO | Medidas por variante configurables en cm y visibles en fichas Web/Móvil; verificado con pruebas y componentes |
 | REQ-062 | TERMINADO_VERIFICADO | Entidad, API, UI web, aislamiento tenant, estados, idempotencia, bloqueo pesimista y movimiento atómico verificados en suite y builds |
 | REQ-063 | TERMINADO_VERIFICADO | Comparativa agregada entre sucursales de un mismo tenant con KPIs de participación, ticket promedio y stock; rechazo HTTP 404 ante sondas de sucursales ajenas comprobado en suite |
-| REQ-064 | EN_PRUEBAS | Calificaciones y reclamos poscompra implementados por tenant con notificación, seguimiento Web/Mobile y conservación de nota baja; falta evidencia E2E desplegada |
-| REQ-065 | EN_PRUEBAS | Favoritos por usuario y tenant implementados en API, catálogo Web y móvil; falta evidencia E2E con backend desplegado |
+| REQ-064 | TERMINADO_VERIFICADO | Calificaciones y reclamos poscompra por tenant con notificación de entrega única, sugerencia y conservación de nota baja, y respuesta administrativa |
+| REQ-065 | TERMINADO_VERIFICADO | Favoritos por usuario y tenant implementados en API, catálogo Web y móvil con aislamiento estricto y rechazo HTTP 404 ante productos ajenos |
 | REQ-066 | TERMINADO_VERIFICADO | Mensaje uniforme 'Prenda no disponible: Stock insuficiente...' implementado en caja POS, reservas y checkout con prueba automatizada en `EVIDENCIA_DIAGNOSTICO_SYNC_Y_STOCK.md` |
 | REQ-067 | EN_PRUEBAS | Estados pendiente/entregado/cancelado, gestión tenant en Web y aviso del monto en colas Web/Android implementados; falta evidencia E2E con venta cobrada físicamente en modo avión |
 | REQ-068 | TERMINADO_VERIFICADO | Alertas predictivas de stock, velocidad diaria, cobertura estimada, sugerencia de reposición y exportación Excel/PDF verificados con 103 tests backend y build Web |
