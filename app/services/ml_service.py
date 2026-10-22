@@ -186,3 +186,131 @@ class MLService:
             "muestra_real_ordenes": len(completed),
             "nota": "Estimación analítica; no sustituye decisiones comerciales ni garantiza ventas futuras.",
         }
+
+    def predictive_stock_alerts(
+        self,
+        sucursal_id: int | None = None,
+        criticidad: str | None = None,
+        dias_horizonte: int = 30,
+    ) -> dict[str, Any]:
+        """Calcula el riesgo predictivo de agotamiento de stock y reposición sugerida (REQ-068)."""
+        from sqlalchemy import func
+        from app.models.stock_inventario import StockInventario
+        from app.models.producto_color import ProductoColor
+        from app.models.producto import Producto
+        from app.models.talla import Talla
+        from app.models.color import Color
+        from app.models.orden_venta import DetalleVenta
+
+        query = (
+            self.db.query(
+                StockInventario,
+                Producto.nombre.label("producto_nombre"),
+                Producto.codigo.label("producto_codigo"),
+                Sucursal.name.label("sucursal_nombre"),
+                Color.nombre.label("color_nombre"),
+                Talla.nombre.label("talla_nombre"),
+            )
+            .join(Sucursal, StockInventario.sucursal_id == Sucursal.id)
+            .join(ProductoColor, StockInventario.producto_color_id == ProductoColor.id)
+            .join(Producto, ProductoColor.producto_codigo == Producto.codigo)
+            .join(Color, ProductoColor.color_id == Color.id)
+            .join(Talla, StockInventario.talla_id == Talla.id)
+        )
+        if not self.current_user.is_platform_admin:
+            query = query.filter(Sucursal.empresa_id == self.current_user.empresa_id)
+        if sucursal_id:
+            query = query.filter(StockInventario.sucursal_id == sucursal_id)
+
+        stocks = query.all()
+
+        since_date = date.today() - timedelta(days=dias_horizonte)
+        sales_query = (
+            self.db.query(
+                DetalleVenta.stock_inventario_id,
+                func.sum(DetalleVenta.cantidad).label("unidades_vendidas"),
+            )
+            .join(OrdenVenta, DetalleVenta.orden_venta_id == OrdenVenta.id)
+            .join(Sucursal, OrdenVenta.sucursal_id == Sucursal.id)
+            .filter(
+                ~OrdenVenta.estado.in_(["anulado", "cancelada"]),
+                OrdenVenta.fecha >= since_date,
+            )
+        )
+        if not self.current_user.is_platform_admin:
+            sales_query = sales_query.filter(Sucursal.empresa_id == self.current_user.empresa_id)
+        if sucursal_id:
+            sales_query = sales_query.filter(OrdenVenta.sucursal_id == sucursal_id)
+
+        sales_by_stock = {
+            row[0]: int(row[1])
+            for row in sales_query.group_by(DetalleVenta.stock_inventario_id).all()
+            if row[0] is not None
+        }
+
+        items = []
+        criticas_count = 0
+        altas_count = 0
+        medias_count = 0
+
+        for stock, prod_nombre, prod_codigo, suc_nombre, col_nombre, tal_nombre in stocks:
+            cant = int(stock.cantidad or 0)
+            vendidas = sales_by_stock.get(stock.id, 0)
+            vel = round(vendidas / max(dias_horizonte, 1), 2)
+
+            if vel > 0:
+                cobertura = round(cant / vel, 1)
+            else:
+                cobertura = 999.0 if cant > 0 else 0.0
+
+            if cant == 0 or (vel > 0 and cobertura <= 3.0):
+                nivel = "CRITICO"
+                criticas_count += 1
+            elif vel > 0 and cobertura <= 7.0:
+                nivel = "ALTO"
+                altas_count += 1
+            elif (vel > 0 and cobertura <= 15.0) or (cant <= 3 and vel > 0):
+                nivel = "MEDIO"
+                medias_count += 1
+            else:
+                nivel = "NORMAL"
+
+            if criticidad and criticidad.upper() != nivel:
+                continue
+
+            if nivel in ("CRITICO", "ALTO", "MEDIO"):
+                demanda_30d = round(vel * 30)
+                reposicion = max(10, demanda_30d - cant) if demanda_30d > cant else 10
+            else:
+                reposicion = 0
+
+            items.append({
+                "stock_id": stock.id,
+                "producto": prod_nombre,
+                "codigo": prod_codigo,
+                "sucursal": suc_nombre,
+                "color": col_nombre,
+                "talla": tal_nombre,
+                "stock_actual": cant,
+                "velocidad_diaria": vel,
+                "dias_cobertura": cobertura,
+                "criticidad": nivel,
+                "reposicion_sugerida": reposicion,
+            })
+
+        order_rank = {"CRITICO": 0, "ALTO": 1, "MEDIO": 2, "NORMAL": 3}
+        items.sort(key=lambda x: (order_rank.get(x["criticidad"], 4), x["dias_cobertura"]))
+
+        return {
+            "tenant_id": self.current_user.empresa_id,
+            "sucursal_id": sucursal_id,
+            "generado_en": date.today().isoformat(),
+            "dias_horizonte_analizado": dias_horizonte,
+            "total_items_evaluados": len(stocks),
+            "alertas_criticas": criticas_count,
+            "alertas_altas": altas_count,
+            "alertas_medias": medias_count,
+            "total_alertas": criticas_count + altas_count + medias_count,
+            "items": items,
+        }
+

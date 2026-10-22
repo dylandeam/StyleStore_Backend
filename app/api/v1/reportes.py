@@ -256,6 +256,121 @@ async def get_ml_predictions(
     return MLService(db, current_user).insights(sucursal_id=sucursal_id)
 
 
+@router.get("/alertas-stock-predictivo", summary="Alertas predictivas de agotamiento de stock por variante (REQ-068)")
+async def get_predictive_stock_alerts(
+    sucursal_id: Optional[int] = None,
+    criticidad: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.ml_service import MLService
+
+    if sucursal_id == 0:
+        sucursal_id = None
+    _validate_report_sucursal(db, current_user, sucursal_id)
+    return MLService(db, current_user).predictive_stock_alerts(
+        sucursal_id=sucursal_id, criticidad=criticidad
+    )
+
+
+@router.get("/alertas-stock-predictivo/excel", summary="Exportar alertas predictivas de stock en Excel (REQ-068)")
+async def excel_alertas_stock_predictivo(
+    sucursal_id: Optional[int] = None,
+    criticidad: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.ml_service import MLService
+
+    if sucursal_id == 0:
+        sucursal_id = None
+    _validate_report_sucursal(db, current_user, sucursal_id)
+    data = MLService(db, current_user).predictive_stock_alerts(
+        sucursal_id=sucursal_id, criticidad=criticidad
+    )
+    headers = [
+        "Producto",
+        "Código",
+        "Sucursal",
+        "Color",
+        "Talla",
+        "Stock Actual",
+        "Velocidad Diaria",
+        "Días Cobertura",
+        "Criticidad",
+        "Reposición Sugerida",
+    ]
+    rows = [
+        [
+            item["producto"],
+            item["codigo"],
+            item["sucursal"],
+            item["color"],
+            item["talla"],
+            item["stock_actual"],
+            item["velocidad_diaria"],
+            item["dias_cobertura"],
+            item["criticidad"],
+            item["reposicion_sugerida"],
+        ]
+        for item in data["items"]
+    ]
+    srv = ReportService(db, current_user)
+    buf = srv.build_generic_excel(
+        "Alertas Stock",
+        "Reporte Predictivo de Agotamiento de Stock",
+        headers,
+        rows,
+    )
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="alertas_stock_predictivo.xlsx"'},
+    )
+
+
+@router.get("/alertas-stock-predictivo/pdf", summary="Exportar alertas predictivas de stock en PDF (REQ-068)")
+async def pdf_alertas_stock_predictivo(
+    sucursal_id: Optional[int] = None,
+    criticidad: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.ml_service import MLService
+
+    if sucursal_id == 0:
+        sucursal_id = None
+    _validate_report_sucursal(db, current_user, sucursal_id)
+    data = MLService(db, current_user).predictive_stock_alerts(
+        sucursal_id=sucursal_id, criticidad=criticidad
+    )
+    headers = ["Producto", "Código", "Sucursal", "Talla", "Stock", "Días", "Alerta", "Sugerido"]
+    rows = [
+        [
+            item["producto"],
+            item["codigo"],
+            item["sucursal"],
+            item["talla"],
+            str(item["stock_actual"]),
+            f"{item['dias_cobertura']:.1f}d" if item["dias_cobertura"] < 900 else ">90d",
+            item["criticidad"],
+            f"+{item['reposicion_sugerida']} un.",
+        ]
+        for item in data["items"]
+    ]
+    srv = ReportService(db, current_user)
+    buf = srv.build_generic_pdf(
+        "Alertas Predictivas de Stock",
+        headers,
+        rows,
+        [130, 60, 80, 45, 45, 45, 55, 55],
+    )
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="alertas_stock_predictivo.pdf"'},
+    )
+
 
 # ==========================================
 # 8 NUEVOS REPORTES DINÁMICOS (PUNTO 11)
