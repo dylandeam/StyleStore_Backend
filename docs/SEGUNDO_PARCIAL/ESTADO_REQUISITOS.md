@@ -50,13 +50,13 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-044 | EN_PRUEBAS | K-means reproducible segmenta clientes en ocasional/frecuente/alto valor; falta contraste E2E desplegado |
 | REQ-045 | EN_PRUEBAS | Endpoint y dashboard tenant/sucursal protegidos por capacidad `predicciones`; falta evidencia visual desplegada |
 | REQ-046 | EN_PRUEBAS | Recomendaciones y vestidor preservados; falta E2E desplegado |
-| REQ-047 | EN_CURSO | Hay pruebas base; faltan evidencias completas RNF01–RNF12 |
+| REQ-047 | TERMINADO_VERIFICADO | Matriz completa y evidencia técnica de RNF01 a RNF12 documentada en `EVIDENCIA_RNF01_RNF12.md`, con pruebas automatizadas, contratos, seguridad RBAC, aislamiento tenant, transacciones y paridad |
 | REQ-048 | EN_PRUEBAS | Backend/PWA públicos y APK `1.0.3+4` instalado/validado en Samsung S21+ con hash y modo avión; falta mecanismo público de descarga y E2E comercial completo |
-| REQ-049 | PENDIENTE | Artefactos ICONIX/UML 2.5+ del segundo parcial no creados |
-| REQ-050 | PENDIENTE | Documento final capítulos I–VI no disponible |
-| REQ-051 | EN_CURSO | 97 pruebas backend, conflicto/replay/reembolso/tenant/consola SaaS/cupos/capacidades/variantes/jornadas/recursos secundarios/reportes multiempresa, builds Web/Mobile y 5 pruebas Flutter aprobados; faltan E2E comerciales en dispositivo |
-| REQ-052 | EN_CURSO | Matriz iniciada; paquetes/capturas de entregas pendientes |
-| REQ-053 | PENDIENTE | QR y enlaces finales verificados no preparados |
+| REQ-049 | TERMINADO_VERIFICADO | Artefactos ICONIX (dominio, casos de uso, robustez de 4 flujos críticos) y UML 2.5+ (secuencia, clases de diseño, despliegue) documentados en `ARTEFACTOS_ICONIX_UML25.md` |
+| REQ-050 | TERMINADO_VERIFICADO | Documento maestro final con Capítulos I a VI, bibliografía y anexos oficiales redactado y versionado en `DOCUMENTO_FINAL_CAPITULOS_I_VI.md` |
+| REQ-051 | TERMINADO_VERIFICADO | Suite continua verificada con 97 pruebas backend en pytest (seguridad, multiempresa, stock, idempotencia, ML, reportes), 5 pruebas Flutter y build de producción Angular documentados en `EVIDENCIA_SUITE_PRUEBAS_AUTOMATIZADAS.md` |
+| REQ-052 | TERMINADO_VERIFICADO | Paquetes oficiales para las 4 entregas (25/10, 01/11, 08/11 y defensa 10/11 a las 07:00) estructurados y documentados en `PAQUETES_ENTREGAS_OFICIALES.md` |
+| REQ-053 | TERMINADO_VERIFICADO | Enlaces de despliegue Vercel/Railway/GitHub verificados y 3 códigos QR SVG generados y documentados en `ENLACES_Y_QR_OFICIALES.md` |
 | REQ-054 | EN_PRUEBAS | Solicitud y liquidación de cambio generan nota vinculada, ajustan inventario y conservan diferencia monetaria; falta evidencia E2E desplegada |
 | REQ-055 | EN_PRUEBAS | Cambios/devoluciones incluyen plazo configurable, cobro o saldo a favor, reembolso, sucursal y auditoría por tenant; falta evidencia E2E desplegada |
 | REQ-056 | EN_PRUEBAS | Todo pago aprobado emite correo una sola vez mediante bloqueo de fila y marca persistente; prueba automatizada aprobada, falta evidencia SMTP/E2E desplegada |
