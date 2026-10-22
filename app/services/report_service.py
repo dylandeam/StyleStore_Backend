@@ -847,3 +847,154 @@ class ReportService:
             return res
         except Exception:
             return []
+
+    # ==========================================
+    # 5. COMPARATIVA ENTRE SUCURSALES (REQ-063)
+    # ==========================================
+    def get_comparativa_sucursales_data(self) -> Dict[str, Any]:
+        """
+        Retorna métricas comparativas de ventas, transacciones, inventario y personal
+        agrupadas por sucursal, restringidas estrictamente a las sucursales del tenant autenticado.
+        """
+        sucursales_q = self.db.query(Sucursal)
+        if not self.current_user.is_platform_admin:
+            sucursales_q = sucursales_q.filter(Sucursal.empresa_id == self.current_user.empresa_id)
+        sucursales = sucursales_q.order_by(Sucursal.id.asc()).all()
+
+        sucursales_metricas = []
+        gran_total_ventas = 0.0
+        gran_total_ordenes = 0
+        gran_total_stock = 0
+        gran_total_criticos = 0
+
+        for s in sucursales:
+            ventas = (
+                self.db.query(OrdenVenta)
+                .filter(OrdenVenta.sucursal_id == s.id, OrdenVenta.estado != "anulado")
+                .all()
+            )
+            total_ventas = sum(float(v.total) for v in ventas)
+            cant_ordenes = len(ventas)
+            ticket_promedio = round(total_ventas / cant_ordenes, 2) if cant_ordenes > 0 else 0.0
+
+            desglose_pagos = {"efectivo": 0.0, "qr": 0.0, "paypal": 0.0, "otros": 0.0}
+            for v in ventas:
+                mp = (v.metodo_pago or "efectivo").lower()
+                monto_v = float(v.total)
+                if "efectivo" in mp:
+                    desglose_pagos["efectivo"] += monto_v
+                elif "qr" in mp:
+                    desglose_pagos["qr"] += monto_v
+                elif "paypal" in mp or "linea" in mp:
+                    desglose_pagos["paypal"] += monto_v
+                else:
+                    desglose_pagos["otros"] += monto_v
+
+            inventario = (
+                self.db.query(StockInventario)
+                .filter(StockInventario.sucursal_id == s.id)
+                .all()
+            )
+            total_stock = sum(it.cantidad for it in inventario)
+            items_criticos = sum(1 for it in inventario if it.cantidad <= 5)
+            items_agotados = sum(1 for it in inventario if it.cantidad == 0)
+
+            empleados_count = (
+                self.db.query(func.count(Empleado.codigo))
+                .filter(Empleado.sucursal_id == s.id)
+                .scalar() or 0
+            )
+
+            gran_total_ventas += total_ventas
+            gran_total_ordenes += cant_ordenes
+            gran_total_stock += total_stock
+            gran_total_criticos += items_criticos
+
+            sucursales_metricas.append({
+                "sucursal_id": s.id,
+                "nombre": s.name,
+                "ciudad": s.city,
+                "direccion": s.address,
+                "activa": s.active,
+                "total_ventas": round(total_ventas, 2),
+                "cantidad_ordenes": cant_ordenes,
+                "ticket_promedio": ticket_promedio,
+                "total_stock": total_stock,
+                "items_criticos": items_criticos,
+                "items_agotados": items_agotados,
+                "empleados_count": int(empleados_count),
+                "desglose_pagos": {k: round(v, 2) for k, v in desglose_pagos.items()},
+                "porcentaje_ventas": 0.0,
+            })
+
+        for sm in sucursales_metricas:
+            sm["porcentaje_ventas"] = (
+                round((sm["total_ventas"] / gran_total_ventas) * 100, 1)
+                if gran_total_ventas > 0
+                else 0.0
+            )
+
+        return {
+            "total_sucursales": len(sucursales_metricas),
+            "gran_total_ventas": round(gran_total_ventas, 2),
+            "gran_total_ordenes": gran_total_ordenes,
+            "gran_total_stock": gran_total_stock,
+            "gran_total_criticos": gran_total_criticos,
+            "ticket_promedio_general": (
+                round(gran_total_ventas / gran_total_ordenes, 2)
+                if gran_total_ordenes > 0
+                else 0.0
+            ),
+            "sucursales": sucursales_metricas,
+        }
+
+    def generate_comparativa_excel(self) -> io.BytesIO:
+        data = self.get_comparativa_sucursales_data()
+        headers = [
+            "Sucursal", "Ciudad", "Ventas (Bs.)", "Participación %",
+            "N° Órdenes", "Ticket Promedio (Bs.)", "Stock Total", "Stock Crítico (≤5)", "Personal"
+        ]
+        rows = [
+            [
+                s["nombre"],
+                s["ciudad"],
+                s["total_ventas"],
+                f"{s['porcentaje_ventas']}%",
+                s["cantidad_ordenes"],
+                s["ticket_promedio"],
+                s["total_stock"],
+                s["items_criticos"],
+                s["empleados_count"],
+            ]
+            for s in data["sucursales"]
+        ]
+        return self.build_generic_excel(
+            "Comparativa Sucursales",
+            "Reporte Comparativo de Sucursales y Rendimiento",
+            headers,
+            rows,
+        )
+
+    def generate_comparativa_pdf(self) -> io.BytesIO:
+        data = self.get_comparativa_sucursales_data()
+        headers = ["Sucursal", "Ciudad", "Ventas (Bs.)", "Part. %", "Órdenes", "Ticket Prom.", "Stock", "Críticos"]
+        rows = [
+            [
+                s["nombre"][:18],
+                s["ciudad"][:12],
+                f"Bs. {s['total_ventas']:.2f}",
+                f"{s['porcentaje_ventas']}%",
+                s["cantidad_ordenes"],
+                f"Bs. {s['ticket_promedio']:.2f}",
+                s["total_stock"],
+                s["items_criticos"],
+            ]
+            for s in data["sucursales"]
+        ]
+        return self.build_generic_pdf(
+            "Comparativa de Rendimiento por Sucursal",
+            headers,
+            rows,
+            [120, 80, 80, 50, 45, 65, 45, 45],
+        )
+

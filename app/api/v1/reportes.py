@@ -11,6 +11,7 @@ from app.database import get_db
 from app.models.user import User
 from app.services.report_service import ReportService
 from app.services.bitacora_service import BitacoraService
+from app.services.tenant_scope import get_scoped_sucursal
 from app.api.deps import get_current_user, require_plan_capability
 
 router = APIRouter(
@@ -18,6 +19,12 @@ router = APIRouter(
     tags=["Reportes"],
     dependencies=[Depends(require_plan_capability("reportes"))],
 )
+
+
+def _validate_report_sucursal(db: Session, current_user: User, sucursal_id: Optional[int]) -> None:
+    """Valida que la sucursal pertenezca al tenant del usuario autenticado (REQ-063)."""
+    if sucursal_id is not None and sucursal_id > 0:
+        get_scoped_sucursal(db, current_user, sucursal_id)
 
 
 @router.get("/ventas/excel", summary="Exportar reporte de ventas en formato Excel")
@@ -30,6 +37,7 @@ async def export_ventas_excel(
     db: Session = Depends(get_db),
 ):
     """Genera y descarga el archivo Excel de ventas filtradas."""
+    _validate_report_sucursal(db, current_user, sucursal_id)
     service = ReportService(db, current_user)
     buffer = service.generate_ventas_excel(fecha_inicio, fecha_fin, sucursal_id, metodo_pago)
 
@@ -58,6 +66,7 @@ async def export_ventas_pdf(
     db: Session = Depends(get_db),
 ):
     """Genera y descarga el archivo PDF de ventas."""
+    _validate_report_sucursal(db, current_user, sucursal_id)
     service = ReportService(db, current_user)
     buffer = service.generate_ventas_pdf(fecha_inicio, fecha_fin, sucursal_id, metodo_pago)
 
@@ -84,6 +93,7 @@ async def export_inventario_excel(
     db: Session = Depends(get_db),
 ):
     """Genera y descarga el archivo Excel de inventario."""
+    _validate_report_sucursal(db, current_user, sucursal_id)
     service = ReportService(db, current_user)
     buffer = service.generate_inventario_excel(sucursal_id, solo_bajo_stock)
 
@@ -110,6 +120,7 @@ async def export_inventario_pdf(
     db: Session = Depends(get_db),
 ):
     """Genera y descarga el archivo PDF de inventario."""
+    _validate_report_sucursal(db, current_user, sucursal_id)
     service = ReportService(db, current_user)
     buffer = service.generate_inventario_pdf(sucursal_id, solo_bajo_stock)
 
@@ -138,6 +149,7 @@ async def preview_ventas(
     db: Session = Depends(get_db),
 ):
     """Retorna los datos estructurados en JSON para la previsualización interactiva de ventas."""
+    _validate_report_sucursal(db, current_user, sucursal_id)
     service = ReportService(db, current_user)
     ventas = service.get_ventas_data(fecha_inicio, fecha_fin, sucursal_id, metodo_pago)
     total_monto = sum(float(v.total) for v in ventas)
@@ -172,6 +184,7 @@ async def preview_inventario(
     db: Session = Depends(get_db),
 ):
     """Retorna los datos estructurados en JSON para la previsualización interactiva de inventario."""
+    _validate_report_sucursal(db, current_user, sucursal_id)
     service = ReportService(db, current_user)
     items_raw = service.get_inventario_data(sucursal_id, solo_bajo_stock)
     from app.services.report_service import _get_sucursal_nombre
@@ -202,6 +215,7 @@ async def preview_inventario(
     }
 
 
+
 # ==========================================
 # DASHBOARD STATS (PUNTO 1)
 # ==========================================
@@ -223,6 +237,7 @@ async def get_dashboard_stats(
     if sucursal_id == 0:
         sucursal_id = None
 
+    _validate_report_sucursal(db, current_user, sucursal_id)
     service = DashboardService(db, current_user)
     return service.get_dashboard_stats(sucursal_id=sucursal_id)
 
@@ -237,7 +252,9 @@ async def get_ml_predictions(
 
     if sucursal_id == 0:
         sucursal_id = None
+    _validate_report_sucursal(db, current_user, sucursal_id)
     return MLService(db, current_user).insights(sucursal_id=sucursal_id)
+
 
 
 # ==========================================
@@ -347,12 +364,14 @@ async def pdf_clientes(current_user: User = Depends(get_current_user), db: Sessi
 # 5. Empleados por sucursal
 @router.get("/empleados/preview")
 async def preview_empleados(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _validate_report_sucursal(db, current_user, sucursal_id)
     srv = ReportService(db, current_user)
     data = srv.get_empleados_por_sucursal_data(sucursal_id)
     return {"total_registros": len(data), "items": data}
 
 @router.get("/empleados/excel")
 async def excel_empleados(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _validate_report_sucursal(db, current_user, sucursal_id)
     srv = ReportService(db, current_user)
     data = srv.get_empleados_por_sucursal_data(sucursal_id)
     headers = ["Código", "Nombre", "Correo", "Sucursal", "Teléfono", "Sueldo (Bs.)"]
@@ -362,6 +381,7 @@ async def excel_empleados(sucursal_id: Optional[int] = None, current_user: User 
 
 @router.get("/empleados/pdf")
 async def pdf_empleados(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _validate_report_sucursal(db, current_user, sucursal_id)
     srv = ReportService(db, current_user)
     data = srv.get_empleados_por_sucursal_data(sucursal_id)
     headers = ["Código", "Nombre", "Sucursal", "Teléfono", "Sueldo (Bs.)"]
@@ -430,12 +450,14 @@ async def pdf_envios(current_user: User = Depends(get_current_user), db: Session
 # 8. Devoluciones y Cambios
 @router.get("/devoluciones/preview")
 async def preview_devoluciones(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _validate_report_sucursal(db, current_user, sucursal_id)
     srv = ReportService(db, current_user)
     data = srv.get_cambios_devoluciones_report_data(sucursal_id)
     return {"total_registros": len(data), "items": data}
 
 @router.get("/devoluciones/excel")
 async def excel_devoluciones(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _validate_report_sucursal(db, current_user, sucursal_id)
     srv = ReportService(db, current_user)
     data = srv.get_cambios_devoluciones_report_data(sucursal_id)
     headers = ["ID", "Ticket", "Tipo", "Motivo", "Producto", "Sucursal", "Estado", "Fecha Programada"]
@@ -445,6 +467,7 @@ async def excel_devoluciones(sucursal_id: Optional[int] = None, current_user: Us
 
 @router.get("/devoluciones/pdf")
 async def pdf_devoluciones(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _validate_report_sucursal(db, current_user, sucursal_id)
     srv = ReportService(db, current_user)
     data = srv.get_cambios_devoluciones_report_data(sucursal_id)
     headers = ["Ticket", "Tipo", "Motivo", "Producto", "Sucursal", "Estado", "Fecha"]
@@ -460,12 +483,14 @@ async def pdf_devoluciones(sucursal_id: Optional[int] = None, current_user: User
 # 9. Flujo Financiero y Pagos
 @router.get("/financiero/preview")
 async def preview_financiero(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _validate_report_sucursal(db, current_user, sucursal_id)
     srv = ReportService(db, current_user)
     data = srv.get_financiero_report_data(sucursal_id)
     return {"total_registros": len(data), "items": data}
 
 @router.get("/financiero/excel")
 async def excel_financiero(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _validate_report_sucursal(db, current_user, sucursal_id)
     srv = ReportService(db, current_user)
     data = srv.get_financiero_report_data(sucursal_id)
     headers = ["Método de Pago", "N° Transacciones", "Total Recaudado (Bs.)"]
@@ -475,6 +500,7 @@ async def excel_financiero(sucursal_id: Optional[int] = None, current_user: User
 
 @router.get("/financiero/pdf")
 async def pdf_financiero(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _validate_report_sucursal(db, current_user, sucursal_id)
     srv = ReportService(db, current_user)
     data = srv.get_financiero_report_data(sucursal_id)
     headers = ["Método de Pago", "Transacciones", "Total Recaudado (Bs.)"]
@@ -486,12 +512,14 @@ async def pdf_financiero(sucursal_id: Optional[int] = None, current_user: User =
 # 10. Caducidad y Obsolescencia de Temporadas
 @router.get("/caducidad/preview")
 async def preview_caducidad(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _validate_report_sucursal(db, current_user, sucursal_id)
     srv = ReportService(db, current_user)
     data = srv.get_caducidad_report_data(sucursal_id)
     return {"total_registros": len(data), "items": data}
 
 @router.get("/caducidad/excel")
 async def excel_caducidad(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _validate_report_sucursal(db, current_user, sucursal_id)
     srv = ReportService(db, current_user)
     data = srv.get_caducidad_report_data(sucursal_id)
     headers = ["Código", "Producto", "Temporada", "Sucursal", "Talla", "Stock", "Precio (Bs.)", "Sugerencia"]
@@ -501,6 +529,7 @@ async def excel_caducidad(sucursal_id: Optional[int] = None, current_user: User 
 
 @router.get("/caducidad/pdf")
 async def pdf_caducidad(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _validate_report_sucursal(db, current_user, sucursal_id)
     srv = ReportService(db, current_user)
     data = srv.get_caducidad_report_data(sucursal_id)
     headers = ["Código", "Prenda", "Temporada", "Sucursal", "Stock", "Precio"]
@@ -538,12 +567,14 @@ async def pdf_auditoria(limit: int = 150, current_user: User = Depends(get_curre
 # 12. Compras a Proveedores (Abastecimiento)
 @router.get("/compras/preview")
 async def preview_compras(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _validate_report_sucursal(db, current_user, sucursal_id)
     srv = ReportService(db, current_user)
     data = srv.get_compras_report_data(sucursal_id)
     return {"total_registros": len(data), "items": data}
 
 @router.get("/compras/excel")
 async def excel_compras(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _validate_report_sucursal(db, current_user, sucursal_id)
     srv = ReportService(db, current_user)
     data = srv.get_compras_report_data(sucursal_id)
     headers = ["ID Compra", "Fecha", "Proveedor", "Sucursal Destino", "Monto Total (Bs.)"]
@@ -553,12 +584,68 @@ async def excel_compras(sucursal_id: Optional[int] = None, current_user: User = 
 
 @router.get("/compras/pdf")
 async def pdf_compras(sucursal_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _validate_report_sucursal(db, current_user, sucursal_id)
     srv = ReportService(db, current_user)
     data = srv.get_compras_report_data(sucursal_id)
     headers = ["ID", "Fecha", "Proveedor", "Sucursal", "Total (Bs.)"]
     rows = [[d["id"], d["fecha"], d["proveedor"][:20], d["sucursal"], f"Bs. {d['total']:.2f}"] for d in data]
     buf = srv.build_generic_pdf("Compras y Abastecimiento a Proveedores", headers, rows, [40, 80, 180, 100, 80])
     return Response(content=buf.getvalue(), media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="compras_proveedores.pdf"'})
+
+
+# ==========================================
+# 13. COMPARATIVA ENTRE SUCURSALES (REQ-063)
+# ==========================================
+@router.get("/comparativa-sucursales/preview", summary="Previsualizar comparativa entre sucursales del tenant")
+async def preview_comparativa_sucursales(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    srv = ReportService(db, current_user)
+    return srv.get_comparativa_sucursales_data()
+
+
+@router.get("/comparativa-sucursales/excel", summary="Exportar comparativa de sucursales en Excel (.xlsx)")
+async def excel_comparativa_sucursales(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    srv = ReportService(db, current_user)
+    buf = srv.generate_comparativa_excel()
+    BitacoraService.registrar(
+        db=db,
+        user=current_user,
+        action="Exportó reporte comparativo de sucursales en Excel (.xlsx)",
+        module="reportes",
+    )
+    filename = f"comparativa_sucursales_{date.today().strftime('%Y%m%d')}.xlsx"
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/comparativa-sucursales/pdf", summary="Exportar comparativa de sucursales en PDF (.pdf)")
+async def pdf_comparativa_sucursales(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    srv = ReportService(db, current_user)
+    buf = srv.generate_comparativa_pdf()
+    BitacoraService.registrar(
+        db=db,
+        user=current_user,
+        action="Exportó reporte comparativo de sucursales en PDF (.pdf)",
+        module="reportes",
+    )
+    filename = f"comparativa_sucursales_{date.today().strftime('%Y%m%d')}.pdf"
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
 
 
 # Aliases defensivos para garantizar compatibilidad con frontend y no dar jamás 404
