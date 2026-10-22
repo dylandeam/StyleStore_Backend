@@ -61,7 +61,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-055 | EN_PRUEBAS | Cambios/devoluciones incluyen plazo configurable, cobro o saldo a favor, reembolso, sucursal y auditoría por tenant; falta evidencia E2E desplegada |
 | REQ-056 | EN_PRUEBAS | Todo pago aprobado emite correo una sola vez mediante bloqueo de fila y marca persistente; prueba automatizada aprobada, falta evidencia SMTP/E2E desplegada |
 | REQ-057 | EN_PRUEBAS | Pago asociado obligatoriamente a tenant, recibo estable y notificación in-app única por `pago_id`; Web/Mobile muestran el comprobante, falta E2E desplegada |
-| REQ-058 | EN_CURSO | Reservas cliente/staff y límite de 3 días existen; falta cierre tenant integral |
+| REQ-058 | TERMINADO_VERIFICADO | Reservas cliente/staff con búsqueda multi-tenant, ciclo de vida, expiración automática con restitución atómica de stock y endpoint/UI verificados en backend (101 tests) y web build |
 | REQ-059 | EN_PRUEBAS | Agenda compartida implementada para reservas y recojo web/móvil, con bloques de una hora y exclusión concurrente; falta evidencia E2E desplegada |
 | REQ-060 | EN_PRUEBAS | Precio por talla/color/sucursal configurable en inventario y aplicado a catálogo, carrito, POS y sync; falta E2E desplegado |
 | REQ-061 | EN_PRUEBAS | Medidas por variante configurables y visibles en web/móvil; falta evidencia E2E desplegada |

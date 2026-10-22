@@ -5,6 +5,7 @@ Incluye transacción atómica con descuento automático de inventario.
 from datetime import datetime, date, time, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, status, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
@@ -14,6 +15,7 @@ from app.models.cliente import Cliente
 from app.models.reserva import Reserva, DetalleReserva
 from app.models.stock_inventario import StockInventario
 from app.schemas.reserva import (
+    ExpirarReservasResponse,
     ReservaCreate,
     ReservaResponse,
     ReservaEstadoUpdate,
@@ -123,32 +125,170 @@ def _serialize_reserva(res: Reserva) -> dict:
     }
 
 
-@router.get("", response_model=list[ReservaResponse], summary="Listar reservas (Administración y Clientes)")
-async def list_reservas(
-    sucursal_id: Optional[int] = Query(None, description="Filtrar por ID de sucursal"),
-    estado: Optional[str] = Query(None, description="Filtrar por estado"),
+def expirar_reservas_vencidas_db(
+    db: Session,
+    current_user: User | None = None,
+    sucursal_id: int | None = None,
+    empresa_id: int | None = None,
+) -> tuple[int, int]:
+    """
+    Expira reservas en estado 'pendiente' cuya fecha límite sea anterior a hoy.
+    Restituye automáticamente las existencias a StockInventario y audita.
+    Devuelve (reservas_procesadas, unidades_stock_restituidas).
+    """
+    from app.models.sucursal import Sucursal
+
+    hoy = date.today()
+    q = db.query(Reserva).filter(
+        Reserva.estado == "pendiente",
+        Reserva.fecha < hoy,
+    )
+    if sucursal_id:
+        q = q.filter(Reserva.sucursal_id == sucursal_id)
+    elif empresa_id:
+        q = q.join(Sucursal, Reserva.sucursal_id == Sucursal.id).filter(
+            Sucursal.empresa_id == empresa_id
+        )
+    elif current_user and not current_user.is_platform_admin and current_user.empresa_id:
+        q = q.join(Sucursal, Reserva.sucursal_id == Sucursal.id).filter(
+            Sucursal.empresa_id == current_user.empresa_id
+        )
+
+    vencidas = q.all()
+    if not vencidas:
+        return 0, 0
+
+    count_procesadas = 0
+    total_unidades = 0
+
+    for r in vencidas:
+        unidades_reserva = 0
+        for d in r.detalles:
+            stock = (
+                db.query(StockInventario)
+                .filter(StockInventario.id == d.stock_inventario_id)
+                .with_for_update(of=StockInventario)
+                .first()
+            )
+            if stock:
+                stock.cantidad += d.cantidad
+                total_unidades += d.cantidad
+                unidades_reserva += d.cantidad
+
+        r.estado = "vencida"
+        count_procesadas += 1
+
+        BitacoraService.registrar(
+            db=db,
+            user=current_user,
+            action=f"Reserva #{r.id} expiró por superar plazo máximo de 3 días; se restituyeron {unidades_reserva} prenda(s) a inventario.",
+            module="reservas",
+        )
+
+    db.commit()
+    return count_procesadas, total_unidades
+
+
+@router.post(
+    "/expirar-vencidas",
+    response_model=ExpirarReservasResponse,
+    summary="Expirar reservas vencidas y restituir stock (REQ-058)",
+    dependencies=[Depends(require_permission("reservas.editar"))],
+)
+async def expirar_reservas_endpoint(
+    sucursal_id: Optional[int] = Query(None, description="Filtrar por sucursal específica"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Listado de reservas con filtros para administración y clientes."""
+    """
+    Detecta reservas pendientes cuya fecha límite ya expiró (más de 3 días),
+    las marca como 'vencida', devuelve automáticamente las prendas a inventario
+    y registra la auditoría correspondiente.
+    """
+    procesadas, stock_restituido = expirar_reservas_vencidas_db(
+        db=db,
+        current_user=current_user,
+        sucursal_id=sucursal_id,
+        empresa_id=current_user.empresa_id if not current_user.is_platform_admin else None,
+    )
+    return ExpirarReservasResponse(
+        procesadas=procesadas,
+        stock_restituido=stock_restituido,
+        mensaje=f"Se procesaron {procesadas} reserva(s) vencida(s) y se restituyeron {stock_restituido} prenda(s) a inventario.",
+    )
+
+
+@router.get("", response_model=list[ReservaResponse], summary="Listar reservas (Administración y Clientes)")
+async def list_reservas(
+    sucursal_id: Optional[int] = Query(None, description="Filtrar por ID de sucursal"),
+    estado: Optional[str] = Query(None, description="Filtrar por estado ('pendiente', 'completada', 'cancelada', 'vencida')"),
+    search: Optional[str] = Query(None, description="Búsqueda por cliente, prenda o ID"),
+    fecha_desde: Optional[date] = Query(None, description="Fecha de retiro inicial"),
+    fecha_hasta: Optional[date] = Query(None, description="Fecha de retiro final"),
+    tipo: Optional[str] = Query(None, description="Tipo de reserva (ej. reserva_prenda, recojo_orden)"),
+    empresa_id: Optional[int] = Query(None, description="Filtrar por tenant (solo superadmin)"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Listado de reservas con filtros para administración y clientes (REQ-058)."""
+    # Auto-expirar reservas vencidas para staff/administración garantizando datos en tiempo real
+    if current_user.role != "cliente":
+        expirar_reservas_vencidas_db(
+            db=db,
+            current_user=current_user,
+            sucursal_id=sucursal_id,
+            empresa_id=empresa_id or (current_user.empresa_id if not current_user.is_platform_admin else None),
+        )
+
     if current_user.role == "cliente":
         cliente = db.query(Cliente).filter(Cliente.user_id == current_user.id).first()
         if not cliente:
             return []
         q = db.query(Reserva).filter(Reserva.codigo_cliente == cliente.codigo)
         q = scope_by_sucursal(q, db, current_user, Reserva.sucursal_id)
-        if estado:
-            q = q.filter(Reserva.estado == estado)
-        if sucursal_id:
-            q = q.filter(Reserva.sucursal_id == sucursal_id)
-        reservas = q.order_by(Reserva.created_at.desc()).all()
-        return [_serialize_reserva(r) for r in reservas]
+    else:
+        q = scope_by_sucursal(db.query(Reserva), db, current_user, Reserva.sucursal_id)
+        if empresa_id and current_user.is_platform_admin:
+            from app.models.sucursal import Sucursal
+            q = q.join(Sucursal, Reserva.sucursal_id == Sucursal.id).filter(Sucursal.empresa_id == empresa_id)
 
-    q = scope_by_sucursal(db.query(Reserva), db, current_user, Reserva.sucursal_id)
     if sucursal_id:
         q = q.filter(Reserva.sucursal_id == sucursal_id)
     if estado:
         q = q.filter(Reserva.estado == estado)
+    if tipo:
+        q = q.filter(Reserva.tipo == tipo)
+    if fecha_desde:
+        q = q.filter(Reserva.fecha >= fecha_desde)
+    if fecha_hasta:
+        q = q.filter(Reserva.fecha <= fecha_hasta)
+
+    if search:
+        s_clean = search.strip()
+        from app.models.producto import Producto
+        from app.models.producto_color import ProductoColor
+
+        q = (
+            q.outerjoin(Cliente, Reserva.codigo_cliente == Cliente.codigo)
+            .outerjoin(User, Cliente.user_id == User.id)
+            .outerjoin(DetalleReserva, Reserva.id == DetalleReserva.reserva_id)
+            .outerjoin(StockInventario, DetalleReserva.stock_inventario_id == StockInventario.id)
+            .outerjoin(ProductoColor, StockInventario.producto_color_id == ProductoColor.id)
+            .outerjoin(Producto, ProductoColor.producto_codigo == Producto.codigo)
+        )
+        from typing import Any
+        filtros: list[Any] = [
+            Reserva.codigo_cliente.ilike(f"%{s_clean}%"),
+            User.name.ilike(f"%{s_clean}%"),
+            User.apellido.ilike(f"%{s_clean}%"),
+            User.email.ilike(f"%{s_clean}%"),
+            Producto.nombre.ilike(f"%{s_clean}%"),
+            Producto.codigo.ilike(f"%{s_clean}%"),
+        ]
+        if s_clean.isdigit():
+            filtros.append(Reserva.id == int(s_clean))
+        q = q.filter(or_(*filtros)).distinct()
+
     reservas = q.order_by(Reserva.created_at.desc()).all()
     return [_serialize_reserva(r) for r in reservas]
 
@@ -479,10 +619,15 @@ async def update_reserva_estado(
     if not reserva:
         raise NotFoundException(f"Reserva con ID {reserva_id} no encontrada.")
 
-    # Si se cancela la reserva, restituir el stock
-    if payload.estado == "cancelada" and reserva.estado != "cancelada":
+    # Si se cancela o expira la reserva, restituir el stock atómicamente
+    if payload.estado in ["cancelada", "vencida"] and reserva.estado not in ["cancelada", "vencida"]:
         for d in reserva.detalles:
-            stock = db.query(StockInventario).filter(StockInventario.id == d.stock_inventario_id).first()
+            stock = (
+                db.query(StockInventario)
+                .filter(StockInventario.id == d.stock_inventario_id)
+                .with_for_update(of=StockInventario)
+                .first()
+            )
             if stock:
                 stock.cantidad += d.cantidad
 

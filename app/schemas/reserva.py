@@ -35,7 +35,13 @@ class ReservaCreate(BaseModel):
 
 
 class ReservaEstadoUpdate(BaseModel):
-    estado: str = Field(..., description="Nuevo estado: 'pendiente', 'completada', 'cancelada'")
+    estado: str = Field(..., description="Nuevo estado: 'pendiente', 'completada', 'cancelada', 'vencida'")
+
+
+class ExpirarReservasResponse(BaseModel):
+    procesadas: int
+    stock_restituido: int
+    mensaje: str
 
 
 class ReservaResponse(BaseModel):
