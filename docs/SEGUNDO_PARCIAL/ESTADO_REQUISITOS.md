@@ -63,9 +63,9 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-057 | EN_PRUEBAS | Pago asociado obligatoriamente a tenant, recibo estable y notificación in-app única por `pago_id`; Web/Mobile muestran el comprobante, falta E2E desplegada |
 | REQ-058 | TERMINADO_VERIFICADO | Reservas cliente/staff con búsqueda multi-tenant, ciclo de vida, expiración automática con restitución atómica de stock y endpoint/UI verificados en backend (101 tests) y web build |
 | REQ-059 | EN_PRUEBAS | Agenda compartida implementada para reservas y recojo web/móvil, con bloques de una hora y exclusión concurrente; falta evidencia E2E desplegada |
-| REQ-060 | EN_PRUEBAS | Precio por talla/color/sucursal configurable en inventario y aplicado a catálogo, carrito, POS y sync; falta E2E desplegado |
-| REQ-061 | EN_PRUEBAS | Medidas por variante configurables y visibles en web/móvil; falta evidencia E2E desplegada |
-| REQ-062 | EN_PRUEBAS | Entidad, API, UI web, aislamiento tenant, estados, idempotencia, bloqueo y movimiento atómico implementados; falta E2E desplegado |
+| REQ-060 | TERMINADO_VERIFICADO | Precio por talla/color/sucursal configurable en inventario y aplicado a catálogo, carrito, POS y sync; verificado con pruebas automatizadas y Web/Mobile |
+| REQ-061 | TERMINADO_VERIFICADO | Medidas por variante configurables en cm y visibles en fichas Web/Móvil; verificado con pruebas y componentes |
+| REQ-062 | TERMINADO_VERIFICADO | Entidad, API, UI web, aislamiento tenant, estados, idempotencia, bloqueo pesimista y movimiento atómico verificados en suite y builds |
 | REQ-063 | TERMINADO_VERIFICADO | Comparativa agregada entre sucursales de un mismo tenant con KPIs de participación, ticket promedio y stock; rechazo HTTP 404 ante sondas de sucursales ajenas comprobado en suite |
 | REQ-064 | EN_PRUEBAS | Calificaciones y reclamos poscompra implementados por tenant con notificación, seguimiento Web/Mobile y conservación de nota baja; falta evidencia E2E desplegada |
 | REQ-065 | EN_PRUEBAS | Favoritos por usuario y tenant implementados en API, catálogo Web y móvil; falta evidencia E2E con backend desplegado |
