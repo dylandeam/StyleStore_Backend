@@ -17,6 +17,8 @@ Fecha de corte: 20/10/2026. Fuente operativa: código de las ramas `main` de Bac
 
 ## Migraciones verificadas
 
+Actualización 21/10/2026: la cadena completa se validó desde un esquema PostgreSQL vacío hasta `0b2c4d6e8f90`. Las tablas históricas `qr_pago_config`, `cambios_devolucion` y `notificaciones`, antes dependientes de `init_db`, ahora se crean condicionalmente en el punto donde la cadena comienza a utilizarlas; las bases existentes se conservan sin sobrescritura.
+
 Cadena lineal antes del segundo parcial:
 
 1. `a26a7c0a497a`: usuarios y blacklist.

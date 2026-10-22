@@ -23,6 +23,20 @@ def upgrade() -> None:
     op.create_index("ix_pagos_empresa_id", "pagos", ["empresa_id"])
     op.create_index("ix_pagos_recibo_numero", "pagos", ["recibo_numero"], unique=True)
 
+    inspector = sa.inspect(op.get_bind())
+    if not inspector.has_table("notificaciones"):
+        op.create_table(
+            "notificaciones",
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("user_id", sa.Integer(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+            sa.Column("tipo", sa.String(50), nullable=False, server_default="general"),
+            sa.Column("titulo", sa.String(200), nullable=False),
+            sa.Column("mensaje", sa.Text(), nullable=False),
+            sa.Column("leida", sa.Boolean(), nullable=False, server_default=sa.false()),
+            sa.Column("url_accion", sa.String(300), nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        )
+        op.create_index("ix_notificaciones_user_id", "notificaciones", ["user_id"])
     op.add_column("notificaciones", sa.Column("pago_id", sa.Integer(), nullable=True))
     op.create_foreign_key("fk_notificaciones_pago_id", "notificaciones", "pagos", ["pago_id"], ["id"], ondelete="SET NULL")
     op.create_index("ix_notificaciones_pago_id", "notificaciones", ["pago_id"], unique=True)

@@ -14,6 +14,29 @@ depends_on = None
 
 
 def upgrade() -> None:
+    inspector = sa.inspect(op.get_bind())
+    if not inspector.has_table("cambios_devolucion"):
+        op.create_table(
+            "cambios_devolucion",
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("orden_venta_id", sa.Integer(), sa.ForeignKey("orden_venta.id", ondelete="CASCADE"), nullable=False),
+            sa.Column("detalle_venta_id", sa.Integer(), sa.ForeignKey("detalle_venta.id", ondelete="CASCADE"), nullable=False),
+            sa.Column("tipo", sa.String(20), nullable=False, server_default="cambio"),
+            sa.Column("motivo", sa.String(50), nullable=False),
+            sa.Column("producto_nuevo_codigo", sa.String(50), sa.ForeignKey("productos.codigo", ondelete="SET NULL"), nullable=True),
+            sa.Column("talla_nueva_id", sa.Integer(), sa.ForeignKey("tallas.id", ondelete="SET NULL"), nullable=True),
+            sa.Column("color_nuevo_id", sa.Integer(), sa.ForeignKey("colores.id", ondelete="SET NULL"), nullable=True),
+            sa.Column("sucursal_id", sa.Integer(), sa.ForeignKey("sucursales.id", ondelete="RESTRICT"), nullable=False),
+            sa.Column("fecha_programada", sa.Date(), nullable=False),
+            sa.Column("hora_programada", sa.Time(), nullable=True),
+            sa.Column("descripcion_problema", sa.Text(), nullable=False),
+            sa.Column("estado", sa.String(30), nullable=False, server_default="pendiente"),
+            sa.Column("respuesta_encargado", sa.Text(), nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+            sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        )
+        for column in ("orden_venta_id", "detalle_venta_id", "sucursal_id"):
+            op.create_index(f"ix_cambios_devolucion_{column}", "cambios_devolucion", [column])
     op.add_column("empresas", sa.Column("plazo_cambios_dias", sa.Integer(), nullable=False, server_default="7"))
     op.add_column("cambios_devolucion", sa.Column("nuevo_stock_inventario_id", sa.Integer(), nullable=True))
     op.add_column("cambios_devolucion", sa.Column("precio_original", sa.Numeric(10, 2), nullable=True))

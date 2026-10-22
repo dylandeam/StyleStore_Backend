@@ -20,6 +20,23 @@ NAMED_TABLES = ("categorias", "colores", "tallas", "temporadas", "colecciones")
 
 
 def upgrade() -> None:
+    # `qr_pago_config` nació originalmente desde el inicializador defensivo y
+    # no tenía una migración de creación. En una base nueva Alembic llegaba a
+    # este punto antes de que existiera la tabla y abortaba toda la cadena.
+    inspector = sa.inspect(op.get_bind())
+    if not inspector.has_table("qr_pago_config"):
+        op.create_table(
+            "qr_pago_config",
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("imagen_url", sa.String(length=500), nullable=False),
+            sa.Column("banco_destino", sa.String(length=100), nullable=True),
+            sa.Column("titular", sa.String(length=150), nullable=True),
+            sa.Column("activo", sa.Boolean(), nullable=False, server_default=sa.true()),
+            sa.Column("sucursal_id", sa.Integer(), nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+            sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+            sa.ForeignKeyConstraint(["sucursal_id"], ["sucursales.id"], ondelete="SET NULL"),
+        )
     for table in TENANT_TABLES:
         op.add_column(table, sa.Column("empresa_id", sa.Integer(), nullable=True))
         op.create_index(op.f(f"ix_{table}_empresa_id"), table, ["empresa_id"], unique=False)
