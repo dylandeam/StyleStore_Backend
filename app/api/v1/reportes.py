@@ -227,6 +227,19 @@ async def get_dashboard_stats(
     return service.get_dashboard_stats(sucursal_id=sucursal_id)
 
 
+@router.get("/predicciones", summary="Pronóstico de ventas y segmentación ML por tenant")
+async def get_ml_predictions(
+    sucursal_id: Optional[int] = None,
+    current_user: User = Depends(require_plan_capability("predicciones")),
+    db: Session = Depends(get_db),
+):
+    from app.services.ml_service import MLService
+
+    if sucursal_id == 0:
+        sucursal_id = None
+    return MLService(db, current_user).insights(sucursal_id=sucursal_id)
+
+
 # ==========================================
 # 8 NUEVOS REPORTES DINÁMICOS (PUNTO 11)
 # ==========================================

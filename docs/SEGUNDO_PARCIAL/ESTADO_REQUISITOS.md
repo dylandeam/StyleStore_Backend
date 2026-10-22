@@ -45,10 +45,10 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-039 | EN_CURSO | Tablas/exportación Excel/PDF y prueba negativa A/B existen; faltan gráficos y evidencia E2E completa |
 | REQ-040 | EN_PRUEBAS | Existen más de cuatro familias de reporte; falta escenario reproducible multiempresa |
 | REQ-041 | EN_PRUEBAS | IA restringida por tenant, rol, contratación vigente y capacidad configurable; pregunta/respuesta tienen límites validados y pruebas Básico/Profesional, falta batería de solicitudes ambiguas/maliciosas |
-| REQ-042 | PENDIENTE | Dataset sintético ML reproducible no implementado |
-| REQ-043 | PENDIENTE | Modelo supervisado no implementado |
-| REQ-044 | PENDIENTE | Modelo no supervisado no implementado |
-| REQ-045 | PENDIENTE | Integración ML/dashboard no implementada |
+| REQ-042 | TERMINADO_VERIFICADO | Dataset sintético de 730 días, semilla fija, generador versionado y SHA-256 documentado |
+| REQ-043 | EN_PRUEBAS | Regresión lineal ridge reproducible para ingresos: R² 0.8913 y MAE Bs. 28.53; falta contraste E2E desplegado |
+| REQ-044 | EN_PRUEBAS | K-means reproducible segmenta clientes en ocasional/frecuente/alto valor; falta contraste E2E desplegado |
+| REQ-045 | EN_PRUEBAS | Endpoint y dashboard tenant/sucursal protegidos por capacidad `predicciones`; falta evidencia visual desplegada |
 | REQ-046 | EN_PRUEBAS | Recomendaciones y vestidor preservados; falta E2E desplegado |
 | REQ-047 | EN_CURSO | Hay pruebas base; faltan evidencias completas RNF01–RNF12 |
 | REQ-048 | EN_PRUEBAS | Backend/PWA públicos y APK `1.0.3+4` instalado/validado en Samsung S21+ con hash y modo avión; falta mecanismo público de descarga y E2E comercial completo |
