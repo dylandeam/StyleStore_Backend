@@ -326,10 +326,10 @@ def test_reportes_excel_pdf(client: TestClient, admin_token: str):
 def test_bitacora_verificar_llave(client: TestClient, admin_token: str):
     headers = {"Authorization": f"Bearer {admin_token}"}
 
-    # Llave correcta
+    # Sin llave maestra global, la contraseña de la cuenta sigue siendo válida.
     res_ok = client.post(
         "/api/v1/bitacora/verificar-llave",
-        json={"key": settings.ADMIN_MASTER_KEY},
+        json={"key": "AdminPass123!"},
         headers=headers,
     )
     assert res_ok.status_code == 200

@@ -32,10 +32,7 @@ class Settings:
     )
 
     # JWT
-    SECRET_KEY: str = os.getenv(
-        "SECRET_KEY",
-        "stylestore-super-secret-key-change-in-production-2024"
-    )
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "")
     ALGORITHM: str = os.getenv("ALGORITHM", "HS256")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(
         os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
@@ -73,7 +70,13 @@ class Settings:
     ALLOW_MOCK_PAYPAL: bool = os.getenv("ALLOW_MOCK_PAYPAL", "false").lower() == "true"
 
     # Security & Master Key for Bitácora
-    ADMIN_MASTER_KEY: str = os.getenv("ADMIN_MASTER_KEY", "StyleStoreMaster2025#")
+    ADMIN_MASTER_KEY: str = os.getenv("ADMIN_MASTER_KEY", "")
+
+    # Optional bootstrap account. Production never receives known credentials
+    # from source code; an initial administrator is only created when both
+    # values are supplied explicitly by the operator.
+    INITIAL_ADMIN_EMAIL: str = os.getenv("INITIAL_ADMIN_EMAIL", "")
+    INITIAL_ADMIN_PASSWORD: str = os.getenv("INITIAL_ADMIN_PASSWORD", "")
 
     # Groq AI Engine
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
@@ -84,3 +87,19 @@ class Settings:
 
 
 settings = Settings()
+
+
+def _validate_managed_environment_security() -> None:
+    """Fail closed when a managed deployment is missing its JWT secret."""
+    is_managed = bool(
+        os.getenv("RAILWAY_PROJECT_ID")
+        or os.getenv("RAILWAY_ENVIRONMENT_ID")
+        or os.getenv("RAILWAY_SERVICE_ID")
+    )
+    if is_managed and len(settings.SECRET_KEY) < 32:
+        raise RuntimeError(
+            "SECRET_KEY must be explicitly configured with at least 32 characters"
+        )
+
+
+_validate_managed_environment_security()

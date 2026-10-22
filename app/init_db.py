@@ -5,6 +5,7 @@ import logging
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.database import SessionLocal, Base, engine
+from app.config import settings
 import app.models  # Registra todos los modelos en Base.metadata
 from app.models.user import User
 from app.core.security import hash_password
@@ -250,18 +251,24 @@ def init_db():
         # Seed initial admin if none exists
         admin_user = db.query(User).filter(User.role == "administrador").first()
         if not admin_user:
-            admin_user = User(
-                email="admin@stylestore.com",
-                name="Administrador StyleStore",
-                hashed_password=hash_password("Admin@1234"),
-                role="administrador",
-                empresa_id=default_empresa.id,
-                is_platform_admin=True,
-                is_active=True,
-            )
-            db.add(admin_user)
-            db.commit()
-            logger.info("Created default administrator user: admin@stylestore.com / Admin@1234")
+            if settings.INITIAL_ADMIN_EMAIL and settings.INITIAL_ADMIN_PASSWORD:
+                admin_user = User(
+                    email=settings.INITIAL_ADMIN_EMAIL,
+                    name="Administrador StyleStore",
+                    hashed_password=hash_password(settings.INITIAL_ADMIN_PASSWORD),
+                    role="administrador",
+                    empresa_id=default_empresa.id,
+                    is_platform_admin=True,
+                    is_active=True,
+                )
+                db.add(admin_user)
+                db.commit()
+                logger.info("Created initial administrator from environment configuration")
+            else:
+                logger.warning(
+                    "No administrator exists and bootstrap credentials are not configured; "
+                    "set INITIAL_ADMIN_EMAIL and INITIAL_ADMIN_PASSWORD explicitly"
+                )
         elif not db.query(User).filter(User.is_platform_admin == True).first():
             admin_user.is_platform_admin = True
             if admin_user.empresa_id is None:

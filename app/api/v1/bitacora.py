@@ -94,7 +94,11 @@ async def verify_master_key(
             is_valid = True
 
     # 2. Verificar contra la llave maestra del servidor
-    if not is_valid and input_key == settings.ADMIN_MASTER_KEY:
+    if (
+        not is_valid
+        and settings.ADMIN_MASTER_KEY
+        and input_key == settings.ADMIN_MASTER_KEY
+    ):
         is_valid = True
 
     # 3. Si el usuario actual no es admin (ej. empleado probando con clave del admin de la tienda)
