@@ -42,6 +42,7 @@ La ausencia de eventos sospechosos no demuestra que una credencial no haya sido 
 
 - Se generó una `SECRET_KEY` nueva de 384 bits y se guardó en la configuración de Railway. El cambio no está activo todavía porque Railway mantiene los despliegues pausados; el deployment activo sigue siendo el anterior.
 - GitHub continúa conectado a `dylandeam/StyleStore_Backend`, rama `main`, con auto-deploy habilitado.
+- PostgreSQL no muestra dominio público ni TCP Proxy en su configuración; permanece accesible por la red privada del proyecto.
 - La interfaz de configuración de PostgreSQL no cargó el control `Regenerate` mientras Railway mostraba `Platform Outage`.
 - La rotación de PostgreSQL debe completarse tan pronto como `Regenerate` y los redeploys estén disponibles. No se editó manualmente `POSTGRES_PASSWORD`, evitando desincronizar la base y sus variables.
-- Tras reanudarse el servicio se debe desplegar backend `5dd87e8` o posterior; el comando de inicio ya ejecuta `alembic upgrade head` antes de Uvicorn.
+- Tras reanudarse el servicio se debe desplegar backend `8298790` o posterior; el comando de inicio ya ejecuta `alembic upgrade head` antes de Uvicorn.
