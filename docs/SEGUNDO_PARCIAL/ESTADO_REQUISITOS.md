@@ -54,11 +54,11 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-048 | EN_PRUEBAS | Backend/PWA públicos y APK `1.0.3+4` instalado/validado en Samsung S21+ con hash y modo avión; falta mecanismo público de descarga y E2E comercial completo |
 | REQ-049 | PENDIENTE | Artefactos ICONIX/UML 2.5+ del segundo parcial no creados |
 | REQ-050 | PENDIENTE | Documento final capítulos I–VI no disponible |
-| REQ-051 | EN_CURSO | 74 pruebas backend, conflicto/replay/reembolso/tenant/consola SaaS/cupos/capacidades/variantes/jornadas, builds Web/Mobile y 5 pruebas Flutter aprobados; faltan E2E comerciales en dispositivo |
+| REQ-051 | EN_CURSO | 88 pruebas backend, conflicto/replay/reembolso/tenant/consola SaaS/cupos/capacidades/variantes/jornadas, builds Web/Mobile y 5 pruebas Flutter aprobados; faltan E2E comerciales en dispositivo |
 | REQ-052 | EN_CURSO | Matriz iniciada; paquetes/capturas de entregas pendientes |
 | REQ-053 | PENDIENTE | QR y enlaces finales verificados no preparados |
-| REQ-054 | EN_CURSO | Solicitudes de cambio existen; falta nueva nota vinculada completa |
-| REQ-055 | EN_CURSO | Cambios/devoluciones existen; falta sector y efectos completos |
+| REQ-054 | EN_PRUEBAS | Solicitud y liquidación de cambio generan nota vinculada, ajustan inventario y conservan diferencia monetaria; falta evidencia E2E desplegada |
+| REQ-055 | EN_PRUEBAS | Cambios/devoluciones incluyen plazo configurable, cobro o saldo a favor, reembolso, sucursal y auditoría por tenant; falta evidencia E2E desplegada |
 | REQ-056 | EN_PRUEBAS | Todo pago aprobado emite correo una sola vez mediante bloqueo de fila y marca persistente; prueba automatizada aprobada, falta evidencia SMTP/E2E desplegada |
 | REQ-057 | EN_PRUEBAS | Pago asociado obligatoriamente a tenant, recibo estable y notificación in-app única por `pago_id`; Web/Mobile muestran el comprobante, falta E2E desplegada |
 | REQ-058 | EN_CURSO | Reservas cliente/staff y límite de 3 días existen; falta cierre tenant integral |

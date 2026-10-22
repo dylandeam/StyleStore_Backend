@@ -21,16 +21,16 @@ Fuente complementaria: `REQUISITOS_NUEVAS_FUNCIONALIDADES_SAAS.md`. Esta matriz 
 | Registro de clientes | En pruebas | Selector público y asociación de una identidad cliente con varios tenants implementados en Web/Mobile, incluido cambio de tenant activo; falta E2E desplegado. |
 | Medidas y precios por talla | En pruebas | Precio y medidas por variante talla/color/sucursal implementados; falta evidencia E2E desplegada. |
 | Traspasos entre sucursales | En pruebas | Entidad, API y UI web implementadas con aislamiento tenant, estados, clave idempotente, bloqueo de filas, movimiento atómico y bitácora. Falta E2E desplegado. |
-| Promociones agrupadas | Pendiente | Solo existe promoción a nivel producto; faltan reglas por categoría y temporada. |
-| Códigos de descuento | Pendiente | No existe entidad/código aplicable a venta web y presencial. |
+| Promociones agrupadas | Implementado/en pruebas | Reglas por categoría o temporada, vigencia y mayor porcentaje aislados por tenant; falta evidencia E2E desplegada. |
+| Códigos de descuento | Implementado/en pruebas | Códigos por tenant/canal con vigencia y usos, aplicados en Web, POS y Mobile; falta evidencia E2E desplegada. |
 | Inventario global y por sucursal | Implementado/en pruebas | Ambos niveles existen y están aislados; el flujo de traspasos está implementado y pendiente de evidencia E2E desplegada. |
 | Proveedores y compras | Parcial avanzado | Compra actualiza stock; debe mantenerse la auditoría tenant en nuevas pruebas E2E. |
 | Cambios y devoluciones | Implementado/en pruebas | Plazo configurable por tenant, nueva nota de venta, diferencia monetaria, saldo a favor y sucursal elegible implementados; falta evidencia E2E desplegada. |
 | Reservas por bloques | En pruebas | API, reservas y recojos web/móvil comparten bloques de una hora; un índice único parcial impide ocupar concurrentemente el mismo bloque. Falta evidencia E2E desplegada. |
-| Venta presencial | Parcial | POS y cliente general existen; falta búsqueda formal por CI y captura de nombre/CI para factura cuando no existe. |
-| Envío o recojo | Parcial | Delivery existe; falta alternativa de recojo con bloques de una hora antes del pago. |
+| Venta presencial | Implementado/en pruebas | POS busca clientes del tenant por CI/código/nombre y, si no existe cuenta, exige nombre y CI guardados en orden y recibo sin asociar la venta a otro cliente. Falta evidencia E2E desplegada. |
+| Envío o recojo | Implementado/en pruebas | Web y Mobile permiten delivery o recojo; el recojo comparte agenda y exclusión de bloques con reservas. Falta evidencia E2E desplegada. |
 | Productos guardados | Implementado/en pruebas | Lista única por usuario, tenant y producto, integrada con catálogo Web/Mobile; falta evidencia E2E con backend desplegado. |
-| Pago y tenant | Parcial | Pago deriva de orden/sucursal; falta evidencia de notificación y correo idempotentes por confirmación. |
+| Pago y tenant | Implementado/en pruebas | Pago pertenece obligatoriamente al tenant y la confirmación emite recibo, notificación y correo idempotentes; falta evidencia E2E desplegada. |
 | Calificaciones y reclamos | Implementado/en pruebas | La nota poscompra se conserva independientemente del reclamo; existen notificación con acceso, formularios Web/Mobile y seguimiento por estados aislado por tenant. Falta evidencia E2E desplegada. |
 
 ## Dependencias actualizadas

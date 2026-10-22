@@ -526,6 +526,8 @@ async def get_payment_receipt(
         "efectivo_recibido": orden.efectivo_recibido if orden else None,
         "cambio_devuelto": orden.cambio_devuelto if orden else None,
         "cliente_codigo": orden.codigo_cliente if orden else None,
+        "comprador_nombre": orden.comprador_nombre if orden else None,
+        "comprador_ci": orden.comprador_ci if orden else None,
         "items": items,
         "total": orden.total if orden else pago.monto,
     }
@@ -556,6 +558,8 @@ async def list_all_payments(
             "paypal_order_id": p.paypal_order_id,
             "ticket_numero": orden.ticket_numero if orden else None,
             "cliente_codigo": orden.codigo_cliente if orden else None,
+            "comprador_nombre": orden.comprador_nombre if orden else None,
+            "comprador_ci": orden.comprador_ci if orden else None,
             "total_orden": float(orden.total) if orden and orden.total else float(p.monto),
             "created_at": p.created_at.isoformat() if p.created_at else None,
         })

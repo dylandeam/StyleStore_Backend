@@ -514,6 +514,7 @@ def test_venta_presencial_efectivo_y_qr(client: TestClient, auth_tokens, sample_
     v_data = res_ef.json()
     assert v_data["metodo_pago"] == "efectivo"
     assert v_data["ticket_numero"].startswith("TCK-")
+    assert v_data["comprador_nombre"] == "Cliente V6"
 
     # 2. Venta con QR
     payload_qr = {
@@ -525,6 +526,47 @@ def test_venta_presencial_efectivo_y_qr(client: TestClient, auth_tokens, sample_
     res_qr = client.post("/api/v1/ventas/presencial", json=payload_qr, headers=headers)
     assert res_qr.status_code == 201
     assert res_qr.json()["metodo_pago"] == "qr"
+
+
+def test_venta_mostrador_guarda_nombre_y_ci_sin_crear_cliente(client: TestClient, auth_tokens, sample_inventory, db_session):
+    headers = {"Authorization": f"Bearer {auth_tokens['admin_token']}"}
+    clientes_antes = db_session.query(Cliente).count()
+    payload = {
+        "comprador_nombre": "María Pérez",
+        "comprador_ci": "7845123",
+        "sucursal_id": sample_inventory["sucursal"].id,
+        "metodo_pago": "efectivo",
+        "efectivo_recibido": 300,
+        "items": [{"stock_inventario_id": sample_inventory["stock"].id, "cantidad": 1}],
+    }
+
+    response = client.post("/api/v1/ventas/presencial", json=payload, headers=headers)
+
+    assert response.status_code == 201, response.text
+    venta = response.json()
+    assert venta["codigo_cliente"] is None
+    assert venta["cliente_nombre"] == "María Pérez"
+    assert venta["comprador_nombre"] == "María Pérez"
+    assert venta["comprador_ci"] == "7845123"
+    assert db_session.query(Cliente).count() == clientes_antes
+
+    recibo = client.get(f"/api/v1/pagos/{venta['pago_id']}", headers=headers)
+    assert recibo.status_code == 200
+    assert recibo.json()["comprador_nombre"] == "María Pérez"
+    assert recibo.json()["comprador_ci"] == "7845123"
+
+
+def test_venta_mostrador_exige_identificacion_si_no_hay_cliente(client: TestClient, auth_tokens, sample_inventory):
+    response = client.post(
+        "/api/v1/ventas/presencial",
+        headers={"Authorization": f"Bearer {auth_tokens['admin_token']}"},
+        json={
+            "sucursal_id": sample_inventory["sucursal"].id,
+            "metodo_pago": "qr",
+            "items": [{"stock_inventario_id": sample_inventory["stock"].id, "cantidad": 1}],
+        },
+    )
+    assert response.status_code == 422
 
 
 def test_cambios_devoluciones_workflow(client: TestClient, auth_tokens, sample_inventory, db_session):

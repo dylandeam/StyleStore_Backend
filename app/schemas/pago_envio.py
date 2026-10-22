@@ -3,7 +3,7 @@ Pydantic schemas para Pagos, Ventas y Envíos (v5 secciones 19, 20, 21, 22, 23, 
 """
 from datetime import date, datetime, time
 from decimal import Decimal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # --- PAGOS ---
@@ -162,12 +162,20 @@ class VentaItemCreate(BaseModel):
 
 class VentaPresencialCreate(BaseModel):
     operation_uuid: str | None = Field(None, min_length=36, max_length=36, exclude=True)
-    codigo_cliente: str = "CLI-GENERAL"
+    codigo_cliente: str | None = Field(None, max_length=30)
+    comprador_nombre: str | None = Field(None, min_length=2, max_length=160)
+    comprador_ci: str | None = Field(None, min_length=4, max_length=20)
     sucursal_id: int
     items: list[VentaItemCreate] = Field(..., min_length=1)
     metodo_pago: str = Field("efectivo", description="'efectivo' o 'qr'")
     efectivo_recibido: Decimal | None = None
     codigo_descuento: str | None = Field(None, max_length=40)
+
+    @model_validator(mode="after")
+    def validar_comprador(self):
+        if not self.codigo_cliente and (not self.comprador_nombre or not self.comprador_ci):
+            raise ValueError("Selecciona un cliente registrado o ingresa nombre y CI para la factura.")
+        return self
 
 
 class DetalleVentaResponse(BaseModel):
@@ -193,7 +201,9 @@ class OrdenVentaResponse(BaseModel):
     codigo_descuento: str | None = None
     porcentaje_codigo: int = 0
     tipo_venta: str
-    codigo_cliente: str
+    codigo_cliente: str | None = None
+    comprador_nombre: str | None = None
+    comprador_ci: str | None = None
     metodo_pago: str | None = None
     ticket_numero: str | None = None
     sucursal_id: int | None = None

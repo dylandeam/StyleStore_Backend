@@ -6,9 +6,11 @@ from datetime import datetime
 from decimal import Decimal
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 
 from app.database import get_db
 from app.models.user import User
+from app.models.user_empresa import UserEmpresa
 from app.models.cliente import Cliente
 from app.models.orden_venta import OrdenVenta, DetalleVenta
 from app.models.pago import Pago
@@ -67,6 +69,7 @@ def _serialize_orden(o: OrdenVenta) -> dict:
             u = o.cliente.user
             cli_nom = f"{u.name} {u.apellido or ''}".strip()
             cli_email = u.email
+    cli_nom = o.comprador_nombre or cli_nom
 
     envio_dict = None
     if o.envios:
@@ -115,6 +118,8 @@ def _serialize_orden(o: OrdenVenta) -> dict:
         "pago_email_confirmado": bool(pago and pago.email_confirmacion_enviado_at),
         "ticket_numero": o.ticket_numero,
         "codigo_cliente": o.codigo_cliente,
+        "comprador_nombre": o.comprador_nombre,
+        "comprador_ci": o.comprador_ci,
         "cliente_nombre": cli_nom,
         "cliente_email": cli_email,
         "cliente_telefono": cli_tel,
@@ -222,27 +227,27 @@ async def create_venta_presencial(
     - Genera la OrdenVenta y DetalleVenta.
     - Registra el Pago en caja inmediatamente.
     """
-    # Buscar cliente o asignar/crear Cliente General por defecto
-    codigo_cli = payload.codigo_cliente or "CLI-GENERAL"
-    cliente_query = db.query(Cliente).join(User, Cliente.user_id == User.id).filter(Cliente.codigo == codigo_cli)
-    if not current_user.is_platform_admin:
-        cliente_query = cliente_query.filter(User.empresa_id == current_user.empresa_id)
-    cliente = cliente_query.first()
-    if not cliente:
-        # Intentar buscar por id o crear un cliente genérico para ventas rápidas de mostrador
-        fallback_query = db.query(Cliente).join(User, Cliente.user_id == User.id)
-        if not current_user.is_platform_admin:
-            fallback_query = fallback_query.filter(User.empresa_id == current_user.empresa_id)
-        cliente = fallback_query.first()
-        if not cliente:
-            cliente = Cliente(
-                codigo="CLI-GENERAL",
-                user_id=current_user.id,
-                telefono="00000000",
-                direccion="Venta Mostrador",
+    cliente = None
+    comprador_nombre = payload.comprador_nombre.strip() if payload.comprador_nombre else None
+    comprador_ci = payload.comprador_ci.strip() if payload.comprador_ci else None
+    if payload.codigo_cliente:
+        cliente = (
+            db.query(Cliente)
+            .join(User, Cliente.user_id == User.id)
+            .outerjoin(UserEmpresa, UserEmpresa.user_id == User.id)
+            .filter(
+                Cliente.codigo == payload.codigo_cliente,
+                or_(
+                    User.empresa_id == current_user.empresa_id,
+                    (UserEmpresa.empresa_id == current_user.empresa_id) & UserEmpresa.active.is_(True),
+                ),
             )
-            db.add(cliente)
-            db.flush()
+            .first()
+        )
+        if not cliente:
+            raise NotFoundException("El cliente no existe o no pertenece al tenant activo.")
+        comprador_nombre = cliente.nombre
+        comprador_ci = cliente.user.ci if cliente.user else None
 
     now = datetime.now()
     total_venta = Decimal("0.00")
@@ -353,7 +358,9 @@ async def create_venta_presencial(
         ticket_numero=ticket_num,
         efectivo_recibido=recibido if metodo == "efectivo" else total_venta,
         cambio_devuelto=cambio if metodo == "efectivo" else Decimal("0.00"),
-        codigo_cliente=cliente.codigo,
+        codigo_cliente=cliente.codigo if cliente else None,
+        comprador_nombre=comprador_nombre,
+        comprador_ci=comprador_ci,
         sucursal_id=sucursal_id_detectada or payload.sucursal_id,
     )
     db.add(orden)
@@ -390,7 +397,7 @@ async def create_venta_presencial(
     BitacoraService.registrar(
         db=db,
         user=current_user,
-        action=f"Registró venta presencial #{orden.id} ({ticket_num}) en caja por Bs {orden.total} [{metodo.upper()}] para cliente '{cliente.codigo}'",
+        action=f"Registró venta presencial #{orden.id} ({ticket_num}) en caja por Bs {orden.total} [{metodo.upper()}] para '{comprador_nombre}' (CI {comprador_ci})",
         module="ventas",
     )
 

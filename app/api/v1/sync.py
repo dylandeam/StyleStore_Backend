@@ -127,6 +127,11 @@ async def _process(payload: SyncOperationRequest, user: User, db: Session) -> Sy
             if str(payload.payload.get("metodo_pago", "efectivo")).lower() != "efectivo":
                 raise ForbiddenException("La sincronización offline solo acepta ventas en efectivo")
             clean_payload = {key: value for key, value in payload.payload.items() if key != "snapshot"}
+            if clean_payload.get("codigo_cliente") in {"CLI-GENERAL", "GENERICO"}:
+                clean_payload.pop("codigo_cliente", None)
+            if not clean_payload.get("codigo_cliente"):
+                clean_payload.setdefault("comprador_nombre", "Cliente de mostrador")
+                clean_payload.setdefault("comprador_ci", "SIN-DATO")
             business_payload = VentaPresencialCreate.model_validate({**clean_payload, "operation_uuid": operation_uuid})
             result = await create_venta_presencial(business_payload, user, db)
             result_type = "venta"

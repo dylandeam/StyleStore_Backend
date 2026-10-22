@@ -28,9 +28,11 @@ class OrdenVenta(Base):
     porcentaje_codigo: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     tipo_venta: Mapped[str] = mapped_column(String(30), nullable=False, default="en linea")  # 'presencial' | 'en linea'
 
-    codigo_cliente: Mapped[str] = mapped_column(
-        String(30), ForeignKey("clientes.codigo", ondelete="RESTRICT"), nullable=False, index=True
+    codigo_cliente: Mapped[str | None] = mapped_column(
+        String(30), ForeignKey("clientes.codigo", ondelete="RESTRICT"), nullable=True, index=True
     )
+    comprador_nombre: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    comprador_ci: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     sucursal_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("sucursales.id", ondelete="SET NULL"), nullable=True, index=True
     )
