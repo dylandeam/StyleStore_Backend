@@ -8,7 +8,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-002 | EN_PRUEBAS | Se extendió el proyecto existente; regresión automatizada completa, falta E2E desplegado |
 | REQ-003 | EN_PRUEBAS | Entidad `Empresa`, consola SaaS maestra y frontera tenant aplicada también a archivos, próximos lanzamientos y prueba virtual; falta E2E desplegado |
 | REQ-004 | EN_PRUEBAS | Migraciones aditivas cubren raíces y recursos secundarios; cadena completa validada desde PostgreSQL vacío hasta `2d4e6f809123`, falta aplicarla en Railway |
-| REQ-005 | EN_CURSO | Empresa y sucursal son entidades separadas; la consola web muestra jerarquía, uso y administrador, falta paridad móvil donde aplique |
+| REQ-005 | TERMINADO_VERIFICADO | Empresa y sucursal son entidades separadas; la consola web y el perfil móvil muestran jerarquía, planes, estado, asignación de sucursal con resiliencia offline en SQLite |
 | REQ-006 | EN_PRUEBAS | Aislamiento aplicado a recursos principales y secundarios; archivos llevan tenant, respaldos son exclusivos del administrador SaaS y referencias cruzadas devuelven 404; falta E2E desplegado |
 | REQ-007 | EN_PRUEBAS | Tenant derivado del JWT y regresiones A/B cubren IDs directos, operaciones, exportables, próximos lanzamientos, suscripciones y trabajos de prueba virtual; falta E2E desplegado/dispositivo |
 | REQ-008 | EN_PRUEBAS | JWT/refresh/blacklist/guards conservados; falta prueba manual de caída de red |
@@ -19,7 +19,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-013 | TERMINADO_VERIFICADO | Contrato `/sync` versionado con UUID, tenant/usuario derivados del JWT, idempotencia, estados, motivo y pruebas de replay |
 | REQ-014 | EN_CURSO | Maestro separado por `is_platform_admin`, administrador tenant visible y consola global protegida/auditada; falta matriz tenant/sucursal/plan completa |
 | REQ-015 | EN_PRUEBAS | Flujos preservados y suite aprobada; falta prueba manual desplegada |
-| REQ-016 | EN_CURSO | PWA diferencia provisional/confirmado, bloquea QR offline y documenta límites; falta paridad móvil |
+| REQ-016 | TERMINADO_VERIFICADO | PWA y móvil diferencian comprobante provisional LOCAL vs. confirmado, bloquean cobros QR/digitales en modo avión y documentan límites operativos |
 | REQ-017 | EN_CURSO | Consola maestra crea/edita/suspende tenants, gestiona su administrador y muestra usuarios/sucursales aislados; falta asociación integral de recursos secundarios |
 | REQ-018 | TERMINADO_VERIFICADO | Existen exactamente Básico, Intermedio y Profesional; la migración reutiliza la fila anterior para preservar IDs, contratos e historial |
 | REQ-019 | EN_PRUEBAS | Básico limita a 2 sucursales sin chatbot/predicciones; Intermedio a 5 con chatbot; Profesional a 10 o más con chatbot/predicciones. Las reglas se protegen en backend y se reflejan en Web/Mobile; falta demostración E2E desplegada |
