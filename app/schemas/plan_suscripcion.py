@@ -12,7 +12,7 @@ PLAN_CODES = {"basico", "intermedio", "profesional"}
 class PlanUpdate(BaseModel):
     nombre: str | None = Field(None, min_length=2, max_length=80)
     descripcion: str | None = Field(None, max_length=1200)
-    precio_mensual: Decimal | None = Field(None, ge=0, max_digits=12, decimal_places=2)
+    precio_mensual: Decimal | None = Field(default=None, ge=Decimal("0"), max_digits=12, decimal_places=2)
     moneda: str | None = Field(None, min_length=3, max_length=3)
     max_sucursales: int | None = Field(None, ge=1, le=10000)
     ia_generativa: bool | None = None

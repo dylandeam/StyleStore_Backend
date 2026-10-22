@@ -11,7 +11,7 @@ class DetalleCompraCreate(BaseModel):
     color_id: int = Field(..., description="ID del color")
     talla_id: int = Field(..., description="ID de la talla")
     cantidad: int = Field(..., gt=0, description="Cantidad adquirida")
-    costo_unitario: Decimal = Field(..., gt=0, description="Precio unitario de costo")
+    costo_unitario: Decimal = Field(..., gt=Decimal("0"), description="Precio unitario de costo")
 
 
 class DetalleCompraResponse(BaseModel):

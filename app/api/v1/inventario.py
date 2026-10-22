@@ -100,7 +100,7 @@ class StockAdjustRequest(BaseModel):
     talla_id: int | None = None
     sucursal_id: int | None = None
     cantidad: int = Field(..., ge=0, description="Nueva cantidad de stock")
-    precio_variante: Decimal | None = Field(None, ge=0, max_digits=12, decimal_places=2)
+    precio_variante: Decimal | None = Field(default=None, ge=Decimal("0"), max_digits=12, decimal_places=2)
     medidas: dict[str, float] | None = None
 
     @field_validator("medidas")

@@ -46,7 +46,7 @@ class CompletarCajaRequest(BaseModel):
     reponer_prenda_original: bool = True
     nuevo_stock_inventario_id: Optional[int] = None
     metodo_pago_diferencia: Optional[str] = Field(None, pattern="^(efectivo|qr)$")
-    efectivo_recibido: Optional[Decimal] = Field(None, ge=0)
+    efectivo_recibido: Optional[Decimal] = Field(default=None, ge=Decimal("0"))
     metodo_reembolso: Optional[str] = Field(None, pattern="^(efectivo|transferencia)$")
 
 
