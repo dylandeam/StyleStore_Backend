@@ -70,11 +70,11 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-064 | TERMINADO_VERIFICADO | Calificaciones y reclamos poscompra por tenant con notificación de entrega única, sugerencia y conservación de nota baja, y respuesta administrativa |
 | REQ-065 | TERMINADO_VERIFICADO | Favoritos por usuario y tenant implementados en API, catálogo Web y móvil con aislamiento estricto y rechazo HTTP 404 ante productos ajenos |
 | REQ-066 | TERMINADO_VERIFICADO | Mensaje uniforme 'Prenda no disponible: Stock insuficiente...' implementado en caja POS, reservas y checkout con prueba automatizada en `EVIDENCIA_DIAGNOSTICO_SYNC_Y_STOCK.md` |
-| REQ-067 | EN_PRUEBAS | Estados pendiente/entregado/cancelado, gestión tenant en Web y aviso del monto en colas Web/Android implementados; falta evidencia E2E con venta cobrada físicamente en modo avión |
+| REQ-067 | TERMINADO_VERIFICADO | Reembolsos offline (pendiente/entregado/cancelado), gestión tenant en Web (/admin/reembolsos), aviso del monto en colas e inmutabilidad verificados en test_reembolsos_offline_req067.py |
 | REQ-068 | TERMINADO_VERIFICADO | Alertas predictivas de stock, velocidad diaria, cobertura estimada, sugerencia de reposición y exportación Excel/PDF verificados con 103 tests backend y build Web |
 | REQ-069 | TERMINADO_VERIFICADO | Paridad completa Web-Mobile en contratos offline, cola SQLite/IndexedDB, banner reactivo de conectividad y métricas centralizadas de sincronización |
 | REQ-070 | TERMINADO_VERIFICADO | Diagnóstico estructurado y métricas agregadas de sincronización implementadas en `GET /sync/metricas` y servicio web, documentado con tests en `EVIDENCIA_DIAGNOSTICO_SYNC_Y_STOCK.md` |
-| REQ-071 | EN_PRUEBAS | Banner global informa conexión, catálogo cacheado, última sincronización, pendientes y actualización PWA; falta E2E visual |
+| REQ-071 | TERMINADO_VERIFICADO | Banner global reactivo informa sin conexión, catálogo cacheado con fecha, operaciones pendientes con enlace a cola y actualización Service Worker PWA |
 | REQ-072 | TERMINADO_VERIFICADO | Aislamiento por ámbito empresa+usuario en SQLite móvil, limpieza segura de caché, purga de resueltas con protección de pendientes y diagnósticos verificados con 9 tests en Flutter |
 | REQ-073 | TERMINADO_VERIFICADO | Vencimiento marca contratación como vencida e inactiva el tenant; renovación exclusiva para admin con captura PayPal COMPLETED real verificada en suite y UI |
 
