@@ -313,11 +313,14 @@ class CambioService:
                 talla_nombre=nuevo_stk.talla.nombre if nuevo_stk.talla else None,
                 cantidad=1, precio_unitario=precio_nuevo, subtotal=precio_nuevo,
             ))
+        pago_adicional = None
         if monto_adicional > 0:
-            self.db.add(Pago(
+            pago_adicional = Pago(
                 orden_venta_id=orden_ajuste.id, monto=monto_adicional,
+                empresa_id=solicitud.sucursal.empresa_id,
                 tipo_pago="en caja", metodo_pago=metodo, estado="aprobado",
-            ))
+            )
+            self.db.add(pago_adicional)
 
         solicitud.estado = "completada"
         solicitud.nuevo_stock_inventario_id = nuevo_stk.id if nuevo_stk else None
@@ -334,6 +337,10 @@ class CambioService:
         solicitud.orden_ajuste_id = orden_ajuste.id
         self.db.commit()
         self.db.refresh(solicitud)
+        if pago_adicional:
+            from app.services.pago_service import PagoService
+            self.db.refresh(pago_adicional)
+            PagoService(self.db).confirmar(pago_adicional)
         resultado = (
             f"Debes pagar Bs {monto_adicional:.2f}." if monto_adicional > 0
             else f"Generamos Bs {saldo_generado:.2f} de saldo a favor." if saldo_generado > 0

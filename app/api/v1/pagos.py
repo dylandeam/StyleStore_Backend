@@ -33,8 +33,20 @@ from app.services.bitacora_service import BitacoraService
 from app.services.paypal_service import paypal_service
 from app.services.tenant_scope import scope_by_sucursal
 from app.services.notificacion_service import NotificacionService
+from app.services.pago_service import PagoService
 
 router = APIRouter(prefix="/pagos", tags=["Pagos"])
+
+
+def _payment_company_id(order: OrdenVenta, current_user: User | None = None) -> int:
+    empresa_id = order.sucursal.empresa_id if order.sucursal else None
+    if empresa_id is None and current_user:
+        empresa_id = current_user.empresa_id
+    if empresa_id is None and order.cliente and order.cliente.user:
+        empresa_id = order.cliente.user.empresa_id
+    if empresa_id is None:
+        raise BadRequestException("No se pudo identificar la empresa asociada al pago.")
+    return empresa_id
 
 
 def _scoped_order(db: Session, current_user: User, order_id: int) -> OrdenVenta | None:
@@ -49,6 +61,8 @@ def _scoped_order(db: Session, current_user: User, order_id: int) -> OrdenVenta 
 
 def _scoped_payment(db: Session, current_user: User, payment_id: int) -> Pago | None:
     query = db.query(Pago).join(OrdenVenta, Pago.orden_venta_id == OrdenVenta.id).filter(Pago.id == payment_id)
+    if not current_user.is_platform_admin:
+        query = query.filter(Pago.empresa_id == current_user.empresa_id)
     query = scope_by_sucursal(query, db, current_user, OrdenVenta.sucursal_id)
     payment = query.first()
     if payment and current_user.role == "cliente":
@@ -92,6 +106,7 @@ async def create_paypal_order(
     if not pago_existente:
         pago_existente = Pago(
             orden_venta_id=orden.id,
+            empresa_id=_payment_company_id(orden, current_user),
             monto=orden.total,
             tipo_pago="en linea",
             estado="pendiente",
@@ -169,6 +184,7 @@ async def capture_paypal_order(
 
     # Si ya está aprobada, retornar directamente (idempotencia)
     if pago and pago.estado == "aprobado" and pago.paypal_capture_id:
+        PagoService(db).confirmar(pago)
         NotificacionService(db).notificar_experiencia_poscompra(orden)
         return pago
 
@@ -191,6 +207,7 @@ async def capture_paypal_order(
     if not pago:
         pago = Pago(
             orden_venta_id=orden.id,
+            empresa_id=_payment_company_id(orden, current_user),
             monto=orden.total,
             tipo_pago="en linea",
             estado="aprobado",
@@ -207,6 +224,7 @@ async def capture_paypal_order(
     orden.metodo_pago = "paypal"
     db.commit()
     db.refresh(pago)
+    PagoService(db).confirmar(pago)
 
     # Registro en Bitácora con fallback seguro de usuario
     user_audit = current_user
@@ -272,6 +290,7 @@ async def process_caja_payment(
     if not pago:
         pago = Pago(
             orden_venta_id=orden.id,
+            empresa_id=_payment_company_id(orden, current_user),
             monto=orden.total,
             tipo_pago="qr" if metodo == "qr" else "en caja",
             metodo_pago=metodo,
@@ -285,6 +304,7 @@ async def process_caja_payment(
 
     db.commit()
     db.refresh(pago)
+    PagoService(db).confirmar(pago)
 
     desc_pago = f"[{metodo.upper()}]" if metodo == "qr" else f"Recibido: Bs. {monto_recibido}, Cambio: Bs. {cambio}"
     BitacoraService.registrar(
@@ -301,6 +321,7 @@ async def process_caja_payment(
         efectivo_recibido=monto_recibido,
         cambio_devuelto=cambio,
         ticket_numero=ticket_num,
+        recibo_numero=pago.recibo_numero,
         fecha=datetime.now(),
     )
 
@@ -326,6 +347,7 @@ async def process_payment(
 
     pago = Pago(
         orden_venta_id=orden.id,
+        empresa_id=_payment_company_id(orden, current_user),
         monto=orden.total,
         tipo_pago=payload.tipo_pago,
         estado="aprobado",
@@ -338,6 +360,7 @@ async def process_payment(
     orden.metodo_pago = payload.tipo_pago
     db.commit()
     db.refresh(pago)
+    PagoService(db).confirmar(pago)
 
     BitacoraService.registrar(
         db=db,
@@ -362,7 +385,10 @@ async def list_my_payments(
     pagos = (
         db.query(Pago)
         .join(OrdenVenta, Pago.orden_venta_id == OrdenVenta.id)
-        .filter(OrdenVenta.codigo_cliente == cliente.codigo)
+        .filter(
+            OrdenVenta.codigo_cliente == cliente.codigo,
+            Pago.empresa_id == current_user.empresa_id,
+        )
         .order_by(Pago.created_at.desc())
         .all()
     )
@@ -485,11 +511,15 @@ async def get_payment_receipt(
 
     return {
         "pago_id": pago.id,
+        "recibo_numero": pago.recibo_numero,
+        "empresa_id": pago.empresa_id,
+        "empresa_nombre": pago.empresa.nombre if pago.empresa else None,
         "orden_venta_id": pago.orden_venta_id,
         "fecha": pago.created_at,
         "monto": pago.monto,
         "tipo_pago": pago.tipo_pago,
         "estado": pago.estado,
+        "email_confirmacion_enviado_at": pago.email_confirmacion_enviado_at,
         "paypal_order_id": pago.paypal_order_id,
         "paypal_capture_id": pago.paypal_capture_id,
         "ticket_numero": orden.ticket_numero if orden else None,
@@ -517,6 +547,9 @@ async def list_all_payments(
         resultado.append({
             "id": p.id,
             "orden_venta_id": p.orden_venta_id,
+            "empresa_id": p.empresa_id,
+            "empresa_nombre": p.empresa.nombre if p.empresa else None,
+            "recibo_numero": p.recibo_numero,
             "monto": float(p.monto) if p.monto else 0.0,
             "tipo_pago": p.tipo_pago,
             "estado": p.estado,
@@ -558,6 +591,7 @@ async def confirmar_cobro_online(
     if not pago:
         pago = Pago(
             orden_venta_id=orden.id,
+            empresa_id=_payment_company_id(orden, current_user),
             monto=orden.total,
             tipo_pago="en linea",
             estado="aprobado",
@@ -570,6 +604,7 @@ async def confirmar_cobro_online(
 
     db.commit()
     db.refresh(pago)
+    PagoService(db).confirmar(pago)
 
     BitacoraService.registrar(
         db=db,
@@ -585,6 +620,7 @@ async def confirmar_cobro_online(
         efectivo_recibido=orden.total,
         cambio_devuelto=Decimal("0.00"),
         ticket_numero=ticket_num,
+        recibo_numero=pago.recibo_numero,
         fecha=datetime.now(),
     )
 

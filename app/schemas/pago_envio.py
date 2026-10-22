@@ -17,12 +17,15 @@ class PagoCreateRequest(BaseModel):
 class PagoResponse(BaseModel):
     id: int
     orden_venta_id: int
+    empresa_id: int | None = None
     monto: Decimal
     tipo_pago: str
     metodo_pago: str | None = None
     estado: str
     paypal_order_id: str | None = None
     paypal_capture_id: str | None = None
+    recibo_numero: str | None = None
+    email_confirmacion_enviado_at: datetime | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -52,6 +55,7 @@ class CobroCajaResponse(BaseModel):
     efectivo_recibido: Decimal
     cambio_devuelto: Decimal
     ticket_numero: str
+    recibo_numero: str | None = None
     fecha: datetime
 
 
@@ -205,5 +209,9 @@ class OrdenVentaResponse(BaseModel):
     tipo_entrega: str | None = None
     fecha_recojo: date | None = None
     hora_recojo: time | None = None
+    pago_id: int | None = None
+    pago_estado: str | None = None
+    recibo_numero: str | None = None
+    pago_email_confirmado: bool = False
 
     model_config = {"from_attributes": True}

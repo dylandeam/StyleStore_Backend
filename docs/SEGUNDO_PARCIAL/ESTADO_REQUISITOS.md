@@ -59,8 +59,8 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-053 | PENDIENTE | QR y enlaces finales verificados no preparados |
 | REQ-054 | EN_CURSO | Solicitudes de cambio existen; falta nueva nota vinculada completa |
 | REQ-055 | EN_CURSO | Cambios/devoluciones existen; falta sector y efectos completos |
-| REQ-056 | PENDIENTE | Email idempotente por pago confirmado no comprobado |
-| REQ-057 | EN_CURSO | Notificaciones existen; falta evento de pago con deduplicación |
+| REQ-056 | EN_PRUEBAS | Todo pago aprobado emite correo una sola vez mediante bloqueo de fila y marca persistente; prueba automatizada aprobada, falta evidencia SMTP/E2E desplegada |
+| REQ-057 | EN_PRUEBAS | Pago asociado obligatoriamente a tenant, recibo estable y notificación in-app única por `pago_id`; Web/Mobile muestran el comprobante, falta E2E desplegada |
 | REQ-058 | EN_CURSO | Reservas cliente/staff y límite de 3 días existen; falta cierre tenant integral |
 | REQ-059 | EN_PRUEBAS | Agenda compartida implementada para reservas y recojo web/móvil, con bloques de una hora y exclusión concurrente; falta evidencia E2E desplegada |
 | REQ-060 | EN_PRUEBAS | Precio por talla/color/sucursal configurable en inventario y aplicado a catálogo, carrito, POS y sync; falta E2E desplegado |

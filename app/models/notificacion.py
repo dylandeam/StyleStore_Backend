@@ -18,6 +18,9 @@ class Notificacion(Base):
     user_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    pago_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("pagos.id", ondelete="SET NULL"), nullable=True, unique=True, index=True
+    )
     tipo: Mapped[str] = mapped_column(
         String(50), nullable=False, default="general"
     )  # 'recordatorio_reserva', 'proximamente', 'stock_disponible', 'cambio_devolucion', 'general'

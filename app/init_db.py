@@ -52,6 +52,11 @@ def _run_column_migrations(db: Session):
         # Pagos
         "ALTER TABLE pagos ADD COLUMN IF NOT EXISTS paypal_capture_id VARCHAR(100)",
         "ALTER TABLE pagos ADD COLUMN IF NOT EXISTS metodo_pago VARCHAR(50)",
+        "ALTER TABLE pagos ADD COLUMN IF NOT EXISTS empresa_id INTEGER",
+        "ALTER TABLE pagos ADD COLUMN IF NOT EXISTS recibo_numero VARCHAR(40)",
+        "ALTER TABLE pagos ADD COLUMN IF NOT EXISTS email_confirmacion_enviado_at TIMESTAMP WITH TIME ZONE",
+        "ALTER TABLE pagos ADD COLUMN IF NOT EXISTS email_confirmacion_intentos INTEGER DEFAULT 0",
+        "ALTER TABLE notificaciones ADD COLUMN IF NOT EXISTS pago_id INTEGER",
         # Clientes
         "ALTER TABLE clientes ADD COLUMN IF NOT EXISTS foto VARCHAR(255)",
         # Sucursales
@@ -188,10 +193,24 @@ def init_db():
         from app.models.proveedor import Proveedor
         from app.models.qr_pago_config import QRPagoConfig
         from app.models.bitacora import Bitacora
+        from app.models.pago import Pago
         for model in (Categoria, Color, Talla, Temporada, Coleccion, Producto, Proveedor, QRPagoConfig, Bitacora):
             db.query(model).filter(model.empresa_id.is_(None)).update(
                 {model.empresa_id: default_empresa.id}, synchronize_session=False
             )
+        db.commit()
+        db.execute(text("""
+            UPDATE pagos SET empresa_id = sucursales.empresa_id
+            FROM orden_venta, sucursales
+            WHERE pagos.orden_venta_id = orden_venta.id
+              AND orden_venta.sucursal_id = sucursales.id
+              AND pagos.empresa_id IS NULL
+        """))
+        db.query(Pago).filter(Pago.empresa_id.is_(None)).update(
+            {Pago.empresa_id: default_empresa.id}, synchronize_session=False
+        )
+        for pago in db.query(Pago).filter(Pago.estado == "aprobado", Pago.recibo_numero.is_(None)).all():
+            pago.recibo_numero = f"REC-{pago.id:08d}"
         db.commit()
 
         # Seed permissions and roles

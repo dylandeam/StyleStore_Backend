@@ -24,6 +24,7 @@ from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.bitacora_service import BitacoraService
 from app.services.tenant_scope import get_scoped_sucursal, scope_by_sucursal
 from app.services.promocion_service import PromocionService
+from app.services.pago_service import PagoService
 
 router = APIRouter(prefix="/ventas", tags=["Ventas"])
 
@@ -39,6 +40,7 @@ def _client_orders_query(db: Session, current_user: User, cliente: Cliente):
 
 
 def _serialize_orden(o: OrdenVenta) -> dict:
+    pago = max(o.pagos, key=lambda item: item.id, default=None)
     detalles = []
     for d in o.detalles:
         prod_cod = None
@@ -107,6 +109,10 @@ def _serialize_orden(o: OrdenVenta) -> dict:
         "tipo_entrega": o.tipo_entrega,
         "fecha_recojo": o.fecha_recojo,
         "hora_recojo": o.hora_recojo,
+        "pago_id": pago.id if pago else None,
+        "pago_estado": pago.estado if pago else None,
+        "recibo_numero": pago.recibo_numero if pago else None,
+        "pago_email_confirmado": bool(pago and pago.email_confirmacion_enviado_at),
         "ticket_numero": o.ticket_numero,
         "codigo_cliente": o.codigo_cliente,
         "cliente_nombre": cli_nom,
@@ -368,6 +374,7 @@ async def create_venta_presencial(
 
     pago = Pago(
         orden_venta_id=orden.id,
+        empresa_id=orden.sucursal.empresa_id if orden.sucursal else current_user.empresa_id,
         monto=total_venta,
         tipo_pago="en caja",
         metodo_pago=metodo,
@@ -377,6 +384,8 @@ async def create_venta_presencial(
 
     db.commit()
     db.refresh(orden)
+    db.refresh(pago)
+    PagoService(db).confirmar(pago)
 
     BitacoraService.registrar(
         db=db,

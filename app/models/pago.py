@@ -19,12 +19,18 @@ class Pago(Base):
     orden_venta_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("orden_venta.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    empresa_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("empresas.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
     monto: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     tipo_pago: Mapped[str] = mapped_column(String(30), nullable=False, default="en linea")  # 'en linea' | 'en caja'
     metodo_pago: Mapped[str | None] = mapped_column(String(30), nullable=True, default=None)  # 'paypal', 'efectivo', 'qr'
     estado: Mapped[str] = mapped_column(String(30), nullable=False, default="pendiente")  # 'pendiente', 'aprobado', 'fallido'
     paypal_order_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     paypal_capture_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    recibo_numero: Mapped[str | None] = mapped_column(String(40), nullable=True, unique=True, index=True)
+    email_confirmacion_enviado_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    email_confirmacion_intentos: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -35,6 +41,7 @@ class Pago(Base):
 
     # Relaciones
     orden_venta = relationship("OrdenVenta", back_populates="pagos")
+    empresa = relationship("Empresa", lazy="joined")
 
     def __repr__(self) -> str:
         return f"<Pago(id={self.id}, orden={self.orden_venta_id}, monto={self.monto}, estado='{self.estado}')>"
