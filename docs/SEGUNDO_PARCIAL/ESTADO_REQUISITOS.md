@@ -17,10 +17,10 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-011 | EN_PRUEBAS | Servidor autoritativo bloquea stock online y al sincronizar; reenvío UUID no duplica ni vuelve a descontar, falta prueba de concurrencia real |
 | REQ-012 | EN_PRUEBAS | Venta offline en efectivo rechazada por stock crea un único reembolso auditable ligado a la operación; replay no duplica, resolución es inmutable y queda en bitácora; falta demostración física del conflicto en dispositivo |
 | REQ-013 | TERMINADO_VERIFICADO | Contrato `/sync` versionado con UUID, tenant/usuario derivados del JWT, idempotencia, estados, motivo y pruebas de replay |
-| REQ-014 | EN_CURSO | Maestro separado por `is_platform_admin`, administrador tenant visible y consola global protegida/auditada; falta matriz tenant/sucursal/plan completa |
+| REQ-014 | TERMINADO_VERIFICADO | Maestro separado por `is_platform_admin`, administrador tenant visible y consola global protegida/auditada con matriz completa de tenant/sucursal/plan, cupos y capacidades |
 | REQ-015 | EN_PRUEBAS | Flujos preservados y suite aprobada; falta prueba manual desplegada |
 | REQ-016 | TERMINADO_VERIFICADO | PWA y móvil diferencian comprobante provisional LOCAL vs. confirmado, bloquean cobros QR/digitales en modo avión y documentan límites operativos |
-| REQ-017 | EN_CURSO | Consola maestra crea/edita/suspende tenants, gestiona su administrador y muestra usuarios/sucursales aislados; falta asociación integral de recursos secundarios |
+| REQ-017 | TERMINADO_VERIFICADO | Consola maestra crea/edita/suspende tenants, gestiona su administrador y muestra usuarios, sucursales y asociación aislada de recursos secundarios (archivos, próximos lanzamientos y probador virtual) |
 | REQ-018 | TERMINADO_VERIFICADO | Existen exactamente Básico, Intermedio y Profesional; la migración reutiliza la fila anterior para preservar IDs, contratos e historial |
 | REQ-019 | EN_PRUEBAS | Básico limita a 2 sucursales sin chatbot/predicciones; Intermedio a 5 con chatbot; Profesional a 10 o más con chatbot/predicciones. Las reglas se protegen en backend y se reflejan en Web/Mobile; falta demostración E2E desplegada |
 | REQ-020 | TERMINADO_VERIFICADO | Precio, moneda, límites, capacidades, beneficios y estilo se configuran en backend y UI por ámbito global/tenant |

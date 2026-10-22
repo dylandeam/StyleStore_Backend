@@ -139,10 +139,21 @@ class TenantUserSummary(BaseModel):
     active: bool
 
 
+class TenantCapacidadesResponse(BaseModel):
+    chatbot: bool = False
+    predicciones: bool = False
+    max_sucursales: int | None = None
+    cupo_sucursales_disponible: int | None = None
+
+
 class EmpresaResumenResponse(EmpresaResponse):
     admin: TenantAdminResponse | None = None
     suscripcion: EmpresaSuscripcionResponse | None = None
     usuarios_count: int = 0
     sucursales_count: int = 0
+    archivos_count: int = 0
+    proximamente_count: int = 0
+    pruebas_virtuales_count: int = 0
+    capacidades: TenantCapacidadesResponse | None = None
     sucursales: list[TenantBranchSummary] = []
     usuarios: list[TenantUserSummary] = []

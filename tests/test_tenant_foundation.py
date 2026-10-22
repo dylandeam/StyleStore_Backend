@@ -116,6 +116,13 @@ def test_platform_admin_manages_tenant_lifecycle_admin_and_subscription(
     assert tenant["admin"]["email"] == "admin@managed.example.com"
     assert tenant["suscripcion"]["plan_codigo"] == "basico"
     assert tenant["usuarios_count"] == 1
+    assert "archivos_count" in tenant
+    assert "proximamente_count" in tenant
+    assert "pruebas_virtuales_count" in tenant
+    assert tenant["capacidades"]["max_sucursales"] == 2
+    assert tenant["capacidades"]["chatbot"] is False
+    assert tenant["capacidades"]["predicciones"] is False
+    assert tenant["capacidades"]["cupo_sucursales_disponible"] == 2
 
     updated = client.patch(
         f"/api/v1/empresas/{tenant_id}",

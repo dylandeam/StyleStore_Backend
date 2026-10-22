@@ -13,6 +13,9 @@ from app.models.role import Role
 from app.models.plan_suscripcion import ContratacionPlan
 from app.models.sucursal import Sucursal
 from app.models.user import User
+from app.models.uploaded_file import UploadedFile
+from app.models.proximamente import Proximamente
+from app.models.prueba_virtual import PruebaVirtual
 from app.schemas.empresa import EmpresaCreate, EmpresaSuscripcionUpdate, EmpresaUpdate, TenantAdminUpdate
 from app.services.bitacora_service import BitacoraService
 from app.services.plan_service import PlanService
@@ -84,6 +87,7 @@ class EmpresaService:
                 "max_sucursales": contract.plan.max_sucursales,
             }
         branches = self.db.query(Sucursal).filter(Sucursal.empresa_id == empresa.id).order_by(Sucursal.name).all()
+        sucursales_count = len(branches)
         users = (
             self.db.query(User)
             .outerjoin(UserEmpresa, UserEmpresa.user_id == User.id)
@@ -95,6 +99,38 @@ class EmpresaService:
             .order_by(User.name)
             .all()
         )
+        archivos_count = (
+            self.db.query(func.count(UploadedFile.id))
+            .filter(UploadedFile.empresa_id == empresa.id)
+            .scalar()
+            or 0
+        )
+        proximamente_count = (
+            self.db.query(func.count(Proximamente.id))
+            .filter(Proximamente.empresa_id == empresa.id)
+            .scalar()
+            or 0
+        )
+        pruebas_virtuales_count = (
+            self.db.query(func.count(PruebaVirtual.id))
+            .filter(PruebaVirtual.empresa_id == empresa.id)
+            .scalar()
+            or 0
+        )
+
+        plan_code = (contract.plan.codigo if contract and contract.plan else "basico").lower()
+        max_sucursales = contract.plan.max_sucursales if contract and contract.plan else 2
+        capacidades = {
+            "chatbot": plan_code in {"intermedio", "profesional"},
+            "predicciones": plan_code == "profesional",
+            "max_sucursales": max_sucursales,
+            "cupo_sucursales_disponible": (
+                max(0, max_sucursales - sucursales_count)
+                if max_sucursales is not None
+                else None
+            ),
+        }
+
         return {
             "id": empresa.id,
             "codigo": empresa.codigo,
@@ -106,7 +142,11 @@ class EmpresaService:
             "admin": admin,
             "suscripcion": subscription,
             "usuarios_count": len(users),
-            "sucursales_count": self.db.query(func.count(Sucursal.id)).filter(Sucursal.empresa_id == empresa.id).scalar() or 0,
+            "sucursales_count": sucursales_count,
+            "archivos_count": archivos_count,
+            "proximamente_count": proximamente_count,
+            "pruebas_virtuales_count": pruebas_virtuales_count,
+            "capacidades": capacidades,
             "sucursales": [
                 {"id": item.id, "nombre": item.name, "ciudad": item.city, "active": item.active}
                 for item in branches
