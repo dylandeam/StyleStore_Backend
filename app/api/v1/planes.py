@@ -138,9 +138,12 @@ async def capture_subscription_paypal_order(
         raise BadRequestException("PayPal no confirmó el cobro; el plan no fue modificado.")
     capture_data = (((capture.get("purchase_units") or [{}])[0].get("payments") or {}).get("captures") or [{}])[0]
     amount = capture_data.get("amount") or {}
+    expected_value, expected_currency = paypal_service.payment_amount(
+        pending.precio_snapshot, pending.moneda_snapshot
+    )
     if amount and (
-        amount.get("currency_code") != pending.moneda_snapshot
-        or str(amount.get("value")) != f"{float(pending.precio_snapshot):.2f}"
+        amount.get("currency_code") != expected_currency
+        or str(amount.get("value")) != f"{expected_value:.2f}"
     ):
         raise BadRequestException("El importe capturado por PayPal no coincide con el precio del plan.")
     contract = PlanService(db).activate_paid_contract(

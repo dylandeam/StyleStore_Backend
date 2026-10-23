@@ -1,5 +1,6 @@
 """Regresiones de seguridad para impedir cobros PayPal simulados en producción."""
 import asyncio
+from decimal import Decimal
 
 import pytest
 
@@ -28,3 +29,9 @@ def test_mock_paypal_remains_available_only_when_explicitly_allowed():
     capture = asyncio.run(service.capture_order(order["id"], allow_mock=True))
     assert order["mock"] is True
     assert capture["status"] == "COMPLETED"
+
+
+def test_bob_amount_is_converted_to_supported_usd_for_paypal():
+    amount, currency = PayPalService.payment_amount(Decimal("69.60"), "BOB")
+    assert currency == "USD"
+    assert amount == Decimal("10.00")

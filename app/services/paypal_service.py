@@ -5,7 +5,7 @@ entorno habilita ALLOW_MOCK_PAYPAL de forma explícita (por ejemplo, en tests).
 """
 import time
 import logging
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 import httpx
 from app.config import settings
 
@@ -35,6 +35,19 @@ class PayPalService:
             or self.client_id.startswith("mock_")
             or self.client_secret.startswith("mock_")
         )
+
+    @staticmethod
+    def payment_amount(total: Decimal | float, currency: str) -> tuple[Decimal, str]:
+        """Convert unsupported BOB prices to USD while preserving display prices."""
+        source_currency = currency.upper()
+        amount = Decimal(str(total))
+        if source_currency == "BOB":
+            rate = Decimal(str(settings.PAYPAL_BOB_PER_USD))
+            if rate <= 0:
+                raise RuntimeError("PAYPAL_BOB_PER_USD debe ser mayor que cero.")
+            amount = amount / rate
+            source_currency = "USD"
+        return amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP), source_currency
 
     async def get_access_token(self) -> str:
         """Obtiene un token OAuth2 de PayPal."""
@@ -78,7 +91,8 @@ class PayPalService:
         """
         Crea una orden de pago en PayPal con Intent CAPTURE.
         """
-        amount_val = f"{float(total):.2f}"
+        paypal_amount, paypal_currency = self.payment_amount(total, currency)
+        amount_val = f"{paypal_amount:.2f}"
 
         base_ret = return_url.rstrip("/") if return_url else f"{settings.FRONTEND_URL}/paypal-return"
         sep = "&" if "?" in base_ret else "?"
@@ -126,7 +140,7 @@ class PayPalService:
                 {
                     "reference_id": f"{reference_prefix}-{orden_id}",
                     "description": description or f"Compra en StyleStore - Pedido #{orden_id}",
-                    "amount": {"currency_code": currency.upper(), "value": amount_val},
+                    "amount": {"currency_code": paypal_currency, "value": amount_val},
                 }
             ],
             "application_context": {
@@ -149,7 +163,12 @@ class PayPalService:
                     },
                 )
                 if res.status_code in [200, 201]:
-                    return res.json()
+                    result = res.json()
+                    result["paypal_total"] = amount_val
+                    result["paypal_currency"] = paypal_currency
+                    result["display_total"] = f"{Decimal(str(total)):.2f}"
+                    result["display_currency"] = currency.upper()
+                    return result
                 else:
                     logger.error(f"Error creando orden PayPal: {res.text}")
                     if not allow_fallback:

@@ -68,6 +68,7 @@ class Settings:
     PAYPAL_CLIENT_SECRET: str = os.getenv("PAYPAL_CLIENT_SECRET", "mock_paypal_secret")
     PAYPAL_MODE: str = os.getenv("PAYPAL_MODE", "sandbox")  # 'sandbox' | 'live'
     ALLOW_MOCK_PAYPAL: bool = os.getenv("ALLOW_MOCK_PAYPAL", "false").lower() == "true"
+    PAYPAL_BOB_PER_USD: float = float(os.getenv("PAYPAL_BOB_PER_USD", "6.96"))
 
     # Security & Master Key for Bitácora
     ADMIN_MASTER_KEY: str = os.getenv("ADMIN_MASTER_KEY", "")
