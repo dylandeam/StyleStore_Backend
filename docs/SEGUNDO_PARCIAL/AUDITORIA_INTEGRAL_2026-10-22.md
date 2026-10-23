@@ -78,8 +78,7 @@ desplegó correctamente las cinco variables oficiales de PayPal Sandbox: Client 
 no se registran en el repositorio ni en esta evidencia. La conversión de los precios BOB a USD
 se realiza mediante `PAYPAL_BOB_PER_USD` porque PayPal no admite BOB. En el Samsung físico se
 confirmó la persistencia de sesión, el carrito con una prenda en stock y la pantalla de checkout
-de delivery hasta el botón final de PayPal; la autorización/captura Sandbox queda pendiente de
-la confirmación humana y del inicio de sesión con el comprador Personal Sandbox.
+de delivery hasta el botón final de PayPal.
 
 La primera prueba física descubrió que el endpoint de compras omitía `currency="BOB"` al crear
 la orden: PayPal interpretaba Bs. 77.69 como USD 77.69. Se corrigió para convertir ese total a
@@ -92,8 +91,10 @@ Para corregir el rechazo del comercio boliviano se creó una cuenta **Business S
 se asoció la aplicación `StyleStoreUS` y se rotaron sus credenciales exclusivamente en
 Railway. El servicio volvió a estado `Online` y el correo de acceso de la cuenta de prueba
 quedó como `stylestore1@gmail.com`. Con la tasa de demostración configurada en `11.00`, el
-total local de Bs. 77.69 se presenta a PayPal como USD 7.06. Aún falta la aprobación/captura
-humana de la orden de prueba; esta documentación no contiene contraseñas, Client IDs ni
-secretos.
+total local de Bs. 77.69 se presenta a PayPal como USD 7.06. El comprador Personal Sandbox
+aprobó la orden en el Samsung y la captura terminó correctamente: ORD-2 cambió a `PAGADA`,
+se emitió `REC-00000002` con estado `APROBADO`, se abrió el rastreo de delivery y el catálogo
+mostró 3 unidades restantes (5 iniciales menos las unidades comprometidas por ORD-1 y ORD-2).
+No se creó un tercer pedido. Esta documentación no contiene contraseñas, Client IDs ni secretos.
 
 Estas tareas están marcadas como validación externa, no como funcionalidad simulada.
