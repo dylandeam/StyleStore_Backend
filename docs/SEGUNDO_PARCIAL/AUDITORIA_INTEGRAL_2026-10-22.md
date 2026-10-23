@@ -33,6 +33,11 @@ responsiva.
    StyleStore.
 8. **Persistencia de sesión:** se conserva el access/refresh token en almacenamiento seguro;
    al abrir la app se restaura la sesión y se vuelve a registrar el dispositivo push.
+9. **Deriva real del esquema Railway:** el smoke test desplegado detectó HTTP 500 en
+   `/reservas/mias` porque la base estaba marcada/operando sin columnas de revisiones
+   posteriores. La migración defensiva `4f6a8b012345` (`c185d2e`) repara únicamente campos,
+   índices, relaciones y nulabilidad ausentes. Tras el despliegue, reservas, catálogo, pagos,
+   notificaciones y sync responden 200 para los tenants `stylestore` y `varones`.
 
 ## Garantías multi-tenant revisadas
 
@@ -53,8 +58,8 @@ responsiva.
 - Web: **2 pruebas aprobadas** y build de producción exitoso (`main-XMQOKW2X.js`).
 - Mobile: `flutter analyze` sin incidencias, **9 pruebas aprobadas** y APK debug generado en
   `build/app/outputs/flutter-apk/app-debug.apk` (versión `1.0.4+5`).
-- Migraciones: una única cabeza Alembic; la migración de push agrega `empresa_id` a
-  notificaciones y crea `push_devices`.
+- Migraciones: una única cabeza Alembic `4f6a8b012345`; además de push multi-tenant, incluye
+  reparación idempotente para bases que fueron marcadas sin ejecutar todo el DDL histórico.
 
 ## Verificación externa que no puede falsificarse
 

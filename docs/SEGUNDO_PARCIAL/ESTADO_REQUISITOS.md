@@ -7,12 +7,12 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-001 | TERMINADO_VERIFICADO | Inventario técnico versionado y contraste de los tres repositorios |
 | REQ-002 | TERMINADO_VERIFICADO | Extensión aditiva del proyecto existente con regresión automatizada completa de backend y suites Flutter/Web aprobadas; conteo vigente en `AUDITORIA_INTEGRAL_2026-10-22.md` |
 | REQ-003 | TERMINADO_VERIFICADO | Entidad `Empresa`, consola SaaS maestra y frontera tenant aplicada a catálogo, archivos, próximos lanzamientos y probador virtual |
-| REQ-004 | TERMINADO_VERIFICADO | Cadena de migraciones Alembic aditiva validada sin ramas conflictivas ni pérdidas de datos históricos |
+| REQ-004 | TERMINADO_VERIFICADO | Cadena Alembic aditiva con cabeza única `4f6a8b012345`; reparación idempotente de deriva Railway desplegada y reservas restauradas sin pérdida de datos |
 | REQ-005 | TERMINADO_VERIFICADO | Empresa y sucursal son entidades separadas; la consola web y el perfil móvil muestran jerarquía, planes, estado, asignación de sucursal con resiliencia offline en SQLite |
 | REQ-006 | TERMINADO_VERIFICADO | Aislamiento estricto multi-tenant en recursos principales y secundarios; respaldos exclusivos de admin y rechazo HTTP 404 ante referencias cruzadas comprobado en suite |
 | REQ-007 | TERMINADO_VERIFICADO | Tenant derivado obligatoriamente del JWT; pruebas A/B en test_tenant_foundation.py y test_secondary_tenant_security.py confirman cero fuga de datos |
 | REQ-008 | TERMINADO_VERIFICADO | Autenticación robusta JWT, refresh tokens, blacklist y guards RBAC verificados en test_auth.py y test_bitacora_security.py |
-| REQ-009 | TERMINADO_VERIFICADO | Migraciones aditivas consistentes con cabecera lineal única y modelos sincronizados con base de datos |
+| REQ-009 | TERMINADO_VERIFICADO | Cabecera lineal única `4f6a8b012345`; smoke desplegado confirma modelos críticos sincronizados (reservas, catálogo, pagos, notificaciones y sync) |
 | REQ-010 | TERMINADO_VERIFICADO | Precio por variante y medidas en cm configurables en inventario y aplicados a catálogo, carrito, POS y sync (REQ-060/REQ-061) |
 | REQ-011 | TERMINADO_VERIFICADO | Bloqueo pesimista de stock atómico online y en sincronización con protección contra sobreventa (REQ-034/REQ-035) |
 | REQ-012 | TERMINADO_VERIFICADO | Venta offline rechazada genera reembolso auditable único con aviso del monto recaudado en efectivo e inmutabilidad (REQ-067) |
