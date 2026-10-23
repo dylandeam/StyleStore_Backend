@@ -66,16 +66,19 @@ responsiva.
 El código y las pruebas locales no sustituyen credenciales ni dispositivos reales. Antes de
 declarar producción totalmente operativa se debe:
 
-1. Configurar credenciales PayPal Sandbox/Live válidas en Railway, manteniendo
-   `ALLOW_MOCK_PAYPAL=false`, y completar una compra y una suscripción reales.
+1. Completar una compra y una suscripción con la configuración oficial PayPal Sandbox
+   ya desplegada en Railway, manteniendo `ALLOW_MOCK_PAYPAL=false`.
 2. Configurar Firebase según `mobile/FIREBASE_PUSH_SETUP.md` y probar recepción en un teléfono
    con la app abierta, en segundo plano y cerrada.
 3. Configurar SMTP en Railway y comprobar la entrega real y única del correo de pago.
 
 Railway ya ejecuta `alembic upgrade head`, publica los endpoints nuevos y el 23/10/2026
-devolvió `bob_per_usd=6.96`, confirmando el despliegue de `24ebb9b`. PayPal continúa en
-Sandbox con `configured=false`, `mock_enabled=false` y `ready_for_sandbox=false` hasta que el
-responsable del proyecto cargue el Client ID/Secret oficial. La conversión de los precios BOB
-a USD se realiza mediante `PAYPAL_BOB_PER_USD` porque PayPal no admite BOB.
+desplegó correctamente las cinco variables oficiales de PayPal Sandbox: Client ID/Secret,
+`PAYPAL_MODE=sandbox`, `ALLOW_MOCK_PAYPAL=false` y `PAYPAL_BOB_PER_USD=6.96`. Los secretos
+no se registran en el repositorio ni en esta evidencia. La conversión de los precios BOB a USD
+se realiza mediante `PAYPAL_BOB_PER_USD` porque PayPal no admite BOB. En el Samsung físico se
+confirmó la persistencia de sesión, el carrito con una prenda en stock y la pantalla de checkout
+de delivery hasta el botón final de PayPal; la autorización/captura Sandbox queda pendiente de
+la confirmación humana y del inicio de sesión con el comprador Personal Sandbox.
 
 Estas tareas están marcadas como validación externa, no como funcionalidad simulada.
