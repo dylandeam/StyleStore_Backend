@@ -11,6 +11,7 @@ from app.models.user import User
 from app.models.proximamente import Proximamente
 from app.models.stock_inventario import StockInventario
 from app.core.email import send_notification_email
+from app.services.push_notification_service import PushNotificationService
 
 
 class NotificacionService:
@@ -25,9 +26,15 @@ class NotificacionService:
         mensaje: str,
         url_accion: Optional[str] = None,
         enviar_email: bool = True,
+        empresa_id: int | None = None,
     ) -> Notificacion:
         """Crea una notificación in-app y opcionalmente envía correo electrónico al usuario."""
+        user = self.db.query(User).filter(User.id == user_id).first()
+        target_empresa_id = empresa_id if empresa_id is not None else (user.empresa_id if user else None)
+        if user is None or target_empresa_id is None:
+            raise ValueError("No se puede notificar a un usuario sin tenant activo.")
         notif = Notificacion(
+            empresa_id=target_empresa_id,
             user_id=user_id,
             tipo=tipo,
             titulo=titulo,
@@ -40,7 +47,6 @@ class NotificacionService:
         self.db.refresh(notif)
 
         if enviar_email:
-            user = self.db.query(User).filter(User.id == user_id).first()
             if user and user.email:
                 send_notification_email(
                     to_email=user.email,
@@ -50,6 +56,20 @@ class NotificacionService:
                     action_url=url_accion,
                 )
 
+        PushNotificationService.send_to_user(
+            self.db,
+            user_id=user_id,
+            empresa_id=notif.empresa_id,
+            title=titulo,
+            body=mensaje,
+            data={
+                "notification_id": str(notif.id),
+                "type": tipo,
+                "route": url_accion or "/dashboard",
+                "empresa_id": str(notif.empresa_id),
+            },
+        )
+
         return notif
 
     def notificar_experiencia_poscompra(self, orden) -> Notificacion | None:
@@ -57,8 +77,12 @@ class NotificacionService:
         if not orden or not orden.cliente or not orden.cliente.user_id:
             return None
         user_id = orden.cliente.user_id
+        empresa_id = orden.sucursal.empresa_id if orden.sucursal else None
+        if empresa_id is None:
+            return None
         action_url = f"/cuenta/experiencia?orden_id={orden.id}"
         existing = self.db.query(Notificacion).filter(
+            Notificacion.empresa_id == empresa_id,
             Notificacion.user_id == user_id,
             Notificacion.tipo == "experiencia_poscompra",
             Notificacion.url_accion == action_url,
@@ -72,15 +96,16 @@ class NotificacionService:
             mensaje="Tu compra fue completada. Cuéntanos cómo fue tu experiencia o registra un reclamo si necesitas ayuda.",
             url_accion=action_url,
             enviar_email=True,
+            empresa_id=empresa_id,
         )
 
     def listar_notificaciones_usuario(
-        self, user_id: int, limit: int = 30, offset: int = 0
+        self, user_id: int, empresa_id: int, limit: int = 30, offset: int = 0
     ) -> List[Dict[str, Any]]:
         """Lista las notificaciones de un usuario ordenadas de más recientes a más antiguas."""
         notifs = (
             self.db.query(Notificacion)
-            .filter(Notificacion.user_id == user_id)
+            .filter(Notificacion.user_id == user_id, Notificacion.empresa_id == empresa_id)
             .order_by(desc(Notificacion.created_at))
             .offset(offset)
             .limit(limit)
@@ -99,19 +124,27 @@ class NotificacionService:
             for n in notifs
         ]
 
-    def contar_no_leidas(self, user_id: int) -> int:
+    def contar_no_leidas(self, user_id: int, empresa_id: int) -> int:
         """Cuenta las notificaciones no leídas de un usuario."""
         return (
             self.db.query(Notificacion)
-            .filter(Notificacion.user_id == user_id, Notificacion.leida == False)
+            .filter(
+                Notificacion.user_id == user_id,
+                Notificacion.empresa_id == empresa_id,
+                Notificacion.leida == False,
+            )
             .count()
         )
 
-    def marcar_como_leida(self, notificacion_id: int, user_id: int) -> bool:
+    def marcar_como_leida(self, notificacion_id: int, user_id: int, empresa_id: int) -> bool:
         """Marca una notificación específica como leída."""
         notif = (
             self.db.query(Notificacion)
-            .filter(Notificacion.id == notificacion_id, Notificacion.user_id == user_id)
+            .filter(
+                Notificacion.id == notificacion_id,
+                Notificacion.user_id == user_id,
+                Notificacion.empresa_id == empresa_id,
+            )
             .first()
         )
         if not notif:
@@ -120,11 +153,15 @@ class NotificacionService:
         self.db.commit()
         return True
 
-    def marcar_todas_leidas(self, user_id: int) -> int:
+    def marcar_todas_leidas(self, user_id: int, empresa_id: int) -> int:
         """Marca todas las notificaciones no leídas de un usuario como leídas."""
         updated = (
             self.db.query(Notificacion)
-            .filter(Notificacion.user_id == user_id, Notificacion.leida == False)
+            .filter(
+                Notificacion.user_id == user_id,
+                Notificacion.empresa_id == empresa_id,
+                Notificacion.leida == False,
+            )
             .update({"leida": True})
         )
         self.db.commit()
@@ -190,6 +227,7 @@ class NotificacionService:
                 mensaje=f"Buenas noticias: '{nombre_item}' ya se encuentra disponible en tienda y catálogo. ¡No te quedes sin el tuyo!",
                 url_accion=url,
                 enviar_email=True,
+                empresa_id=item.empresa_id if item else None,
             )
             self.db.delete(s)
         self.db.commit()
@@ -217,6 +255,7 @@ class NotificacionService:
                 mensaje=f"Tenemos stock disponible para '{prod_nom}'. Ya puedes adquirirlo o apartarlo en sucursal.",
                 url_accion=f"/catalogo/producto/{codigo}" if codigo else "/catalogo",
                 enviar_email=True,
+                empresa_id=stock.sucursal.empresa_id if stock and stock.sucursal else None,
             )
             self.db.delete(s)
         self.db.commit()

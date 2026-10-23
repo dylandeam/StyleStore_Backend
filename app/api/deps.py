@@ -4,9 +4,11 @@ Shared API dependencies — authentication helpers.
 from fastapi import Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.database import get_db
 from app.models.user import User
+from app.models.user_empresa import UserEmpresa
 from app.core.security import decode_token
 from app.core.exceptions import (
     CredentialsException,
@@ -21,6 +23,29 @@ from app.services.user_service import UserService
 
 # HTTP Bearer scheme for extracting tokens from Authorization header
 security = HTTPBearer()
+
+
+def _apply_token_tenant_scope(db: Session, user: User, payload: dict) -> User:
+    """Apply a validated JWT tenant to this request without mutating users.empresa_id."""
+    token_empresa_id = payload.get("empresa_id")
+    if token_empresa_id is None or user.is_platform_admin:
+        return user
+    try:
+        empresa_id = int(token_empresa_id)
+    except (TypeError, ValueError) as exc:
+        raise CredentialsException(detail="El ámbito de empresa del token no es válido") from exc
+    if empresa_id != user.empresa_id:
+        membership = db.query(UserEmpresa.id).filter(
+            UserEmpresa.user_id == user.id,
+            UserEmpresa.empresa_id == empresa_id,
+            UserEmpresa.active.is_(True),
+        ).first()
+        if not membership:
+            raise CredentialsException(detail="El ámbito de empresa del token ya no es válido")
+    # The entity lives only for this request/session. Marking it as committed prevents
+    # an unrelated db.commit() from persisting the selected tenant on the account.
+    set_committed_value(user, "empresa_id", empresa_id)
+    return user
 
 
 def _renewal_access_allowed(request: Request, user: User) -> bool:
@@ -74,9 +99,7 @@ async def get_current_user(
     user_service = UserService(db)
     user = user_service.get_user_by_id(user_id)
 
-    token_empresa_id = payload.get("empresa_id")
-    if token_empresa_id is not None and int(token_empresa_id) != user.empresa_id:
-        raise CredentialsException(detail="El ámbito de empresa del token ya no es válido")
+    user = _apply_token_tenant_scope(db, user, payload)
 
     if not user.is_active:
         raise CredentialsException(detail="User account is deactivated")
@@ -131,6 +154,7 @@ async def get_optional_current_user(
         user_id = int(user_id_str)
         user_service = UserService(db)
         user = user_service.get_user_by_id(user_id)
+        user = _apply_token_tenant_scope(db, user, payload)
         if user and user.is_active:
             if not user.is_platform_admin and user.empresa_id is not None:
                 empresa, _ = PlanService(db).reconcile_tenant_access(user.empresa_id)

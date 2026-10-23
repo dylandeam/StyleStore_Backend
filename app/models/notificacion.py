@@ -3,7 +3,7 @@ Modelos de Notificaciones y Suscripciones (v6 Punto 5).
 Conforme a Especificación StyleStore v6.
 """
 from datetime import datetime
-from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey, func, Text
+from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey, func, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -15,6 +15,9 @@ class Notificacion(Base):
     __tablename__ = "notificaciones"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    empresa_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("empresas.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     user_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -38,6 +41,31 @@ class Notificacion(Base):
 
     def __repr__(self) -> str:
         return f"<Notificacion(id={self.id}, user_id={self.user_id}, tipo='{self.tipo}', leida={self.leida})>"
+
+
+class PushDevice(Base):
+    """FCM installation registered for one user in one tenant context."""
+
+    __tablename__ = "push_devices"
+    __table_args__ = (
+        UniqueConstraint("token", name="uq_push_devices_token"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    empresa_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("empresas.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token: Mapped[str] = mapped_column(String(512), nullable=False)
+    platform: Mapped[str] = mapped_column(String(20), nullable=False, default="android")
+    device_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
 
 class SuscripcionProximamente(Base):

@@ -2,6 +2,7 @@
 Authentication service — business logic for register, login, logout.
 """
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.models.user import User
 from app.models.empresa import Empresa
@@ -207,7 +208,9 @@ class AuthService:
             "empresa_id": user.empresa_id,
         }
         access_token = create_access_token(data=token_data)
-        refresh_token = create_refresh_token(data={"sub": str(user.id)})
+        refresh_token = create_refresh_token(
+            data={"sub": str(user.id), "empresa_id": user.empresa_id}
+        )
 
         # Log successful login in bitacora
         BitacoraService.registrar(
@@ -253,8 +256,7 @@ class AuthService:
         empresa = self.db.query(Empresa).filter(Empresa.id == empresa_id).first()
         if not empresa or not empresa.active:
             raise BadRequestException("La empresa seleccionada no está disponible actualmente.")
-        current_user.empresa_id = empresa_id
-        self.db.commit()
+        set_committed_value(current_user, "empresa_id", empresa_id)
         token_data = {
             "sub": str(current_user.id),
             "role": current_user.role,
@@ -267,7 +269,9 @@ class AuthService:
         )
         return TokenResponse(
             access_token=create_access_token(data=token_data),
-            refresh_token=create_refresh_token(data={"sub": str(current_user.id)}),
+            refresh_token=create_refresh_token(
+                data={"sub": str(current_user.id), "empresa_id": empresa_id}
+            ),
             token_type="bearer",
         )
 
@@ -335,6 +339,19 @@ class AuthService:
         user = self.db.query(User).filter(User.id == int(user_id), User.is_active == True).first()
         if not user:
             raise InvalidTokenException()
+
+        token_empresa_id = payload.get("empresa_id")
+        if token_empresa_id is not None and not user.is_platform_admin:
+            empresa_id = int(token_empresa_id)
+            if empresa_id != user.empresa_id:
+                membership = self.db.query(UserEmpresa.id).filter(
+                    UserEmpresa.user_id == user.id,
+                    UserEmpresa.empresa_id == empresa_id,
+                    UserEmpresa.active.is_(True),
+                ).first()
+                if not membership:
+                    raise InvalidTokenException(detail="El tenant del token ya no está disponible")
+            set_committed_value(user, "empresa_id", empresa_id)
 
         if not user.is_platform_admin and user.empresa_id is not None:
             empresa, _ = PlanService(self.db).reconcile_tenant_access(user.empresa_id)

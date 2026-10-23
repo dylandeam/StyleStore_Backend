@@ -115,6 +115,7 @@ class CambioService:
             mensaje=f"Hemos recibido tu solicitud de {tipo} para el producto de tu orden {orden.ticket_numero or orden.id}. Un encargado revisará tu caso.",
             url_accion="/cuenta/mis-compras",
             enviar_email=False,
+            empresa_id=orden.sucursal.empresa_id,
         )
 
         return solicitud
@@ -198,6 +199,7 @@ class CambioService:
                 mensaje=mensaje,
                 url_accion="/cuenta/mis-compras",
                 enviar_email=True,
+                empresa_id=solicitud.sucursal.empresa_id,
             )
 
         return solicitud
@@ -354,5 +356,6 @@ class CambioService:
             mensaje=f"Operación {nota} completada. {resultado}",
             url_accion="/cuenta/mis-compras",
             enviar_email=True,
+            empresa_id=solicitud.sucursal.empresa_id,
         )
         return solicitud

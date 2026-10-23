@@ -1,6 +1,7 @@
 """
 Servicio de Integración con PayPal Orders v2.
-Soporta Sandbox y Live, con manejo de idempotencia y fallback seguro para desarrollo local.
+Soporta Sandbox y Live. Las respuestas simuladas solo se permiten cuando el
+entorno habilita ALLOW_MOCK_PAYPAL de forma explícita (por ejemplo, en tests).
 """
 import time
 import logging
@@ -72,7 +73,7 @@ class PayPalService:
     async def create_order(
         self, orden_id: int, total: Decimal | float, return_url: str = "", cancel_url: str = "",
         *, currency: str = "USD", reference_prefix: str = "ORDEN",
-        description: str | None = None, allow_fallback: bool = True,
+        description: str | None = None, allow_fallback: bool = False,
     ) -> dict:
         """
         Crea una orden de pago en PayPal con Intent CAPTURE.
@@ -83,6 +84,10 @@ class PayPalService:
         sep = "&" if "?" in base_ret else "?"
 
         if self.is_mock_mode():
+            if not allow_fallback:
+                raise RuntimeError(
+                    "PayPal no está configurado; no se puede crear un cobro real."
+                )
             mock_id = f"PAYPAL-MOCK-{orden_id}-{int(time.time())}"
             return {
                 "id": mock_id,
@@ -181,12 +186,22 @@ class PayPalService:
                 "mock": True,
             }
 
-    async def capture_order(self, paypal_order_id: str) -> dict:
+    async def capture_order(self, paypal_order_id: str, *, allow_mock: bool = False) -> dict:
         """
         Captura los fondos de una orden aprobada en PayPal.
-        Garantiza idempotencia devolviendo COMPLETED si es un ID mock o fallback.
+        Los identificadores simulados solo se aceptan cuando allow_mock=True.
         """
-        if "MOCK" in paypal_order_id or "FALLBACK" in paypal_order_id or self.is_mock_mode():
+        simulated = (
+            "MOCK" in paypal_order_id.upper()
+            or "FALLBACK" in paypal_order_id.upper()
+            or self.is_mock_mode()
+        )
+        if simulated and not allow_mock:
+            return {
+                "status": "FAILED",
+                "error": "PayPal no está configurado o el identificador de pago es simulado.",
+            }
+        if simulated:
             return {
                 "id": paypal_order_id,
                 "status": "COMPLETED",

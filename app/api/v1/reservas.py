@@ -524,6 +524,7 @@ async def create_reserva(
             mensaje=f"Tu reserva #{reserva.id} ha sido registrada. Vigencia hasta el {reserva.fecha.strftime('%d/%m/%Y')} para retirar en sucursal.",
             url_accion="/reservas",
             enviar_email=True,
+            empresa_id=current_user.empresa_id,
         )
     except Exception:
         pass
@@ -597,6 +598,7 @@ async def cancelar_reserva(
             mensaje=f"Tu reserva #{reserva.id} ha sido cancelada exitosamente y el stock ha sido liberado.",
             url_accion="/cuenta/mis-reservas",
             enviar_email=False,
+            empresa_id=reserva.sucursal.empresa_id,
         )
     except Exception:
         pass

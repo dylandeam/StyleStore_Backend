@@ -197,6 +197,7 @@ async def update_claim(
         titulo=f"Actualización de tu reclamo #{item.id}",
         mensaje=f"Tu reclamo ahora está {item.estado.replace('_', ' ')}." + (f" Respuesta: {item.respuesta}" if item.respuesta else ""),
         url_accion="/cuenta/experiencia?tab=reclamos", enviar_email=True,
+        empresa_id=item.empresa_id,
     )
     BitacoraService.registrar(db, current_user, f"Actualizó reclamo #{item.id} a {item.estado}", "reclamos")
     return _claim_dict(item)

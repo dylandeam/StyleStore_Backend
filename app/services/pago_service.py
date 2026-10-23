@@ -7,6 +7,7 @@ from app.config import settings
 from app.core.email import send_notification_email
 from app.models.notificacion import Notificacion
 from app.models.pago import Pago
+from app.services.push_notification_service import PushNotificationService
 
 
 class PagoService:
@@ -50,6 +51,7 @@ class PagoService:
             )
             if not notificacion:
                 notificacion = Notificacion(
+                    empresa_id=pago.empresa_id,
                     user_id=user.id,
                     pago_id=pago.id,
                     tipo="pago_confirmado",
@@ -84,5 +86,20 @@ class PagoService:
         # como una sola finalizacion; una repeticion posterior los reutiliza.
         self.db.commit()
         self.db.refresh(pago)
+
+        if notificacion is not None and pago.empresa_id is not None:
+            PushNotificationService.send_to_user(
+                self.db,
+                user_id=notificacion.user_id,
+                empresa_id=pago.empresa_id,
+                title=notificacion.titulo,
+                body=notificacion.mensaje,
+                data={
+                    "notification_id": str(notificacion.id),
+                    "type": notificacion.tipo,
+                    "route": notificacion.url_accion or "/cuenta/mis-pagos",
+                    "empresa_id": str(pago.empresa_id),
+                },
+            )
 
         return pago

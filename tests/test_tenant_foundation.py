@@ -900,6 +900,19 @@ def test_client_can_register_in_multiple_tenants(client, db_session, admin_token
     switched_headers = {"Authorization": f"Bearer {switched.json()['access_token']}"}
     assert client.get("/api/v1/users/me", headers=switched_headers).json()["empresa_id"] == company_b["id"]
 
+    # Cambiar el tenant en un dispositivo no invalida la sesión anterior.
+    original_session = client.get("/api/v1/users/me", headers=client_headers)
+    assert original_session.status_code == 200, original_session.text
+    assert original_session.json()["empresa_id"] == company_a["id"]
+
+    refreshed = client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": switched.json()["refresh_token"]},
+    )
+    assert refreshed.status_code == 200, refreshed.text
+    refreshed_headers = {"Authorization": f"Bearer {refreshed.json()['access_token']}"}
+    assert client.get("/api/v1/users/me", headers=refreshed_headers).json()["empresa_id"] == company_b["id"]
+
     admin_headers = []
     for email in ("admin-a@multi.example.com", "admin-b@multi.example.com"):
         headers = {"Authorization": f"Bearer {_login(client, email)}"}

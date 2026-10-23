@@ -102,7 +102,7 @@ async def create_subscription_paypal_order(
             currency=pending.moneda_snapshot,
             reference_prefix="PLAN",
             description=f"Suscripción StyleStore - {pending.plan.nombre}",
-            allow_fallback=False,
+            allow_fallback=settings.ALLOW_MOCK_PAYPAL,
         )
         pending.referencia_pago = order.get("id")
         db.commit()
@@ -130,7 +130,10 @@ async def capture_subscription_paypal_order(
         raise NotFoundException("No existe una suscripción pendiente asociada a esa orden PayPal.")
     if pending.estado_pago == "pagado":
         return PlanService.serialize_contract(pending)
-    capture = await paypal_service.capture_order(payload.paypal_order_id)
+    capture = await paypal_service.capture_order(
+        payload.paypal_order_id,
+        allow_mock=settings.ALLOW_MOCK_PAYPAL,
+    )
     if capture.get("status") != "COMPLETED":
         raise BadRequestException("PayPal no confirmó el cobro; el plan no fue modificado.")
     capture_data = (((capture.get("purchase_units") or [{}])[0].get("payments") or {}).get("captures") or [{}])[0]

@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.config import settings
 from app.models.user import User
 from app.models.cliente import Cliente
 from app.models.orden_venta import OrdenVenta
@@ -92,12 +93,21 @@ async def create_paypal_order(
     if orden.estado == "pagada":
         raise BadRequestException("Esta orden ya ha sido pagada previamente.")
 
-    order_data = await paypal_service.create_order(
-        orden_id=orden.id,
-        total=orden.total,
-        return_url=payload.return_url or "",
-        cancel_url=payload.cancel_url or "",
-    )
+    if paypal_service.is_mock_mode() and not settings.ALLOW_MOCK_PAYPAL:
+        raise BadRequestException(
+            "PayPal no está configurado. Define credenciales válidas antes de iniciar el cobro."
+        )
+
+    try:
+        order_data = await paypal_service.create_order(
+            orden_id=orden.id,
+            total=orden.total,
+            return_url=payload.return_url or "",
+            cancel_url=payload.cancel_url or "",
+            allow_fallback=settings.ALLOW_MOCK_PAYPAL,
+        )
+    except Exception as exc:
+        raise BadRequestException(f"No se pudo iniciar el cobro con PayPal: {exc}") from exc
 
     paypal_order_id = order_data.get("id")
 
@@ -188,7 +198,10 @@ async def capture_paypal_order(
         return pago
 
     # Llamar a PayPal para capturar fondos
-    capture_res = await paypal_service.capture_order(payload.paypal_order_id)
+    capture_res = await paypal_service.capture_order(
+        payload.paypal_order_id,
+        allow_mock=settings.ALLOW_MOCK_PAYPAL,
+    )
     status_capture = capture_res.get("status")
 
     if status_capture not in ["COMPLETED", "SAVED"]:

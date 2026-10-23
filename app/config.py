@@ -82,6 +82,11 @@ class Settings:
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
     GROQ_MODEL: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
+    # Firebase Cloud Messaging. Accepts the service-account JSON as plain text
+    # or base64 so Railway can store it as a single protected variable.
+    FIREBASE_SERVICE_ACCOUNT_JSON: str = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "")
+    FIREBASE_SERVICE_ACCOUNT_B64: str = os.getenv("FIREBASE_SERVICE_ACCOUNT_B64", "")
+
     # Backups directory
     BACKUP_DIR: Path = Path(__file__).resolve().parent.parent / "backups"
 
