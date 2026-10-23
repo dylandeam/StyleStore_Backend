@@ -77,6 +77,20 @@ def _scoped_payment(db: Session, current_user: User, payment_id: int) -> Pago | 
 # 1. PAYPAL ORDERS V2
 # ==========================================
 
+@router.get("/paypal/estado", summary="Comprobar configuración segura de PayPal")
+async def get_paypal_status(
+    current_user: User = Depends(get_current_user),
+):
+    """Expose readiness and mode without returning credentials or secret values."""
+    configured = not paypal_service.is_mock_mode()
+    return {
+        "configured": configured,
+        "mode": paypal_service.mode,
+        "sandbox": paypal_service.mode == "sandbox",
+        "mock_enabled": settings.ALLOW_MOCK_PAYPAL,
+        "ready_for_sandbox": configured and paypal_service.mode == "sandbox",
+    }
+
 @router.post("/paypal/crear-orden", summary="Crear orden en PayPal Orders v2", dependencies=[Depends(require_plan_capability("ventas"))])
 async def create_paypal_order(
     payload: PayPalCrearOrdenRequest,
