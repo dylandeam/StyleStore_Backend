@@ -74,7 +74,7 @@ declarar producción totalmente operativa se debe:
 
 Railway ya ejecuta `alembic upgrade head`, publica los endpoints nuevos y el 23/10/2026
 desplegó correctamente las cinco variables oficiales de PayPal Sandbox: Client ID/Secret,
-`PAYPAL_MODE=sandbox`, `ALLOW_MOCK_PAYPAL=false` y `PAYPAL_BOB_PER_USD=6.96`. Los secretos
+`PAYPAL_MODE=sandbox`, `ALLOW_MOCK_PAYPAL=false` y `PAYPAL_BOB_PER_USD=11.00`. Los secretos
 no se registran en el repositorio ni en esta evidencia. La conversión de los precios BOB a USD
 se realiza mediante `PAYPAL_BOB_PER_USD` porque PayPal no admite BOB. En el Samsung físico se
 confirmó la persistencia de sesión, el carrito con una prenda en stock y la pantalla de checkout
@@ -83,8 +83,17 @@ la confirmación humana y del inicio de sesión con el comprador Personal Sandbo
 
 La primera prueba física descubrió que el endpoint de compras omitía `currency="BOB"` al crear
 la orden: PayPal interpretaba Bs. 77.69 como USD 77.69. Se corrigió para convertir ese total a
-USD 11.16 con la tasa configurada. La app muestra ambos importes, permite reintentar una orden
+USD; con la tasa inicial de 6.96 el resultado era USD 11.16. La app muestra ambos importes,
+permite reintentar una orden
 `pendiente_pago` sin volver a descontar stock y el backend traduce `ORDER_NOT_APPROVED` y
 `PAYMENT_DENIED` a mensajes accionables sin exponer el JSON interno de PayPal.
+
+Para corregir el rechazo del comercio boliviano se creó una cuenta **Business Sandbox US**,
+se asoció la aplicación `StyleStoreUS` y se rotaron sus credenciales exclusivamente en
+Railway. El servicio volvió a estado `Online` y el correo de acceso de la cuenta de prueba
+quedó como `stylestore1@gmail.com`. Con la tasa de demostración configurada en `11.00`, el
+total local de Bs. 77.69 se presenta a PayPal como USD 7.06. Aún falta la aprobación/captura
+humana de la orden de prueba; esta documentación no contiene contraseñas, Client IDs ni
+secretos.
 
 Estas tareas están marcadas como validación externa, no como funcionalidad simulada.
