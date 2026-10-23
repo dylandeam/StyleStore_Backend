@@ -176,6 +176,9 @@ def test_caja_pos_y_paypal_flow(client: TestClient, admin_token: str, db_session
     assert res_pp_crear.status_code == 200
     pp_order = res_pp_crear.json()
     assert "id" in pp_order
+    assert pp_order["display_currency"] == "BOB"
+    assert pp_order["paypal_currency"] == "USD"
+    assert pp_order["paypal_total"] == "10.85"
 
     # Capturar orden PayPal
     res_pp_cap = client.post(

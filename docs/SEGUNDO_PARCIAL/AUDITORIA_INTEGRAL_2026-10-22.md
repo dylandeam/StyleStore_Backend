@@ -81,4 +81,10 @@ confirmó la persistencia de sesión, el carrito con una prenda en stock y la pa
 de delivery hasta el botón final de PayPal; la autorización/captura Sandbox queda pendiente de
 la confirmación humana y del inicio de sesión con el comprador Personal Sandbox.
 
+La primera prueba física descubrió que el endpoint de compras omitía `currency="BOB"` al crear
+la orden: PayPal interpretaba Bs. 77.69 como USD 77.69. Se corrigió para convertir ese total a
+USD 11.16 con la tasa configurada. La app muestra ambos importes, permite reintentar una orden
+`pendiente_pago` sin volver a descontar stock y el backend traduce `ORDER_NOT_APPROVED` y
+`PAYMENT_DENIED` a mensajes accionables sin exponer el JSON interno de PayPal.
+
 Estas tareas están marcadas como validación externa, no como funcionalidad simulada.

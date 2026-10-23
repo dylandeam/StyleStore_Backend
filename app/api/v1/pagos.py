@@ -119,6 +119,7 @@ async def create_paypal_order(
             total=orden.total,
             return_url=payload.return_url or "",
             cancel_url=payload.cancel_url or "",
+            currency="BOB",
             allow_fallback=settings.ALLOW_MOCK_PAYPAL,
         )
     except Exception as exc:
@@ -220,7 +221,20 @@ async def capture_paypal_order(
     status_capture = capture_res.get("status")
 
     if status_capture not in ["COMPLETED", "SAVED"]:
-        raise BadRequestException(f"No se pudo completar el pago con PayPal: {capture_res.get('error', 'Rechazado')}")
+        raw_error = str(capture_res.get("error", "Rechazado"))
+        if "ORDER_NOT_APPROVED" in raw_error:
+            message = (
+                "PayPal todavía no registra la aprobación. Abre el enlace de pago, "
+                "confirma la compra y luego vuelve a intentarlo desde Mis Pedidos."
+            )
+        elif "PAYMENT_DENIED" in raw_error:
+            message = (
+                "PayPal rechazó el pago Sandbox. Verifica que comprador y comercio "
+                "Sandbox admitan pagos en USD y vuelve a intentarlo desde Mis Pedidos."
+            )
+        else:
+            message = "PayPal rechazó o no confirmó el pago. Inténtalo nuevamente desde Mis Pedidos."
+        raise BadRequestException(message)
 
     # Extraer capture ID
     capture_id = payload.paypal_order_id

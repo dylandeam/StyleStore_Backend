@@ -35,3 +35,9 @@ def test_bob_amount_is_converted_to_supported_usd_for_paypal():
     amount, currency = PayPalService.payment_amount(Decimal("69.60"), "BOB")
     assert currency == "USD"
     assert amount == Decimal("10.00")
+
+    delivery_total, delivery_currency = PayPalService.payment_amount(
+        Decimal("77.69"), "BOB"
+    )
+    assert delivery_currency == "USD"
+    assert delivery_total == Decimal("11.16")

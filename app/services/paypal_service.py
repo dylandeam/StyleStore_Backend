@@ -114,6 +114,10 @@ class PayPalService:
                     }
                 ],
                 "mock": True,
+                "paypal_total": amount_val,
+                "paypal_currency": paypal_currency,
+                "display_total": f"{Decimal(str(total)):.2f}",
+                "display_currency": currency.upper(),
             }
 
         token = await self.get_access_token()
@@ -132,6 +136,10 @@ class PayPalService:
                     }
                 ],
                 "mock": True,
+                "paypal_total": amount_val,
+                "paypal_currency": paypal_currency,
+                "display_total": f"{Decimal(str(total)):.2f}",
+                "display_currency": currency.upper(),
             }
 
         payload = {
@@ -186,6 +194,10 @@ class PayPalService:
                             }
                         ],
                         "mock": True,
+                        "paypal_total": amount_val,
+                        "paypal_currency": paypal_currency,
+                        "display_total": f"{Decimal(str(total)):.2f}",
+                        "display_currency": currency.upper(),
                     }
         except Exception as ex:
             logger.error(f"Excepción al conectar con PayPal create_order: {ex}")
@@ -203,6 +215,10 @@ class PayPalService:
                     }
                 ],
                 "mock": True,
+                "paypal_total": amount_val,
+                "paypal_currency": paypal_currency,
+                "display_total": f"{Decimal(str(total)):.2f}",
+                "display_currency": currency.upper(),
             }
 
     async def capture_order(self, paypal_order_id: str, *, allow_mock: bool = False) -> dict:
