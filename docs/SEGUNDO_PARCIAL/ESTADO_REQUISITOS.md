@@ -25,14 +25,14 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-019 | TERMINADO_VERIFICADO | Básico limita a 2 sucursales sin chatbot/predicciones; Intermedio a 5 con chatbot; Profesional a 10 o más con chatbot/predicciones. Reglas blindadas en backend, reflejadas con barra de cupo y badges en Web/Mobile, y verificadas con 106 tests |
 | REQ-020 | TERMINADO_VERIFICADO | Precio, moneda, límites, capacidades, beneficios y estilo se configuran en backend y UI por ámbito global/tenant |
 | REQ-021 | TERMINADO_VERIFICADO | Alta, cambio, renovación, estado, vigencia, snapshot y bloqueos operativos implementados; clientes no pueden cambiar el plan del tenant y el vencimiento bloquea capacidades; verificado en suite |
-| REQ-022 | TERMINADO_VERIFICADO | Renovación auditada y administración formal de planes sin overrides simulados inseguros; verificado con captura PayPal en suite |
+| REQ-022 | EN_PRUEBAS | Renovación auditada y administración formal de planes sin overrides simulados inseguros; suite local aprobada. Falta captura E2E con credenciales oficiales PayPal Sandbox en Railway |
 | REQ-023 | TERMINADO_VERIFICADO | Web App Manifest ('standalone', 'es-BO'), Service Worker ngsw y app shell prefetch generados y comprobados en build de producción y ngsw.json |
 | REQ-024 | TERMINADO_VERIFICADO | IndexedDB 'stylestore-offline' con stores 'catalog' y 'operations' aislados por ámbito empresa+usuario ('${empresaId}:${usuarioId}') |
 | REQ-025 | TERMINADO_VERIFICADO | Catálogo offline con precios, variantes y stock conocido a partir de snapshots locales con fecha de sincronización y advertencia visual |
 | REQ-026 | TERMINADO_VERIFICADO | Reservas offline con UUID cliente v4, comprobante provisional 'LOCAL-XXXXXXXX' y sincronización diferida idempotente |
 | REQ-027 | TERMINADO_VERIFICADO | POS offline con ventas de contado en efectivo, detalle e importes, y bloqueo estricto de pagos electrónicos/QR verificado en suite |
 | REQ-028 | TERMINADO_VERIFICADO | Pantalla PWA (/cuenta/operaciones-pendientes) con estados pendiente/sincronizando/confirmada/rechazada/conflicto y motivo |
-| REQ-029 | TERMINADO_VERIFICADO | Flutter conserva Provider/secure storage, integra SQLite con claves foráneas, restaura sesión al abrir y vuelve a registrar el dispositivo push; procedimiento físico en `mobile/FIREBASE_PUSH_SETUP.md` |
+| REQ-029 | EN_PRUEBAS | Flutter conserva Provider/secure storage, integra SQLite con claves foráneas, restaura sesión al abrir y vuelve a registrar el dispositivo push; falta configurar Firebase y comprobar recepción real en barra con app abierta/segundo plano/cerrada |
 | REQ-030 | TERMINADO_VERIFICADO | Base de datos SQLite 'stylestore_offline.db' con foreign keys activas, tablas relacionales (catalog, branches, clients, queue, details) y 9 tests aprobados |
 | REQ-031 | TERMINADO_VERIFICADO | Catálogo SQLite comprobado en modo avión y UI con banner reactivo que advierte stock provisional y fecha de snapshot local |
 | REQ-032 | TERMINADO_VERIFICADO | Cola offline y recuperación automática de conectividad con sincronización en segundo plano verificada en Flutter y Android |
@@ -54,12 +54,12 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-048 | TERMINADO_VERIFICADO | Backend Railway, PWA Vercel y APK release '1.0.3+4' validada en Samsung S21+ con SHA-256 y modo avión documentados en ENLACES_Y_QR_OFICIALES.md |
 | REQ-049 | TERMINADO_VERIFICADO | Artefactos ICONIX (dominio, casos de uso, robustez de 4 flujos críticos) y UML 2.5+ (secuencia, clases de diseño, despliegue) documentados en `ARTEFACTOS_ICONIX_UML25.md` |
 | REQ-050 | TERMINADO_VERIFICADO | Documento maestro final con Capítulos I a VI, bibliografía y anexos oficiales redactado y versionado en `DOCUMENTO_FINAL_CAPITULOS_I_VI.md` |
-| REQ-051 | TERMINADO_VERIFICADO | Suite continua de seguridad, multiempresa, stock, idempotencia, ML, reportes, pagos y push; evidencia de cierre actualizada en `AUDITORIA_INTEGRAL_2026-10-22.md` |
+| REQ-051 | TERMINADO_VERIFICADO | Suite continua de seguridad, multiempresa, stock, idempotencia, ML, reportes, pagos y push; cierre del 23/10/2026 con 122 backend, 2 web y 9 Flutter aprobadas |
 | REQ-052 | TERMINADO_VERIFICADO | Paquetes oficiales para las 4 entregas (25/10, 01/11, 08/11 y defensa 10/11 a las 07:00) estructurados y documentados en `PAQUETES_ENTREGAS_OFICIALES.md` |
 | REQ-053 | TERMINADO_VERIFICADO | Enlaces de despliegue Vercel/Railway/GitHub verificados y 3 códigos QR SVG generados y documentados en `ENLACES_Y_QR_OFICIALES.md` |
 | REQ-054 | TERMINADO_VERIFICADO | Solicitud y liquidación de cambio generan nota vinculada NCJ-, ajustan inventario y conservan diferencia monetaria o saldo a favor |
 | REQ-055 | TERMINADO_VERIFICADO | Cambios/devoluciones con plazo configurable por tenant, cobro o saldo a favor, reembolso, sucursal y auditoría por tenant |
-| REQ-056 | TERMINADO_VERIFICADO | Todo pago aprobado emite correo una sola vez mediante bloqueo de fila y marca persistente; verificado en test_payment_confirmations.py |
+| REQ-056 | EN_PRUEBAS | Todo pago aprobado genera correo una sola vez mediante bloqueo de fila y marca persistente; suite aprobada. Falta configurar SMTP en Railway y comprobar entrega externa real |
 | REQ-057 | TERMINADO_VERIFICADO | Pago asociado obligatoriamente a tenant, recibo estable REC- y notificación in-app única por pago_id; verificado en test_payment_confirmations.py |
 | REQ-058 | TERMINADO_VERIFICADO | Reservas cliente/staff con búsqueda multi-tenant, ciclo de vida, expiración automática con restitución atómica de stock y endpoint/UI verificados en backend (101 tests) y web build |
 | REQ-059 | TERMINADO_VERIFICADO | Agenda compartida implementada para reservas y recojo web/móvil, con bloques de una hora, ventana máx. de 3 días y exclusión concurrente verificada en suite y builds |
@@ -76,10 +76,11 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-070 | TERMINADO_VERIFICADO | Diagnóstico estructurado y métricas agregadas de sincronización implementadas en `GET /sync/metricas` y servicio web, documentado con tests en `EVIDENCIA_DIAGNOSTICO_SYNC_Y_STOCK.md` |
 | REQ-071 | TERMINADO_VERIFICADO | Banner global reactivo informa sin conexión, catálogo cacheado con fecha, operaciones pendientes con enlace a cola y actualización Service Worker PWA |
 | REQ-072 | TERMINADO_VERIFICADO | Aislamiento por ámbito empresa+usuario en SQLite móvil, limpieza segura de caché, purga de resueltas con protección de pendientes y diagnósticos verificados con 9 tests en Flutter |
-| REQ-073 | TERMINADO_VERIFICADO | Vencimiento marca contratación como vencida e inactiva el tenant; renovación exclusiva para admin con captura PayPal COMPLETED real verificada en suite y UI |
+| REQ-073 | EN_PRUEBAS | Vencimiento marca contratación como vencida e inactiva el tenant; renovación exclusiva para admin exige captura PayPal COMPLETED. Suite/UI aprobadas; falta E2E oficial Sandbox porque Railway aún reporta `configured=false` |
 
 ## Decisiones bloqueadas explícitamente
 
 - Los tres planes serán configurables desde administración; el tercer plan no tendrá beneficios inventados y recibirá sus valores mediante configuración administrativa.
 - “Horario de reserva” está implementado con franjas libres/ocupadas y exclusión concurrente; conservar pruebas de regresión antes de modificar la agenda.
 - Un commit local no demuestra despliegue: PayPal/FCM y REQ-048/053 requieren pipeline, credenciales externas y comprobación física/URL.
+- `EN_PRUEBAS` en REQ-022/029/056/073 no indica código incompleto: evita confundir simulaciones automatizadas con evidencia externa de PayPal, FCM o SMTP.

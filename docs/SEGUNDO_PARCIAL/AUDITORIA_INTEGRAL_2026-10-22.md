@@ -46,9 +46,9 @@ responsiva.
   superficie mínima necesaria para pagar la renovación. La activación ocurre después de una
   captura PayPal `COMPLETED`.
 
-## Evidencia automatizada
+## Evidencia automatizada (actualizada 23/10/2026)
 
-- Backend: **120 pruebas aprobadas**; incluye regresiones de aislamiento, concurrencia de
+- Backend: **122 pruebas aprobadas**; incluye regresiones de aislamiento, concurrencia de
   stock, idempotencia offline, vencimiento/renovación, PayPal fail-closed y push multi-tenant.
 - Web: **2 pruebas aprobadas** y build de producción exitoso (`main-XMQOKW2X.js`).
 - Mobile: `flutter analyze` sin incidencias, **9 pruebas aprobadas** y APK debug generado en
@@ -65,7 +65,12 @@ declarar producción totalmente operativa se debe:
    `ALLOW_MOCK_PAYPAL=false`, y completar una compra y una suscripción reales.
 2. Configurar Firebase según `mobile/FIREBASE_PUSH_SETUP.md` y probar recepción en un teléfono
    con la app abierta, en segundo plano y cerrada.
-3. Ejecutar `alembic upgrade head` durante el despliegue de Railway.
-4. Verificar las URLs desplegadas después de que Railway procese el commit más reciente.
+3. Configurar SMTP en Railway y comprobar la entrega real y única del correo de pago.
+
+Railway ya ejecuta `alembic upgrade head`, publica los endpoints nuevos y el 23/10/2026
+devolvió `bob_per_usd=6.96`, confirmando el despliegue de `24ebb9b`. PayPal continúa en
+Sandbox con `configured=false`, `mock_enabled=false` y `ready_for_sandbox=false` hasta que el
+responsable del proyecto cargue el Client ID/Secret oficial. La conversión de los precios BOB
+a USD se realiza mediante `PAYPAL_BOB_PER_USD` porque PayPal no admite BOB.
 
 Estas tareas están marcadas como validación externa, no como funcionalidad simulada.
