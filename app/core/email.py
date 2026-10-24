@@ -4,8 +4,10 @@ Email utility service for notifications and confirmation links.
 import smtplib
 import logging
 import os
+from html import escape
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.utils import formataddr
 
 from app.config import settings
 
@@ -21,6 +23,10 @@ def _managed_environment() -> bool:
     return bool(os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_PROJECT_ID"))
 
 
+def _sender_header() -> str:
+    return formataddr(("StyleStore", settings.FROM_EMAIL))
+
+
 def send_password_change_email(to_email: str, confirm_url: str) -> bool:
     """
     Send a password change confirmation email with a one-time link.
@@ -28,6 +34,7 @@ def send_password_change_email(to_email: str, confirm_url: str) -> bool:
     """
     subject = "StyleStore - Confirmación de cambio de contraseña"
     
+    safe_confirm_url = escape(confirm_url, quote=True)
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -54,12 +61,12 @@ def send_password_change_email(to_email: str, confirm_url: str) -> bool:
           <p>Hemos recibido una solicitud para actualizar la contraseña de tu cuenta en <strong>StyleStore</strong>.</p>
           <p>Para confirmar el cambio de contraseña, haz clic en el siguiente botón:</p>
           <p style="text-align: center;">
-            <a href="{confirm_url}" class="button" target="_blank">Confirmar Cambio de Contraseña</a>
+            <a href="{safe_confirm_url}" class="button" target="_blank">Confirmar Cambio de Contraseña</a>
           </p>
           <div class="alert">
             Este enlace es de un solo uso y expirará en <strong>15 minutos</strong>. Si no solicitaste este cambio, puedes ignorar este mensaje; tu contraseña actual no será modificada.
           </div>
-          <p>O copia y pega este enlace en tu navegador:<br><span style="word-break: break-all; color: #4f46e5;">{confirm_url}</span></p>
+          <p>O copia y pega este enlace en tu navegador:<br><span style="word-break: break-all; color: #4f46e5;">{safe_confirm_url}</span></p>
         </div>
         <div class="footer">
           &copy; StyleStore. Todos los derechos reservados.
@@ -74,23 +81,24 @@ def send_password_change_email(to_email: str, confirm_url: str) -> bool:
         if _managed_environment():
             logger.error("SMTP no está configurado en el entorno administrado; no se envió el correo de contraseña.")
             return False
-        logger.warning(
-            f"[SMTP NOT CONFIGURED] Email simulated to {to_email}. Confirmation URL: {confirm_url}"
-        )
-        print(f"\n==========================================")
-        print(f"[EMAIL SIMULATION] To: {to_email}")
-        print(f"Subject: {subject}")
-        print(f"Confirmation URL: {confirm_url}")
-        print(f"==========================================\n")
+        logger.warning("[SMTP NOT CONFIGURED] Email de contraseña simulado para %s.", to_email)
+        if settings.DEBUG:
+            print(f"[EMAIL SIMULATION] To: {to_email} | Confirmation URL: {confirm_url}")
         return True
 
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
-        msg["From"] = settings.FROM_EMAIL
+        msg["From"] = _sender_header()
         msg["To"] = to_email
 
-        part_html = MIMEText(html_content, "html")
+        text_content = (
+            "StyleStore\n\nConfirma el cambio de contraseña usando este enlace de un solo uso "
+            f"(válido por 15 minutos):\n{confirm_url}\n\n"
+            "Si no solicitaste este cambio, ignora este mensaje."
+        )
+        msg.attach(MIMEText(text_content, "plain", "utf-8"))
+        part_html = MIMEText(html_content, "html", "utf-8")
         msg.attach(part_html)
 
         with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as server:
@@ -101,9 +109,7 @@ def send_password_change_email(to_email: str, confirm_url: str) -> bool:
         logger.info(f"Password reset confirmation email sent successfully to {to_email}")
         return True
     except Exception as e:
-        logger.error(f"Failed to send email to {to_email}: {str(e)}")
-        # Print fallback link so user/tester can still confirm
-        print(f"\n[EMAIL SEND ERROR FALLBACK] To: {to_email} | URL: {confirm_url}\n")
+        logger.error("Failed to send password confirmation email to %s: %s", to_email, e)
         return False
 
 
@@ -119,12 +125,16 @@ def send_notification_email(
     Envía un correo de notificación con la identidad visual Beige & Navy de StyleStore.
     Si SMTP no está configurado, registra el correo en consola de forma segura.
     """
+    safe_title = escape(title)
+    safe_message = escape(message).replace("\n", "<br>")
+    safe_action_url = escape(action_url, quote=True) if action_url else None
+    safe_action_text = escape(action_text)
     button_html = ""
-    if action_url:
+    if safe_action_url:
         button_html = f"""
         <p style="text-align: center; margin: 25px 0;">
-          <a href="{action_url}" style="background-color: #14263D; color: #FAF7F2; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 600; display: inline-block;">
-            {action_text}
+          <a href="{safe_action_url}" style="background-color: #14263D; color: #FAF7F2; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 600; display: inline-block;">
+            {safe_action_text}
           </a>
         </p>
         """
@@ -149,9 +159,9 @@ def send_notification_email(
         <div class="header">
           <h1>STYLESTORE</h1>
         </div>
-        <div class="title">{title}</div>
+        <div class="title">{safe_title}</div>
         <div class="content">
-          <p>{message}</p>
+          <p>{safe_message}</p>
           {button_html}
         </div>
         <div class="footer">
@@ -168,23 +178,21 @@ def send_notification_email(
             logger.error("SMTP no está configurado en el entorno administrado; no se envió la confirmación de compra.")
             return False
         logger.info(f"[SMTP NOT CONFIGURED] Notificación simulada a {to_email}: {title}")
-        print(f"\n==========================================")
-        print(f"[NOTIFICACION SIMULADA] To: {to_email}")
-        print(f"Subject: {subject}")
-        print(f"Title: {title}")
-        print(f"Message: {message}")
-        if action_url:
-            print(f"Action URL: {action_url}")
-        print(f"==========================================\n")
+        if settings.DEBUG:
+            print(f"[NOTIFICACION SIMULADA] To: {to_email} | Subject: {subject}")
         return True
 
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
-        msg["From"] = settings.FROM_EMAIL
+        msg["From"] = _sender_header()
         msg["To"] = to_email
 
-        part_html = MIMEText(html_content, "html")
+        text_content = f"StyleStore\n\n{title}\n\n{message}"
+        if action_url:
+            text_content += f"\n\n{action_text}: {action_url}"
+        msg.attach(MIMEText(text_content, "plain", "utf-8"))
+        part_html = MIMEText(html_content, "html", "utf-8")
         msg.attach(part_html)
 
         with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as server:
