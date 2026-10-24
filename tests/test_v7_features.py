@@ -242,6 +242,44 @@ def test_v7_punto7_cotizacion_envio_distancia(client: TestClient, auth_context_v
     assert data["costo_envio"] == round(5.0 + data["distancia_km"] * 0.6, 2)
 
 
+def test_delivery_quote_rejects_an_approximate_address_without_coordinates(
+    client: TestClient, auth_context_v7
+):
+    """Una dirección escrita no debe producir una distancia ficticia."""
+    headers = {"Authorization": f"Bearer {auth_context_v7['cliente_token']}"}
+    response = client.post(
+        "/api/v1/envios/cotizar-distancia",
+        json={
+            "sucursal_id": auth_context_v7["sucursal"].id,
+            "direccion": "Una dirección cualquiera",
+            "ciudad": "La Paz",
+        },
+        headers=headers,
+    )
+    assert response.status_code == 400
+    assert "ubicación GPS" in response.json()["detail"]
+
+
+def test_delivery_quote_allows_zero_distance_without_inventing_kilometres(
+    client: TestClient, auth_context_v7
+):
+    """Mismo origen/destino cobra sólo la base y no reemplaza 0 km por 3.5 km."""
+    sucursal = auth_context_v7["sucursal"]
+    headers = {"Authorization": f"Bearer {auth_context_v7['cliente_token']}"}
+    response = client.post(
+        "/api/v1/envios/cotizar-distancia",
+        json={
+            "sucursal_id": sucursal.id,
+            "lat": float(sucursal.latitud),
+            "lon": float(sucursal.longitud),
+        },
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["distancia_km"] == 0
+    assert response.json()["costo_envio"] == 5
+
+
 def test_v7_punto8_chatbot_add_to_cart(client: TestClient, db_session, auth_context_v7):
     """Verifica que el chatbot procese mensajes y reconozca intención de compra."""
     PlanService(db_session).contract(auth_context_v7["admin"], "intermedio")

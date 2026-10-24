@@ -151,8 +151,9 @@ async def create_envio(
             dest_lat, dest_lon = extraer_coordenadas_de_url(ub_url)
 
     if dest_lat is None or dest_lon is None:
-        texto_busqueda = f"{dir_val} {payload.referencia or ''} {payload.ciudad or ''}"
-        dest_lat, dest_lon = geocodificar_aproximado(texto_busqueda)
+        raise BadRequestException(
+            "Comparte la ubicación GPS exacta del cliente para registrar el envío."
+        )
 
     # Obtener sucursal de la orden para cálculo de origen
     sucursal = None
@@ -168,19 +169,15 @@ async def create_envio(
     if (orig_lat is None or orig_lon is None) and sucursal and sucursal.maps_url:
         orig_lat, orig_lon = extraer_coordenadas_de_url(sucursal.maps_url)
     if orig_lat is None or orig_lon is None:
-        orig_lat, orig_lon = geocodificar_aproximado(sucursal.ciudad if sucursal else "Santa Cruz")
+        raise BadRequestException(
+            "La sucursal no tiene coordenadas exactas. Configura su ubicación antes de registrar envíos."
+        )
 
-    dist_calc = payload.distancia_km
-    if dist_calc is None and dest_lat is not None and dest_lon is not None and orig_lat is not None and orig_lon is not None:
-        dist_calc = calcular_distancia_haversine(orig_lat, orig_lon, dest_lat, dest_lon)
+    # Seguridad: el costo siempre se calcula en servidor desde ambos puntos reales.
+    dist_calc = calcular_distancia_haversine(orig_lat, orig_lon, dest_lat, dest_lon)
 
     # Calcular costo según tarifa oficial: 5 Bs fija base + 0.60 Bs/km
-    if payload.costo is not None and payload.costo > 0:
-        costo = payload.costo
-    elif dist_calc is not None:
-        costo = cotizar_costo_envio(dist_calc)
-    else:
-        costo = Decimal("5.00")
+    costo = cotizar_costo_envio(dist_calc)
 
     # Sumar costo de envío al total de la orden de venta si no estaba ya contemplado
     if costo and costo > 0:
@@ -594,17 +591,12 @@ async def cotizar_por_distancia(
     utilizando la fórmula de Haversine (R=6371 km) y tarifa oficial StyleStore (5 Bs + 0.60 Bs/km).
     Compara las dos ubicaciones (origen en sucursal vs destino del cliente).
     """
-    from app.core.geo import (
-        calcular_distancia_haversine,
-        estimar_tiempo_entrega,
-        geocodificar_aproximado,
-        extraer_coordenadas_de_url,
-    )
+    from app.core.geo import calcular_distancia_haversine, estimar_tiempo_entrega, extraer_coordenadas_de_url
     sucursal_id = payload.get("sucursal_id")
     sucursal_maps_url_in = payload.get("sucursal_maps_url")
     sucursal_nombre_in = payload.get("sucursal_nombre")
-    lat_dest = payload.get("lat")
-    lon_dest = payload.get("lon")
+    lat_dest = payload.get("lat", payload.get("latitud_destino"))
+    lon_dest = payload.get("lon", payload.get("longitud_destino"))
     ubicacion_url = payload.get("ubicacion_url")
     direccion = payload.get("direccion", "")
     ciudad = payload.get("ciudad", "santa cruz")
@@ -625,7 +617,7 @@ async def cotizar_por_distancia(
     if not sucursal and sucursal_nombre_in:
         sucursal = sucursal_query.filter(Sucursal.name.ilike(f"%{sucursal_nombre_in}%")).first()
     if not sucursal:
-        sucursal = sucursal_query.first()
+        raise BadRequestException("Selecciona una sucursal válida para calcular el delivery.")
 
     # 2. Determinar coordenadas de la Sucursal (Origen)
     lat_orig, lon_orig = None, None
@@ -644,8 +636,9 @@ async def cotizar_por_distancia(
             lat_orig, lon_orig = lat_s, lon_s
 
     if lat_orig is None or lon_orig is None:
-        query_suc = f"{sucursal.nombre if sucursal else (sucursal_nombre_in or '')} {sucursal.direccion if sucursal else ''} {sucursal.ciudad if sucursal else ciudad}"
-        lat_orig, lon_orig = geocodificar_aproximado(query_suc)
+        raise BadRequestException(
+            "La sucursal no tiene coordenadas exactas. Un administrador debe guardar su ubicación antes de ofrecer delivery."
+        )
 
     # Persistir coordenadas y maps_url si no los tenía
     if sucursal:
@@ -673,20 +666,20 @@ async def cotizar_por_distancia(
         if lat_u is not None and lon_u is not None:
             lat_dest, lon_dest = lat_u, lon_u
 
-    if lat_dest is not None and lon_dest is not None:
+    if lat_dest is None or lon_dest is None:
+        raise BadRequestException(
+            "Comparte tu ubicación GPS o un enlace de Maps con coordenadas para calcular una tarifa real."
+        )
+    try:
         lat_d = float(lat_dest)
         lon_d = float(lon_dest)
-    else:
-        # Geocodificar a partir de la dirección escrita y ciudad
-        query_cli = f"{direccion} {ciudad}".strip()
-        lat_d, lon_d = geocodificar_aproximado(query_cli if query_cli else "santa cruz sirari")
+    except (TypeError, ValueError) as exc:
+        raise BadRequestException("Las coordenadas del destino no son válidas.") from exc
+    if not (-90 <= lat_d <= 90 and -180 <= lon_d <= 180):
+        raise BadRequestException("Las coordenadas del destino están fuera de rango.")
 
     # 4. Calcular distancia Haversine entre Sucursal y Destino
     distancia = calcular_distancia_haversine(lat_orig, lon_orig, lat_d, lon_d)
-
-    # Si la distancia es virtualmente cero (ambas coordenadas cayeron en el mismo punto genérico)
-    if distancia < 0.2:
-        distancia = 3.50
 
     # 5. Tarifa oficial StyleStore: 5.00 Bs base fija + 0.60 Bs por km
     costo_envio = round(5.00 + (distancia * 0.60), 2)

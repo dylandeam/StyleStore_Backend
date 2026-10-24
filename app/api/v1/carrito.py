@@ -659,8 +659,9 @@ async def checkout_cart(
                     dest_lat, dest_lon = extraer_coordenadas_de_url(dir_env)
 
             if dest_lat is None or dest_lon is None:
-                texto_busqueda = f"{dir_env} {payload.referencia or ''} {payload.ciudad or ''}"
-                dest_lat, dest_lon = geocodificar_aproximado(texto_busqueda)
+                raise BadRequestException(
+                    "Comparte tu ubicación GPS o un enlace de Maps con coordenadas para calcular el delivery."
+                )
 
             # Sucursal origen
             suc = get_scoped_sucursal(db, current_user, sucursal_final)
@@ -669,13 +670,13 @@ async def checkout_cart(
             if (orig_lat is None or orig_lon is None) and suc and suc.maps_url:
                 orig_lat, orig_lon = extraer_coordenadas_de_url(suc.maps_url)
             if orig_lat is None or orig_lon is None:
-                orig_lat, orig_lon = geocodificar_aproximado(suc.ciudad if suc else (payload.ciudad or "Santa Cruz"))
+                raise BadRequestException(
+                    "La sucursal no tiene coordenadas exactas. Un administrador debe guardar su ubicación antes de ofrecer delivery."
+                )
 
-            dist_calc = payload.distancia_km
-            if dist_calc is None and dest_lat is not None and dest_lon is not None and orig_lat is not None and orig_lon is not None:
-                dist_calc = calcular_distancia_haversine(orig_lat, orig_lon, dest_lat, dest_lon)
-            if dist_calc is None:
-                dist_calc = 3.5
+            # El servidor siempre recalcula la distancia; nunca confía en una tarifa
+            # o kilometraje manipulable enviado por el cliente.
+            dist_calc = calcular_distancia_haversine(orig_lat, orig_lon, dest_lat, dest_lon)
 
             costo_envio = cotizar_costo_envio(dist_calc)
             orden.total = total_prendas + costo_envio

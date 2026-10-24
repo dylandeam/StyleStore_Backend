@@ -264,10 +264,6 @@ def calcular_cotizacion_completa(
     Calcula distancia, tiempo y costo consolidado entre dos puntos.
     """
     distancia = calcular_distancia_haversine(origen_lat, origen_lon, destino_lat, destino_lon)
-    # Si la distancia calculada es casi cero (ambos puntos cayeron en la misma coordenada genérica)
-    if distancia < 0.2:
-        distancia = 3.20  # Distancia estimada urbana razonable de despacho en lugar de 0
-
     minutos = estimar_tiempo_entrega(distancia)
     costo = cotizar_costo_envio(distancia)
 
