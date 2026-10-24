@@ -849,7 +849,34 @@ async def consultar_asistente_ia(
             "respuesta": "No se pudo completar la consulta analítica en este momento. Por favor verifica los filtros o intenta con otra pregunta.",
             "kpis": [],
             "ia_powered": False,
+            "modo_ia": "error",
+            "proveedor_ia": "ninguno",
         }
+
+
+@router.get("/asistente-ia/estado", summary="Estado del motor híbrido de IA")
+async def estado_asistente_ia(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.config import settings
+    _require_ai_reports(current_user, db)
+    return {
+        "modo_preferido": "online_groq" if bool(settings.GROQ_API_KEY) else "online_local",
+        "groq_configurado": bool(settings.GROQ_API_KEY),
+        "modelo_groq": settings.GROQ_MODEL if settings.GROQ_API_KEY else None,
+        "fallback_servidor": "motor_analitico_local",
+        "fallback_sin_conexion": "cache_local_del_tenant",
+    }
+
+
+@router.get("/asistente-ia/snapshot", summary="Actualizar datos locales para consultas sin conexión")
+async def snapshot_asistente_ia(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _require_ai_reports(current_user, db)
+    return ReportAIService(db, current_user).obtener_snapshot_offline()
 
 
 @router.post("/asistente-ia/excel", summary="Exportar consulta analítica de IA a archivo Excel (.xlsx)")

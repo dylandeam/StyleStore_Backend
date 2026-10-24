@@ -12,8 +12,20 @@ from app.models.user import User
 from app.services.chatbot_service import ChatbotService
 from app.services.plan_service import PlanService
 from app.api.deps import get_optional_current_user
+from app.config import settings
+from datetime import datetime, timezone
 
 router = APIRouter(prefix="/chatbot", tags=["Chatbot"])
+
+
+@router.get("/estado", summary="Estado del motor híbrido del chatbot")
+async def estado_chatbot():
+    return {
+        "modo_preferido": "online_groq" if bool(settings.GROQ_API_KEY) else "online_local",
+        "groq_configurado": bool(settings.GROQ_API_KEY),
+        "modelo_groq": settings.GROQ_MODEL if settings.GROQ_API_KEY else None,
+        "fallback": "reglas_locales",
+    }
 
 
 class MensajeChatbotRequest(BaseModel):
@@ -32,4 +44,7 @@ async def enviar_mensaje_chatbot(
         PlanService(db).require_capability(current_user, "chatbot")
     service = ChatbotService(db)
     resultado = service.responder(payload.mensaje, user=current_user)
+    resultado.setdefault("modo_ia", "online_groq" if resultado.get("ia_powered") else "online_local")
+    resultado.setdefault("proveedor_ia", "groq" if resultado.get("ia_powered") else "reglas_locales")
+    resultado.setdefault("datos_actualizados_en", datetime.now(timezone.utc).isoformat())
     return resultado

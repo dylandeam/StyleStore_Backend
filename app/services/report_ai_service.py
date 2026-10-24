@@ -430,6 +430,10 @@ KPIS: [{{"label": "Vendido Hoy", "valor": "Bs. 0.00"}}, {{"label": "Prendas Vend
                         "respuesta": cleaned_text,
                         "kpis": kpis,
                         "ia_powered": True,
+                        "modo_ia": "online_groq",
+                        "proveedor_ia": "groq",
+                        "modelo_ia": settings.GROQ_MODEL,
+                        "datos_actualizados_en": datetime.now(timezone.utc).isoformat(),
                     }
                 else:
                     print(f"[ReportAIService] Groq API returned status {response.status_code}: {response.text}")
@@ -438,7 +442,22 @@ KPIS: [{{"label": "Vendido Hoy", "valor": "Bs. 0.00"}}, {{"label": "Prendas Vend
                 pass
 
         # Fallback Local en caso de que Groq esté inactivo
-        return self._generar_respuesta_local(pregunta_clean, contexto)
+        result = self._generar_respuesta_local(pregunta_clean, contexto)
+        result.update({
+            "modo_ia": "online_local",
+            "proveedor_ia": "motor_analitico_local",
+            "modelo_ia": None,
+            "datos_actualizados_en": datetime.now(timezone.utc).isoformat(),
+        })
+        return result
+
+    def obtener_snapshot_offline(self) -> Dict[str, Any]:
+        """Contexto tenant-scoped que la web puede guardar para consultas sin conexión."""
+        return {
+            "tenant_id": self.current_user.empresa_id,
+            "datos_actualizados_en": datetime.now(timezone.utc).isoformat(),
+            "contexto": self._recopilar_contexto_operativo(),
+        }
 
     def _generar_respuesta_local(self, pregunta: str, ctx: Dict[str, Any]) -> Dict[str, Any]:
         """Genera respuesta determinística local si el LLM no responde."""
