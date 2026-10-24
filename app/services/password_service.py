@@ -9,7 +9,11 @@ from app.config import settings
 from app.models.user import User
 from app.models.password_reset_token import PasswordResetToken
 from app.core.security import verify_password, hash_password
-from app.core.exceptions import CredentialsException, InvalidOrExpiredTokenException
+from app.core.exceptions import (
+    CredentialsException,
+    InvalidOrExpiredTokenException,
+    ServiceUnavailableException,
+)
 from app.core.email import send_password_change_email
 from app.services.bitacora_service import BitacoraService
 
@@ -49,7 +53,12 @@ class PasswordService:
 
         # Build confirmation URL and send email
         confirm_url = f"{settings.FRONTEND_URL}/cuenta/confirmar-password?token={token}"
-        send_password_change_email(to_email=user.email, confirm_url=confirm_url)
+        if not send_password_change_email(to_email=user.email, confirm_url=confirm_url):
+            self.db.delete(token_record)
+            self.db.commit()
+            raise ServiceUnavailableException(
+                "No pudimos enviar el correo de confirmación. Inténtalo de nuevo en unos minutos."
+            )
 
         # Log action to bitacora
         BitacoraService.registrar(

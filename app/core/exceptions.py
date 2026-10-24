@@ -95,3 +95,13 @@ class BadRequestException(HTTPException):
             detail=detail,
         )
 
+
+class ServiceUnavailableException(HTTPException):
+    """Raised when an external dependency required to finish an operation is unavailable."""
+
+    def __init__(self, detail: str = "El servicio externo no está disponible temporalmente"):
+        super().__init__(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=detail,
+        )
+

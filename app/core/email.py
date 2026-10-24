@@ -3,12 +3,22 @@ Email utility service for notifications and confirmation links.
 """
 import smtplib
 import logging
+import os
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 from app.config import settings
 
 logger = logging.getLogger("email_service")
+
+
+def email_delivery_configured() -> bool:
+    """Return True only when the SMTP sender has usable credentials."""
+    return bool(settings.SMTP_HOST and settings.SMTP_USER and settings.SMTP_PASSWORD)
+
+
+def _managed_environment() -> bool:
+    return bool(os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_PROJECT_ID"))
 
 
 def send_password_change_email(to_email: str, confirm_url: str) -> bool:
@@ -60,7 +70,10 @@ def send_password_change_email(to_email: str, confirm_url: str) -> bool:
     """
 
     # If SMTP is not fully configured, log to console
-    if not settings.SMTP_USER or not settings.SMTP_PASSWORD:
+    if not email_delivery_configured():
+        if _managed_environment():
+            logger.error("SMTP no está configurado en el entorno administrado; no se envió el correo de contraseña.")
+            return False
         logger.warning(
             f"[SMTP NOT CONFIGURED] Email simulated to {to_email}. Confirmation URL: {confirm_url}"
         )
@@ -150,7 +163,10 @@ def send_notification_email(
     </html>
     """
 
-    if not settings.SMTP_USER or not settings.SMTP_PASSWORD:
+    if not email_delivery_configured():
+        if _managed_environment():
+            logger.error("SMTP no está configurado en el entorno administrado; no se envió la confirmación de compra.")
+            return False
         logger.info(f"[SMTP NOT CONFIGURED] Notificación simulada a {to_email}: {title}")
         print(f"\n==========================================")
         print(f"[NOTIFICACION SIMULADA] To: {to_email}")

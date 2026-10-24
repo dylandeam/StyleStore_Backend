@@ -12,6 +12,7 @@ from app.models.user_empresa import UserEmpresa
 from app.core.security import hash_password
 from app.services.report_ai_service import ReportAIService
 from app.services.plan_service import PlanService
+from app.services.paypal_service import PayPalService
 
 
 def _create_empresa(client, admin_token: str, codigo: str, email: str) -> dict:
@@ -834,7 +835,7 @@ def test_plan_minimums_and_operational_capabilities_are_enforced(
 
     priced = client.put(
         f"/api/v1/planes/admin/intermedio?empresa_id={company['id']}", headers=master_headers,
-        json={"precio_mensual": 49.90, "moneda": "USD"},
+        json={"precio_mensual": 49.90, "moneda": "BOB"},
     )
     assert priced.status_code == 200, priced.text
     renewal_order = client.post(
@@ -842,6 +843,11 @@ def test_plan_minimums_and_operational_capabilities_are_enforced(
         json={"plan_codigo": "intermedio"},
     )
     assert renewal_order.status_code == 200, renewal_order.text
+    assert renewal_order.json()["moneda"] == "BOB"
+    assert renewal_order.json()["display_currency"] == "BOB"
+    assert renewal_order.json()["paypal_currency"] == "USD"
+    converted_total, _ = PayPalService.payment_amount(Decimal("49.90"), "BOB")
+    assert renewal_order.json()["paypal_total"] == f"{converted_total:.2f}"
     renewed = client.post(
         "/api/v1/planes/paypal/capturar-orden", headers=tenant_headers,
         json={"paypal_order_id": renewal_order.json()["id"]},

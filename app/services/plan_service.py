@@ -344,9 +344,9 @@ class PlanService:
             raise NotFoundException("Plan no disponible.")
         if plan.precio_mensual <= 0:
             raise BadRequestException("El administrador SaaS debe definir un precio mayor a cero para este plan.")
-        if plan.moneda.upper() not in {"USD", "EUR"}:
+        if plan.moneda.upper() not in {"BOB", "USD", "EUR"}:
             raise BadRequestException(
-                "PayPal no admite la moneda configurada para este plan. El administrador SaaS debe usar USD o EUR."
+                "La moneda configurada para este plan no es compatible. Usa BOB, USD o EUR."
             )
         self.db.query(ContratacionPlan).filter(
             ContratacionPlan.empresa_id == current_user.empresa_id,

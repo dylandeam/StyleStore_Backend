@@ -119,6 +119,41 @@ def test_password_change_flow(client, db_session):
     assert "access_token" in new_login_res.json()
 
 
+def test_password_change_does_not_claim_success_when_email_fails(
+    client, db_session, monkeypatch
+):
+    client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "mail_failure@stylestore.com",
+            "name": "Mail Failure",
+            "password": "OldPassword123!",
+        },
+    )
+    login_res = client.post(
+        "/api/v1/auth/login",
+        json={"email": "mail_failure@stylestore.com", "password": "OldPassword123!"},
+    )
+    headers = {"Authorization": f"Bearer {login_res.json()['access_token']}"}
+    monkeypatch.setattr(
+        "app.services.password_service.send_password_change_email", lambda **_: False
+    )
+
+    response = client.post(
+        "/api/v1/password/request-change",
+        headers=headers,
+        json={
+            "current_password": "OldPassword123!",
+            "new_password": "NewPassword123!",
+            "new_password_confirmation": "NewPassword123!",
+        },
+    )
+
+    assert response.status_code == 503
+    from app.models.password_reset_token import PasswordResetToken
+    assert db_session.query(PasswordResetToken).count() == 0
+
+
 def test_bitacora_logs(client, admin_token):
     """CU6: View audit log entries."""
     headers = {"Authorization": f"Bearer {admin_token}"}
