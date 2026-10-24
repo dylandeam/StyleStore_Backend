@@ -63,6 +63,10 @@ En `backend/tests/test_payment_confirmations.py`:
   texto plano/HTML UTF-8, escape de contenido dinámico y evita registrar enlaces privados cuando SMTP
   falla. Railway desplegó exactamente ese commit en `e19a3e14-83cf-4836-9ff7-98cebcbd7e88`
   (`SUCCESS`), la API respondió HTTP 200 y el envío transaccional posterior devolvió éxito.
+- Rotación cerrada el 24/10/2026: con confirmación humana se revocó exclusivamente la contraseña de
+  aplicación antigua `StyleStore Railway SMTP`. Google muestra como única credencial vigente
+  `StyleStore Railway SMTP 2`; después de la revocación, Railway mantuvo la API en HTTP 200 y el envío
+  transaccional real devolvió `True`.
 - Fallo seguro: si SMTP no está disponible en un entorno administrado, la compra conserva la marca
   de correo pendiente para reintento y la solicitud de contraseña elimina el token no entregado antes
   de responder HTTP 503; no se comunica un éxito falso al usuario.
