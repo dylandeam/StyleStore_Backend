@@ -18,6 +18,8 @@ class DetalleCarritoUpdate(BaseModel):
 class DetalleCarritoResponse(BaseModel):
     id: int
     stock_inventario_id: int
+    producto_color_id: int | None = None
+    talla_id: int | None = None
     cantidad: int
     precio_unitario: Decimal
     precio_original: Decimal | None = None
@@ -27,7 +29,11 @@ class DetalleCarritoResponse(BaseModel):
     producto_nombre: str | None = None
     color_nombre: str | None = None
     talla_nombre: str | None = None
+    sucursal_id: int | None = None
     sucursal_nombre: str | None = None
+    sucursal_ciudad: str | None = None
+    sucursal_direccion: str | None = None
+    sucursal_maps_url: str | None = None
     foto: str | None = None
 
     model_config = {"from_attributes": True}

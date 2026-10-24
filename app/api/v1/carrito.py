@@ -84,7 +84,12 @@ def _serialize_carrito(carrito: Carrito, db: Session) -> dict:
         col_nom = None
         talla_nom = None
         foto = None
+        producto_color_id = None
+        talla_id = None
+        suc_maps_url = None
         if si:
+            producto_color_id = si.producto_color_id
+            talla_id = si.talla_id
             if si.producto_color:
                 col_nom = si.producto_color.color.nombre if si.producto_color.color else None
                 if si.producto_color.producto:
@@ -98,10 +103,13 @@ def _serialize_carrito(carrito: Carrito, db: Session) -> dict:
                 suc_nom = si.sucursal.nombre
                 suc_ciudad = si.sucursal.ciudad
                 suc_dir = si.sucursal.direccion
+                suc_maps_url = si.sucursal.maps_url
 
         items_resp.append({
             "id": it.id,
             "stock_inventario_id": it.stock_inventario_id,
+            "producto_color_id": producto_color_id,
+            "talla_id": talla_id,
             "cantidad": it.cantidad,
             "precio_unitario": precio_actual,
             "precio_original": precio_original,
@@ -115,6 +123,7 @@ def _serialize_carrito(carrito: Carrito, db: Session) -> dict:
             "sucursal_nombre": suc_nom,
             "sucursal_ciudad": suc_ciudad,
             "sucursal_direccion": suc_dir,
+            "sucursal_maps_url": suc_maps_url,
             "foto": foto,
         })
 

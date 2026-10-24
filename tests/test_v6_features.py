@@ -234,7 +234,12 @@ def test_variant_price_and_measurements_flow(client: TestClient, auth_tokens, sa
         json={"stock_inventario_id": stock.id, "cantidad": 1},
     )
     assert cart.status_code == 200, cart.text
-    assert float(cart.json()["items"][0]["precio_unitario"]) == 279.9
+    cart_item = cart.json()["items"][0]
+    assert float(cart_item["precio_unitario"]) == 279.9
+    assert cart_item["producto_color_id"] == stock.producto_color_id
+    assert cart_item["talla_id"] == stock.talla_id
+    assert cart_item["sucursal_id"] == sample_inventory["sucursal"].id
+    assert cart_item["sucursal_nombre"] == sample_inventory["sucursal"].nombre
 
 
 def test_checkout_recojo_ocupa_agenda_compartida(client: TestClient, auth_tokens, sample_inventory, db_session):
