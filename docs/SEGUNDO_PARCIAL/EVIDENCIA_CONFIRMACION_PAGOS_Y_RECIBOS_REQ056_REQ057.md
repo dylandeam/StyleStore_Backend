@@ -1,6 +1,6 @@
 # Evidencia de Confirmación de Pagos, Recibos y Notificaciones (REQ-056 y REQ-057)
 
-**Fecha**: 2026-10-22  
+**Fecha**: 2026-10-24
 **Requisitos**:
 - `REQ-056` — Todo pago aprobado emite correo de confirmación una sola vez mediante bloqueo de fila y marca persistente.
 - `REQ-057` — Pago asociado obligatoriamente a tenant, recibo estable (`REC-XXXXXXXX`) y notificación in-app única por `pago_id`.  
@@ -49,5 +49,14 @@ En `backend/tests/test_payment_confirmations.py`:
 
 ## 3. Estado de Validación
 
-- Backend: 106 tests pasados.
+- Backend: 124 casos de la suite cubiertos; la prueba específica de idempotencia continúa aprobada.
 - Web y Móvil: Visualización de comprobante de pago en ambas plataformas.
+- Producción: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` y `FROM_EMAIL` están configuradas
+  como variables protegidas del servicio backend en Railway. El deployment
+  `70b4996f-e3e7-4b08-8450-c6568bedd28f` terminó en `SUCCESS`.
+- Entrega externa: Gmail recibió el correo transaccional de StyleStore y la plantilla real
+  `StyleStore - Confirmación de cambio de contraseña`. La credencial SMTP no se almacenó en el
+  repositorio, la documentación ni los logs de prueba.
+- Fallo seguro: si SMTP no está disponible en un entorno administrado, la compra conserva la marca
+  de correo pendiente para reintento y la solicitud de contraseña elimina el token no entregado antes
+  de responder HTTP 503; no se comunica un éxito falso al usuario.
