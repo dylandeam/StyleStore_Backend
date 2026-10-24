@@ -47,3 +47,33 @@ def test_notification_list_is_scoped_to_active_tenant(client, db_session, admin_
     )
     assert response.status_code == 200
     assert [item["titulo"] for item in response.json()["items"]] == ["Visible"]
+
+
+def test_push_self_test_uses_current_user_and_tenant(
+    client, db_session, admin_token, monkeypatch
+):
+    from app.models.user import User
+    from app.services.push_notification_service import PushNotificationService
+
+    current_user = db_session.query(User).filter(
+        User.email == "admin_test@stylestore.com"
+    ).one()
+    captured = {}
+
+    def fake_send(cls, db, **kwargs):
+        captured.update(kwargs)
+        return 1
+
+    monkeypatch.setattr(PushNotificationService, "send_to_user", classmethod(fake_send))
+
+    response = client.post(
+        "/api/v1/notificaciones/prueba-push",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "sent"
+    assert response.json()["sent"] == 1
+    assert captured["user_id"] == current_user.id
+    assert captured["empresa_id"] == current_user.empresa_id
+    assert captured["data"]["type"] == "push_test"

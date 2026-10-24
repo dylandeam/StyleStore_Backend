@@ -65,6 +65,32 @@ async def unregister_push_device(
     return {"status": "unregistered"}
 
 
+@router.post("/prueba-push", summary="Enviar una notificación push de prueba al usuario actual")
+async def test_push_notification(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if current_user.empresa_id is None:
+        raise HTTPException(status_code=400, detail="Selecciona una empresa antes de probar notificaciones")
+    sent = PushNotificationService.send_to_user(
+        db,
+        user_id=current_user.id,
+        empresa_id=current_user.empresa_id,
+        title="StyleStore está conectado",
+        body="Las notificaciones push funcionan correctamente en este dispositivo.",
+        data={"type": "push_test", "route": "/dashboard"},
+    )
+    return {
+        "status": "sent" if sent else "no_devices",
+        "sent": sent,
+        "message": (
+            "Notificación enviada."
+            if sent
+            else "No hay un dispositivo push activo para este usuario y empresa."
+        ),
+    }
+
+
 @router.get("/mis-notificaciones", summary="Listar notificaciones del usuario actual")
 async def get_mis_notificaciones(
     limit: int = Query(30, ge=1, le=100),
