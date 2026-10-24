@@ -49,7 +49,9 @@ En `backend/tests/test_payment_confirmations.py`:
 
 ## 3. Estado de Validación
 
-- Backend: 124 casos de la suite cubiertos; la prueba específica de idempotencia continúa aprobada.
+- Backend: 127 pruebas recolectadas y cubiertas; 125 aprobaron en la ejecución integral, el único caso
+  bloqueado por permisos de la carpeta temporal global de Windows aprobó al repetirse con un directorio
+  temporal local, y la nueva prueba de no filtración de tokens aprobó en la ejecución focalizada.
 - Web y Móvil: Visualización de comprobante de pago en ambas plataformas.
 - Producción: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` y `FROM_EMAIL` están configuradas
   como variables protegidas del servicio backend en Railway. El deployment
@@ -57,6 +59,10 @@ En `backend/tests/test_payment_confirmations.py`:
 - Entrega externa: Gmail recibió el correo transaccional de StyleStore y la plantilla real
   `StyleStore - Confirmación de cambio de contraseña`. La credencial SMTP no se almacenó en el
   repositorio, la documentación ni los logs de prueba.
+- Presentación y seguridad: el commit `624f929` agrega remitente visible `StyleStore`, alternativas
+  texto plano/HTML UTF-8, escape de contenido dinámico y evita registrar enlaces privados cuando SMTP
+  falla. Railway desplegó exactamente ese commit en `e19a3e14-83cf-4836-9ff7-98cebcbd7e88`
+  (`SUCCESS`), la API respondió HTTP 200 y el envío transaccional posterior devolvió éxito.
 - Fallo seguro: si SMTP no está disponible en un entorno administrado, la compra conserva la marca
   de correo pendiente para reintento y la solicitud de contraseña elimina el token no entregado antes
   de responder HTTP 503; no se comunica un éxito falso al usuario.
