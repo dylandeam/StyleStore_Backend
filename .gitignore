@@ -17,6 +17,7 @@ env/
 .pytest-*/
 .coverage
 htmlcov/
+tmp/
 
 # Alembic
 alembic/versions/__pycache__/

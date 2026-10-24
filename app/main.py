@@ -7,20 +7,63 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
+import asyncio
 from app.config import settings
 from app.api.v1.router import api_v1_router
 from app.middleware.error_handler import register_error_handlers
 from app.init_db import init_db
 
 
+async def _notification_campaign_worker(stop_event: asyncio.Event) -> None:
+    """Despacha campañas vencidas sin perder la programación al reiniciar Railway."""
+    while not stop_event.is_set():
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=30)
+            continue
+        except asyncio.TimeoutError:
+            pass
+        try:
+            def run_due_campaigns() -> None:
+                from app.database import SessionLocal
+                from app.models.notificacion import CampanaNotificacion
+                from app.services.campana_notificacion_service import CampanaNotificacionService
+
+                db = SessionLocal()
+                try:
+                    # Una ejecución interrumpida es reintentable; las entregas tienen
+                    # llave idempotente para no repetir destinatarios ya completados.
+                    db.query(CampanaNotificacion).filter(
+                        CampanaNotificacion.estado == "procesando"
+                    ).update({"estado": "programada"})
+                    db.commit()
+                    CampanaNotificacionService(db).dispatch_due()
+                finally:
+                    db.close()
+
+            await asyncio.to_thread(run_due_campaigns)
+        except Exception as exc:
+            print(f"Warning on notification campaign worker: {exc}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # TestClient reemplaza get_db con una transacción aislada. No se debe tocar
+    # la conexión operativa ni iniciar workers externos durante esas pruebas.
+    if app.dependency_overrides:
+        yield
+        return
     # Initialize DB tables and seed default permissions and admin
     try:
         init_db()
     except Exception as e:
         print(f"Warning on startup init_db: {e}")
-    yield
+    stop_event = asyncio.Event()
+    worker = asyncio.create_task(_notification_campaign_worker(stop_event))
+    try:
+        yield
+    finally:
+        stop_event.set()
+        await worker
 
 
 # Create FastAPI application
