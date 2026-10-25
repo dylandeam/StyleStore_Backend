@@ -51,12 +51,12 @@ responsiva.
   superficie mínima necesaria para pagar la renovación. La activación ocurre después de una
   captura PayPal `COMPLETED`.
 
-## Evidencia automatizada (actualizada 23/10/2026)
+## Evidencia automatizada (actualizada 25/10/2026)
 
-- Backend: **122 pruebas aprobadas**; incluye regresiones de aislamiento, concurrencia de
+- Backend: **124 pruebas aprobadas**; incluye regresiones de aislamiento, concurrencia de
   stock, idempotencia offline, vencimiento/renovación, PayPal fail-closed y push multi-tenant.
 - Web: **2 pruebas aprobadas** y build de producción exitoso (`main-XMQOKW2X.js`).
-- Mobile: `flutter analyze` sin incidencias, **9 pruebas aprobadas** y APK debug generado en
+- Mobile: `flutter analyze` sin incidencias, **12 pruebas aprobadas** y APK debug generado en
   `build/app/outputs/flutter-apk/app-debug.apk` (versión `1.0.4+5`).
 - Migraciones: una única cabeza Alembic `4f6a8b012345`; además de push multi-tenant, incluye
   reparación idempotente para bases que fueron marcadas sin ejecutar todo el DDL histórico.
@@ -66,13 +66,17 @@ responsiva.
 El código y las pruebas locales no sustituyen credenciales ni dispositivos reales. Antes de
 declarar producción totalmente operativa se debe:
 
-1. Completar una compra y una suscripción con la configuración oficial PayPal Sandbox
-   ya desplegada en Railway, manteniendo `ALLOW_MOCK_PAYPAL=false`.
+1. **Completado el 25/10/2026:** una compra y una renovación de suscripción se capturaron con
+   la configuración oficial PayPal Sandbox desplegada en Railway, manteniendo
+   `ALLOW_MOCK_PAYPAL=false`. La renovación Bs 200 se aprobó/capturó como USD 18.18 y solo
+   después reemplazó el contrato Básico por Intermedio; véase
+   `EVIDENCIA_RENOVACION_PAYPAL_SANDBOX_2026-10-25.md`.
 2. **Completado el 24/10/2026:** Firebase fue configurado según
    `mobile/FIREBASE_PUSH_SETUP.md` y la recepción se comprobó en un Samsung físico con la app
    abierta, en segundo plano y cerrada. La prueba cerrada se envió desde Railway cuando no había
    proceso de la app; FCM creó la alerta `Prueba app cerrada` sin abrir ninguna actividad.
-3. Configurar SMTP en Railway y comprobar la entrega real y única del correo de pago.
+3. **Completado el 24/10/2026:** SMTP Gmail en Railway entregó el correo transaccional y el
+   flujo de recuperación de contraseña, sin duplicar confirmaciones.
 
 Railway ya ejecuta `alembic upgrade head`, publica los endpoints nuevos y el 23/10/2026
 desplegó correctamente las cinco variables oficiales de PayPal Sandbox: Client ID/Secret,

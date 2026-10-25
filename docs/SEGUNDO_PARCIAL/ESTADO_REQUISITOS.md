@@ -25,7 +25,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-019 | TERMINADO_VERIFICADO | Básico limita a 2 sucursales sin chatbot/predicciones; Intermedio a 5 con chatbot; Profesional a 10 o más con chatbot/predicciones. Reglas blindadas en backend, reflejadas con barra de cupo y badges en Web/Mobile, y verificadas con 106 tests |
 | REQ-020 | TERMINADO_VERIFICADO | Precio, moneda, límites, capacidades, beneficios y estilo se configuran en backend y UI por ámbito global/tenant |
 | REQ-021 | TERMINADO_VERIFICADO | Alta, cambio, renovación, estado, vigencia, snapshot y bloqueos operativos implementados; clientes no pueden cambiar el plan del tenant y el vencimiento bloquea capacidades; verificado en suite |
-| REQ-022 | EN_PRUEBAS | Renovación auditada y administración formal de planes sin overrides simulados inseguros; suite local aprobada. Falta captura E2E con credenciales oficiales PayPal Sandbox en Railway |
+| REQ-022 | TERMINADO_VERIFICADO | Renovación auditada y administración formal de planes sin overrides simulados inseguros; el 25/10/2026 una orden oficial PayPal Sandbox cambió de Básico a Intermedio únicamente después de captura `COMPLETED` por USD 18.18 (Bs 200 a 11 BOB/USD) |
 | REQ-023 | TERMINADO_VERIFICADO | Web App Manifest ('standalone', 'es-BO'), Service Worker ngsw y app shell prefetch generados y comprobados en build de producción y ngsw.json |
 | REQ-024 | TERMINADO_VERIFICADO | IndexedDB 'stylestore-offline' con stores 'catalog' y 'operations' aislados por ámbito empresa+usuario ('${empresaId}:${usuarioId}') |
 | REQ-025 | TERMINADO_VERIFICADO | Catálogo offline con precios, variantes y stock conocido a partir de snapshots locales con fecha de sincronización y advertencia visual |
@@ -76,11 +76,11 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-070 | TERMINADO_VERIFICADO | Diagnóstico estructurado y métricas agregadas de sincronización implementadas en `GET /sync/metricas` y servicio web, documentado con tests en `EVIDENCIA_DIAGNOSTICO_SYNC_Y_STOCK.md` |
 | REQ-071 | TERMINADO_VERIFICADO | Banner global reactivo informa sin conexión, catálogo cacheado con fecha, operaciones pendientes con enlace a cola y actualización Service Worker PWA |
 | REQ-072 | TERMINADO_VERIFICADO | Aislamiento por ámbito empresa+usuario en SQLite móvil, limpieza segura de caché, purga de resueltas con protección de pendientes y diagnósticos verificados con 9 tests en Flutter |
-| REQ-073 | EN_PRUEBAS | Vencimiento marca contratación como vencida e inactiva el tenant; renovación exclusiva para admin exige captura PayPal COMPLETED. PayPal Sandbox está configurado y compras ya capturó ORD-2; falta completar una renovación de plan E2E desde la web |
+| REQ-073 | TERMINADO_VERIFICADO | Vencimiento marca la contratación como vencida e inactiva el tenant; la renovación exclusiva para admin exige captura PayPal `COMPLETED`. Verificado E2E en Railway/PayPal Sandbox: contrato anterior reemplazado, nuevo Intermedio pagado/activo y tenant activo |
 
 ## Decisiones bloqueadas explícitamente
 
 - Los tres planes serán configurables desde administración; el tercer plan no tendrá beneficios inventados y recibirá sus valores mediante configuración administrativa.
 - “Horario de reserva” está implementado con franjas libres/ocupadas y exclusión concurrente; conservar pruebas de regresión antes de modificar la agenda.
 - Un commit local no demuestra despliegue: PayPal/FCM y REQ-048/053 requieren pipeline, credenciales externas y comprobación física/URL.
-- `EN_PRUEBAS` en REQ-022/029/073 no indica código incompleto: evita confundir simulaciones automatizadas con evidencia externa de PayPal o FCM. SMTP real de REQ-056 ya quedó verificado.
+- PayPal, FCM y SMTP cuentan con evidencia externa real en Sandbox/dispositivo/correo; no se usaron mocks para cerrar REQ-022, REQ-029, REQ-056 ni REQ-073.
