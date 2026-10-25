@@ -82,6 +82,18 @@ def test_upload_is_staff_only_and_persisted_with_tenant(client, db_session, tmp_
     record = db_session.query(UploadedFile).filter(UploadedFile.filename == filename).one()
     assert record.empresa_id == empresa.id
 
+    profile_upload = client.post(
+        "/api/v1/uploads?folder=perfiles",
+        headers=_headers(cliente),
+        files={"file": ("avatar.gif", BytesIO(b"GIF89a-profile"), "image/gif")},
+    )
+    assert profile_upload.status_code == 200, profile_upload.text
+    assert profile_upload.json()["url"].startswith("/uploads/perfiles/")
+    profile_record = db_session.query(UploadedFile).filter(
+        UploadedFile.filename == profile_upload.json()["filename"]
+    ).one()
+    assert profile_record.empresa_id == empresa.id
+
 
 def test_proximamente_and_subscriptions_are_isolated_by_tenant(client, db_session):
     empresa_a, admin_a, cliente_a = _tenant_users(db_session)

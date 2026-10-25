@@ -12,13 +12,13 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User
 from app.models.uploaded_file import UploadedFile
-from app.api.deps import require_role
+from app.api.deps import get_current_user
 from app.core.exceptions import BadRequestException
 
 router = APIRouter(prefix="/uploads", tags=["Uploads"])
 
-ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
-ALLOWED_FOLDERS = {"productos", "empleados", "pagos", "qr"}
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+ALLOWED_FOLDERS = {"productos", "empleados", "perfiles", "pagos", "qr"}
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 
 
@@ -29,8 +29,8 @@ MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 )
 async def upload_image(
     file: UploadFile = File(...),
-    folder: str = Query("productos", description="Carpeta destino: 'productos' o 'empleados'"),
-    current_user: User = Depends(require_role("administrador", "encargado_sucursal")),
+    folder: str = Query("productos", description="Carpeta destino del archivo"),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     if not current_user.empresa_id:
@@ -40,13 +40,18 @@ async def upload_image(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Carpeta inválida. Solo se permite subir a: {', '.join(ALLOWED_FOLDERS)}",
         )
+    if folder != "perfiles" and current_user.role not in {"administrador", "encargado_sucursal"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para subir archivos a esta sección.",
+        )
 
     # Validar extensión
     ext = pathlib.Path(file.filename or "").suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Formato no permitido. Solo se admiten imágenes JPG, PNG o WEBP (recibido: '{ext}').",
+            detail=f"Formato no permitido. Solo se admiten imágenes JPG, PNG, WEBP o GIF (recibido: '{ext}').",
         )
 
     # Leer contenido para validar tamaño
