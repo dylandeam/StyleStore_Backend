@@ -28,15 +28,15 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-022 | TERMINADO_VERIFICADO | Renovación auditada y administración formal de planes sin overrides simulados inseguros; el 25/10/2026 una orden oficial PayPal Sandbox cambió de Básico a Intermedio únicamente después de captura `COMPLETED` por USD 18.18 (Bs 200 a 11 BOB/USD) |
 | REQ-023 | TERMINADO_VERIFICADO | Web App Manifest ('standalone', 'es-BO'), Service Worker ngsw y app shell prefetch generados y comprobados en build de producción y ngsw.json |
 | REQ-024 | TERMINADO_VERIFICADO | IndexedDB 'stylestore-offline' con stores 'catalog' y 'operations' aislados por ámbito empresa+usuario ('${empresaId}:${usuarioId}') |
-| REQ-025 | TERMINADO_VERIFICADO | Catálogo offline con precios, variantes y stock conocido a partir de snapshots locales con fecha de sincronización y advertencia visual |
+| REQ-025 | TERMINADO_VERIFICADO | Catálogo y ficha offline con precios, variantes y stock conocido desde snapshots SQLite; imágenes persistentes en caché de disco y advertencia visual con fecha de sincronización, verificado en Samsung (`mobile@66ef919`) |
 | REQ-026 | TERMINADO_VERIFICADO | Reservas offline con UUID cliente v4, comprobante provisional 'LOCAL-XXXXXXXX' y sincronización diferida idempotente |
 | REQ-027 | TERMINADO_VERIFICADO | POS offline con ventas de contado en efectivo, detalle e importes, y bloqueo estricto de pagos electrónicos/QR verificado en suite |
 | REQ-028 | TERMINADO_VERIFICADO | Pantalla PWA (/cuenta/operaciones-pendientes) con estados pendiente/sincronizando/confirmada/rechazada/conflicto y motivo |
 | REQ-029 | TERMINADO_VERIFICADO | Flutter conserva Provider/secure storage, integra SQLite con claves foráneas y restaura sesión. Firebase Android/Admin y FCM fueron verificados en Samsung físico con la app abierta, en segundo plano y cerrada; el envío remoto devolvió `SENT=1` y Android publicó la alerta sin actividad visible |
 | REQ-030 | TERMINADO_VERIFICADO | Base de datos SQLite 'stylestore_offline.db' con foreign keys activas, tablas relacionales (catalog, branches, clients, queue, details) y 9 tests aprobados |
-| REQ-031 | TERMINADO_VERIFICADO | Catálogo SQLite comprobado en modo avión y UI con banner reactivo que advierte stock provisional y fecha de snapshot local |
+| REQ-031 | TERMINADO_VERIFICADO | Catálogo, detalle e imagen cacheada comprobados físicamente sin Wi-Fi/datos en Samsung; UI advierte stock provisional y fecha del snapshot local (`mobile@66ef919`) |
 | REQ-032 | TERMINADO_VERIFICADO | Cola offline y recuperación automática de conectividad con sincronización en segundo plano verificada en Flutter y Android |
-| REQ-033 | TERMINADO_VERIFICADO | Web y móvil conservan colas UUID y transiciones sin borrado de fallos, con purga segura y protección de pendientes verificada |
+| REQ-033 | TERMINADO_VERIFICADO | Web y móvil conservan colas UUID y transiciones sin borrar fallos; el carrito móvil añade/persiste prendas offline y las elimina de su cola solo tras sincronización exitosa (`mobile@66ef919`) |
 | REQ-034 | TERMINADO_VERIFICADO | Reintentos idempotentes y confirmación de ventas/reservas garantizando una sola ejecución física comprobados en test_sync.py |
 | REQ-035 | TERMINADO_VERIFICADO | Prueba de carrera en test_sync.py confirma: última unidad asignada a venta, reserva competidora en conflicto, stock en cero sin sobreventa |
 | REQ-036 | TERMINADO_VERIFICADO | Derivación obligatoria de tenant y usuario desde el JWT; rechazo HTTP 403 ante colisión cruzada de UUIDs verificado en suite |
@@ -72,10 +72,10 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-066 | TERMINADO_VERIFICADO | Mensaje uniforme 'Prenda no disponible: Stock insuficiente...' implementado en caja POS, reservas y checkout con prueba automatizada en `EVIDENCIA_DIAGNOSTICO_SYNC_Y_STOCK.md` |
 | REQ-067 | TERMINADO_VERIFICADO | Reembolsos offline (pendiente/entregado/cancelado), gestión tenant en Web (/admin/reembolsos), aviso del monto en colas e inmutabilidad verificados en test_reembolsos_offline_req067.py |
 | REQ-068 | TERMINADO_VERIFICADO | Alertas predictivas de stock, velocidad diaria, cobertura estimada, sugerencia de reposición y exportación Excel/PDF verificados con 103 tests backend y build Web |
-| REQ-069 | TERMINADO_VERIFICADO | Paridad completa Web-Mobile en contratos offline, cola SQLite/IndexedDB, banner reactivo de conectividad y métricas centralizadas de sincronización |
+| REQ-069 | TERMINADO_VERIFICADO | Paridad Web-Mobile en contratos offline, cola SQLite/IndexedDB, banner reactivo y métricas; prueba física móvil cerró detalle, imágenes, carrito, reconexión y bloqueo seguro de checkout (`mobile@66ef919`) |
 | REQ-070 | TERMINADO_VERIFICADO | Diagnóstico estructurado y métricas agregadas de sincronización implementadas en `GET /sync/metricas` y servicio web, documentado con tests en `EVIDENCIA_DIAGNOSTICO_SYNC_Y_STOCK.md` |
 | REQ-071 | TERMINADO_VERIFICADO | Banner global reactivo informa sin conexión, catálogo cacheado con fecha, operaciones pendientes con enlace a cola y actualización Service Worker PWA |
-| REQ-072 | TERMINADO_VERIFICADO | Aislamiento por ámbito empresa+usuario en SQLite móvil, limpieza segura de caché, purga de resueltas con protección de pendientes y diagnósticos verificados con 9 tests en Flutter |
+| REQ-072 | TERMINADO_VERIFICADO | Aislamiento por empresa+usuario en SQLite móvil v2, carrito pendiente protegido, limpieza segura y diagnósticos; 14 pruebas Flutter y sincronización física aprobadas (`mobile@66ef919`) |
 | REQ-073 | TERMINADO_VERIFICADO | Vencimiento marca la contratación como vencida e inactiva el tenant; la renovación exclusiva para admin exige captura PayPal `COMPLETED`. Verificado E2E en Railway/PayPal Sandbox: contrato anterior reemplazado, nuevo Intermedio pagado/activo y tenant activo |
 
 ## Decisiones bloqueadas explícitamente

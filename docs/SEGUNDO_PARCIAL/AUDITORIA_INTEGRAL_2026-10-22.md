@@ -56,8 +56,9 @@ responsiva.
 - Backend: **124 pruebas aprobadas**; incluye regresiones de aislamiento, concurrencia de
   stock, idempotencia offline, vencimiento/renovación, PayPal fail-closed y push multi-tenant.
 - Web: **2 pruebas aprobadas** y build de producción exitoso (`main-XMQOKW2X.js`).
-- Mobile: `flutter analyze` sin incidencias, **12 pruebas aprobadas** y APK debug generado en
-  `build/app/outputs/flutter-apk/app-debug.apk` (versión `1.0.4+5`).
+- Mobile: `flutter analyze` sin incidencias, **14 pruebas aprobadas** y APK release instalada
+  físicamente en Samsung (versión `1.0.8+9`, SHA-256
+  `088240BBBCC326036FAFA50A5396723F5A5246E58A100106E6099F4AFD75F7AA`).
 - Migraciones: una única cabeza Alembic `4f6a8b012345`; además de push multi-tenant, incluye
   reparación idempotente para bases que fueron marcadas sin ejecutar todo el DDL histórico.
 
@@ -104,3 +105,14 @@ mostró 3 unidades restantes (5 iniciales menos las unidades comprometidas por O
 No se creó un tercer pedido. Esta documentación no contiene contraseñas, Client IDs ni secretos.
 
 Estas tareas están marcadas como validación externa, no como funcionalidad simulada.
+
+## Revalidación offline móvil — 25/10/2026
+
+La prueba del usuario reveló que la lista se leía desde SQLite, pero la ficha, fotografías y
+carrito aún dependían de Railway. Mobile `66ef919` agregó recuperación del detalle desde el
+snapshot tenant-scoped, caché persistente y precarga de imágenes, snapshot de carrito y
+adiciones offline en SQLite v2. El checkout permanece bloqueado hasta sincronizar para evitar
+vender con stock provisional. En Samsung se desconectaron Wi-Fi y datos: `PROD-0001` abrió con
+foto, una unidad se guardó localmente y, al reconectar, se consolidó en el carrito del servidor.
+También se eliminó el cálculo visual ficticio de 4,5 km; la tarifa queda pendiente de la
+ubicación real. Evidencia detallada en `mobile/docs/EVIDENCIA_MODO_OFFLINE_2026-10-25.md`.
