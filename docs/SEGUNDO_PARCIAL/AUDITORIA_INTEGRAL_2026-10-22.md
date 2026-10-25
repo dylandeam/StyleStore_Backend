@@ -53,7 +53,7 @@ responsiva.
 
 ## Evidencia automatizada (actualizada 25/10/2026)
 
-- Backend: **124 pruebas aprobadas**; incluye regresiones de aislamiento, concurrencia de
+- Backend: **132 pruebas aprobadas**; incluye regresiones de aislamiento, concurrencia de
   stock, idempotencia offline, vencimiento/renovación, PayPal fail-closed y push multi-tenant.
 - Web: **2 pruebas aprobadas** y build de producción exitoso (`main-XMQOKW2X.js`).
 - Mobile: `flutter analyze` sin incidencias, **14 pruebas aprobadas** y APK release instalada
@@ -116,3 +116,13 @@ vender con stock provisional. En Samsung se desconectaron Wi-Fi y datos: `PROD-0
 foto, una unidad se guardó localmente y, al reconectar, se consolidó en el carrito del servidor.
 También se eliminó el cálculo visual ficticio de 4,5 km; la tarifa queda pendiente de la
 ubicación real. Evidencia detallada en `mobile/docs/EVIDENCIA_MODO_OFFLINE_2026-10-25.md`.
+
+## IA híbrida verificada — 25/10/2026
+
+La clave Groq fue cargada directamente como variable protegida del Backend en Railway. El
+endpoint de estado confirmó `online_groq` y una consulta externa real respondió con
+`proveedor_ia=groq` e `ia_powered=true`. Se añadió una regresión que simula indisponibilidad
+del proveedor: el mismo endpoint conserva HTTP 200 con `online_local`, `reglas_locales` e
+`ia_powered=false`. La evidencia completa está en
+`EVIDENCIA_IA_HIBRIDA_GROQ_2026-10-25.md`; ningún secreto se almacenó en Git.
+La suite integral posterior terminó con 132 pruebas aprobadas.

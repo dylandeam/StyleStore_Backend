@@ -44,6 +44,7 @@ async def enviar_mensaje_chatbot(
         PlanService(db).require_capability(current_user, "chatbot")
     service = ChatbotService(db)
     resultado = service.responder(payload.mensaje, user=current_user)
+    resultado.setdefault("ia_powered", False)
     resultado.setdefault("modo_ia", "online_groq" if resultado.get("ia_powered") else "online_local")
     resultado.setdefault("proveedor_ia", "groq" if resultado.get("ia_powered") else "reglas_locales")
     resultado.setdefault("datos_actualizados_en", datetime.now(timezone.utc).isoformat())

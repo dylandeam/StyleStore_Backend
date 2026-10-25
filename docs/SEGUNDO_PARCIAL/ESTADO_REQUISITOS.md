@@ -40,7 +40,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-034 | TERMINADO_VERIFICADO | Reintentos idempotentes y confirmación de ventas/reservas garantizando una sola ejecución física comprobados en test_sync.py |
 | REQ-035 | TERMINADO_VERIFICADO | Prueba de carrera en test_sync.py confirma: última unidad asignada a venta, reserva competidora en conflicto, stock en cero sin sobreventa |
 | REQ-036 | TERMINADO_VERIFICADO | Derivación obligatoria de tenant y usuario desde el JWT; rechazo HTTP 403 ante colisión cruzada de UUIDs verificado en suite |
-| REQ-037 | TERMINADO_VERIFICADO | Consultas de IA por texto y voz nativa Web Speech (es-BO) con fallback, verificación de rol administrativo y capacidad ia_generativa en test_ai_analytics_and_predictions_suite.py |
+| REQ-037 | TERMINADO_VERIFICADO | Consultas por texto/voz Web Speech (es-BO), Groq real desplegado y fallback local explícito; producción devolvió `online_groq/ia_powered=true` y la regresión de caída confirmó `online_local/reglas_locales` |
 | REQ-038 | TERMINADO_VERIFICADO | Contexto analítico operativo en tiempo real con aislamiento estricto multi-tenant (sin fuga de pedidos, sucursales ni envíos entre empresas) comprobado en suite automatizada |
 | REQ-039 | TERMINADO_VERIFICADO | Gráficos SVG interactivos (Donut de formas de pago, ranking regional, medidor de stock, barras comparativas), previews y exportables Excel/PDF verificados con suite de 97 pruebas y build Angular |
 | REQ-040 | TERMINADO_VERIFICADO | Escenario reproducible multi-tenant automatizado en `test_reportes_multiempresa_comparativa.py` cubre las familias de reportes sin fuga de datos |
@@ -54,7 +54,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-048 | TERMINADO_VERIFICADO | Backend Railway, PWA Vercel y APK release '1.0.3+4' validada en Samsung S21+ con SHA-256 y modo avión documentados en ENLACES_Y_QR_OFICIALES.md |
 | REQ-049 | TERMINADO_VERIFICADO | Artefactos ICONIX (dominio, casos de uso, robustez de 4 flujos críticos) y UML 2.5+ (secuencia, clases de diseño, despliegue) documentados en `ARTEFACTOS_ICONIX_UML25.md` |
 | REQ-050 | TERMINADO_VERIFICADO | Documento maestro final con Capítulos I a VI, bibliografía y anexos oficiales redactado y versionado en `DOCUMENTO_FINAL_CAPITULOS_I_VI.md` |
-| REQ-051 | TERMINADO_VERIFICADO | Suite continua de seguridad, multiempresa, stock, idempotencia, ML, reportes, pagos y push; cierre del 24/10/2026 con 124 casos backend cubiertos, 2 web y 12 Flutter aprobados |
+| REQ-051 | TERMINADO_VERIFICADO | Suite continua de seguridad, multiempresa, stock, idempotencia, ML, reportes, pagos, IA híbrida y push; cierre del 25/10/2026 con 132 casos backend, 2 web y 14 Flutter aprobados |
 | REQ-052 | TERMINADO_VERIFICADO | Paquetes oficiales para las 4 entregas (25/10, 01/11, 08/11 y defensa 10/11 a las 07:00) estructurados y documentados en `PAQUETES_ENTREGAS_OFICIALES.md` |
 | REQ-053 | TERMINADO_VERIFICADO | Enlaces de despliegue Vercel/Railway/GitHub verificados y 3 códigos QR SVG generados y documentados en `ENLACES_Y_QR_OFICIALES.md` |
 | REQ-054 | TERMINADO_VERIFICADO | Solicitud y liquidación de cambio generan nota vinculada NCJ-, ajustan inventario y conservan diferencia monetaria o saldo a favor |
