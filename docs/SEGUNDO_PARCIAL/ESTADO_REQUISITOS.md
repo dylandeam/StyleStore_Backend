@@ -32,7 +32,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-026 | TERMINADO_VERIFICADO | Reservas offline con UUID cliente v4, comprobante provisional 'LOCAL-XXXXXXXX' y sincronización diferida idempotente |
 | REQ-027 | TERMINADO_VERIFICADO | POS offline con ventas de contado en efectivo, detalle e importes, y bloqueo estricto de pagos electrónicos/QR verificado en suite |
 | REQ-028 | TERMINADO_VERIFICADO | Pantalla PWA (/cuenta/operaciones-pendientes) con estados pendiente/sincronizando/confirmada/rechazada/conflicto y motivo |
-| REQ-029 | EN_PRUEBAS | Flutter conserva Provider/secure storage, integra SQLite con claves foráneas y restaura sesión; Firebase Android/Admin está configurado y la barra recibió una notificación real con la app abierta. Falta repetir la evidencia en segundo plano y cerrada |
+| REQ-029 | TERMINADO_VERIFICADO | Flutter conserva Provider/secure storage, integra SQLite con claves foráneas y restaura sesión. Firebase Android/Admin y FCM fueron verificados en Samsung físico con la app abierta, en segundo plano y cerrada; el envío remoto devolvió `SENT=1` y Android publicó la alerta sin actividad visible |
 | REQ-030 | TERMINADO_VERIFICADO | Base de datos SQLite 'stylestore_offline.db' con foreign keys activas, tablas relacionales (catalog, branches, clients, queue, details) y 9 tests aprobados |
 | REQ-031 | TERMINADO_VERIFICADO | Catálogo SQLite comprobado en modo avión y UI con banner reactivo que advierte stock provisional y fecha de snapshot local |
 | REQ-032 | TERMINADO_VERIFICADO | Cola offline y recuperación automática de conectividad con sincronización en segundo plano verificada en Flutter y Android |
@@ -54,7 +54,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-048 | TERMINADO_VERIFICADO | Backend Railway, PWA Vercel y APK release '1.0.3+4' validada en Samsung S21+ con SHA-256 y modo avión documentados en ENLACES_Y_QR_OFICIALES.md |
 | REQ-049 | TERMINADO_VERIFICADO | Artefactos ICONIX (dominio, casos de uso, robustez de 4 flujos críticos) y UML 2.5+ (secuencia, clases de diseño, despliegue) documentados en `ARTEFACTOS_ICONIX_UML25.md` |
 | REQ-050 | TERMINADO_VERIFICADO | Documento maestro final con Capítulos I a VI, bibliografía y anexos oficiales redactado y versionado en `DOCUMENTO_FINAL_CAPITULOS_I_VI.md` |
-| REQ-051 | TERMINADO_VERIFICADO | Suite continua de seguridad, multiempresa, stock, idempotencia, ML, reportes, pagos y push; cierre del 24/10/2026 con 124 casos backend cubiertos, 2 web y 11 Flutter aprobados |
+| REQ-051 | TERMINADO_VERIFICADO | Suite continua de seguridad, multiempresa, stock, idempotencia, ML, reportes, pagos y push; cierre del 24/10/2026 con 124 casos backend cubiertos, 2 web y 12 Flutter aprobados |
 | REQ-052 | TERMINADO_VERIFICADO | Paquetes oficiales para las 4 entregas (25/10, 01/11, 08/11 y defensa 10/11 a las 07:00) estructurados y documentados en `PAQUETES_ENTREGAS_OFICIALES.md` |
 | REQ-053 | TERMINADO_VERIFICADO | Enlaces de despliegue Vercel/Railway/GitHub verificados y 3 códigos QR SVG generados y documentados en `ENLACES_Y_QR_OFICIALES.md` |
 | REQ-054 | TERMINADO_VERIFICADO | Solicitud y liquidación de cambio generan nota vinculada NCJ-, ajustan inventario y conservan diferencia monetaria o saldo a favor |

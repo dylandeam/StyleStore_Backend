@@ -68,8 +68,10 @@ declarar producción totalmente operativa se debe:
 
 1. Completar una compra y una suscripción con la configuración oficial PayPal Sandbox
    ya desplegada en Railway, manteniendo `ALLOW_MOCK_PAYPAL=false`.
-2. Configurar Firebase según `mobile/FIREBASE_PUSH_SETUP.md` y probar recepción en un teléfono
-   con la app abierta, en segundo plano y cerrada.
+2. **Completado el 24/10/2026:** Firebase fue configurado según
+   `mobile/FIREBASE_PUSH_SETUP.md` y la recepción se comprobó en un Samsung físico con la app
+   abierta, en segundo plano y cerrada. La prueba cerrada se envió desde Railway cuando no había
+   proceso de la app; FCM creó la alerta `Prueba app cerrada` sin abrir ninguna actividad.
 3. Configurar SMTP en Railway y comprobar la entrega real y única del correo de pago.
 
 Railway ya ejecuta `alembic upgrade head`, publica los endpoints nuevos y el 23/10/2026
