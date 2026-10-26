@@ -16,7 +16,7 @@ from app.models.user import User
 from app.models.uploaded_file import UploadedFile
 from app.models.proximamente import Proximamente
 from app.models.prueba_virtual import PruebaVirtual
-from app.schemas.empresa import EmpresaCreate, EmpresaSuscripcionUpdate, EmpresaUpdate, TenantAdminUpdate
+from app.schemas.empresa import EmpresaBrandingUpdate, EmpresaCreate, EmpresaSuscripcionUpdate, EmpresaUpdate, TenantAdminUpdate
 from app.services.bitacora_service import BitacoraService
 from app.services.plan_service import PlanService
 
@@ -30,6 +30,41 @@ class EmpresaService:
 
     def list_empresas_activas(self) -> list[Empresa]:
         return self.db.query(Empresa).filter(Empresa.active.is_(True)).order_by(Empresa.nombre).all()
+
+    @staticmethod
+    def serialize_branding(empresa: Empresa) -> dict:
+        return {
+            "id": empresa.id,
+            "codigo": empresa.codigo,
+            "nombre": empresa.nombre,
+            "nombre_marca": empresa.nombre_marca or empresa.nombre,
+            "eslogan": empresa.eslogan,
+            "logo_url": empresa.logo_url,
+            "color_primario": empresa.color_primario,
+            "color_secundario": empresa.color_secundario,
+            "color_acento": empresa.color_acento,
+            "color_fondo": empresa.color_fondo,
+            "color_texto": empresa.color_texto,
+        }
+
+    def get_public_branding(self, codigo: str) -> dict:
+        empresa = self.db.query(Empresa).filter(
+            Empresa.codigo == codigo.strip().lower(), Empresa.active.is_(True)
+        ).first()
+        if not empresa:
+            raise NotFoundException("El portal solicitado no existe o no está disponible.")
+        return self.serialize_branding(empresa)
+
+    def update_branding(self, empresa_id: int, data: EmpresaBrandingUpdate, current_user: User) -> dict:
+        empresa = self.get_empresa(empresa_id)
+        for field, value in data.model_dump().items():
+            setattr(empresa, field, value)
+        self.db.commit()
+        self.db.refresh(empresa)
+        BitacoraService.registrar(
+            self.db, current_user, f"Actualizó la identidad visual de '{empresa.nombre}'", "identidad_marca"
+        )
+        return self.serialize_branding(empresa)
 
     def list_resumen(self) -> list[dict]:
         return [self.serialize_resumen(empresa) for empresa in self.list_empresas()]
@@ -135,6 +170,14 @@ class EmpresaService:
             "id": empresa.id,
             "codigo": empresa.codigo,
             "nombre": empresa.nombre,
+            "nombre_marca": empresa.nombre_marca,
+            "eslogan": empresa.eslogan,
+            "logo_url": empresa.logo_url,
+            "color_primario": empresa.color_primario,
+            "color_secundario": empresa.color_secundario,
+            "color_acento": empresa.color_acento,
+            "color_fondo": empresa.color_fondo,
+            "color_texto": empresa.color_texto,
             "active": empresa.active,
             "inactive_reason": empresa.inactive_reason,
             "created_at": empresa.created_at,

@@ -34,6 +34,14 @@ class EmpresaResponse(BaseModel):
     id: int
     codigo: str
     nombre: str
+    nombre_marca: str | None = None
+    eslogan: str | None = None
+    logo_url: str | None = None
+    color_primario: str = "#14263D"
+    color_secundario: str = "#FBF8F1"
+    color_acento: str = "#274C77"
+    color_fondo: str = "#EEE7D8"
+    color_texto: str = "#172536"
     active: bool
     inactive_reason: str | None = None
     created_at: datetime
@@ -46,8 +54,55 @@ class EmpresaPublicResponse(BaseModel):
     id: int
     codigo: str
     nombre: str
+    nombre_marca: str | None = None
+    logo_url: str | None = None
+    color_primario: str = "#14263D"
+    color_acento: str = "#274C77"
 
     model_config = {"from_attributes": True}
+
+
+class EmpresaBrandingResponse(BaseModel):
+    id: int
+    codigo: str
+    nombre: str
+    nombre_marca: str
+    eslogan: str | None = None
+    logo_url: str | None = None
+    color_primario: str
+    color_secundario: str
+    color_acento: str
+    color_fondo: str
+    color_texto: str
+
+
+class EmpresaBrandingUpdate(BaseModel):
+    nombre_marca: str = Field(..., min_length=2, max_length=150)
+    eslogan: str | None = Field(None, max_length=220)
+    logo_url: str | None = Field(None, max_length=500)
+    color_primario: str
+    color_secundario: str
+    color_acento: str
+    color_fondo: str
+    color_texto: str
+
+    @field_validator(
+        "color_primario", "color_secundario", "color_acento", "color_fondo", "color_texto"
+    )
+    @classmethod
+    def validate_hex_color(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if not re.fullmatch(r"#[0-9A-F]{6}", normalized):
+            raise ValueError("El color debe usar formato hexadecimal #RRGGBB.")
+        return normalized
+
+    @field_validator("nombre_marca", "eslogan", "logo_url")
+    @classmethod
+    def strip_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
 
 
 class EmpresaConAdminResponse(EmpresaResponse):

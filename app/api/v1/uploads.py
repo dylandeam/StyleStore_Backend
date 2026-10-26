@@ -18,7 +18,7 @@ from app.core.exceptions import BadRequestException
 router = APIRouter(prefix="/uploads", tags=["Uploads"])
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
-ALLOWED_FOLDERS = {"productos", "empleados", "perfiles", "pagos", "qr"}
+ALLOWED_FOLDERS = {"productos", "empleados", "perfiles", "pagos", "qr", "logos"}
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 
 

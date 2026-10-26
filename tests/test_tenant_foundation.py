@@ -1001,3 +1001,62 @@ def test_platform_admin_header_scopes_modules_and_login_accepts_tenant_code(
         headers={"Authorization": f"Bearer {admin_token}", "X-Tenant-Context": "999999"},
     )
     assert invalid_context.status_code == 403
+
+
+def test_tenant_branding_and_portal_registration_are_isolated(
+    client, db_session, admin_token
+):
+    company_a = _create_empresa(client, admin_token, "brand-a", "admin@brand-a.example.com")
+    company_b = _create_empresa(client, admin_token, "brand-b", "admin@brand-b.example.com")
+    tenant_headers = {"Authorization": f"Bearer {_login(client, 'admin@brand-a.example.com')}"}
+    branding_payload = {
+        "nombre_marca": "Boutique Aurora",
+        "eslogan": "Moda creada para ti",
+        "logo_url": "/uploads/logos/aurora.webp",
+        "color_primario": "#332255",
+        "color_secundario": "#FFF8EE",
+        "color_acento": "#CC7722",
+        "color_fondo": "#F7F1E8",
+        "color_texto": "#211A2C",
+    }
+    updated = client.put(
+        "/api/v1/empresas/branding/mia", headers=tenant_headers, json=branding_payload
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["nombre_marca"] == "Boutique Aurora"
+
+    public_portal = client.get("/api/v1/empresas/publicas/brand-a/portal")
+    assert public_portal.status_code == 200, public_portal.text
+    assert public_portal.json()["color_primario"] == "#332255"
+    assert client.get("/api/v1/empresas/publicas/no-existe/portal").status_code == 404
+
+    platform_update = client.put(
+        "/api/v1/empresas/branding/mia",
+        headers={"Authorization": f"Bearer {admin_token}", "X-Tenant-Context": str(company_a["id"])},
+        json=branding_payload,
+    )
+    assert platform_update.status_code == 403
+
+    registered = client.post(
+        "/api/v1/auth/register/tenant/brand-a",
+        json={
+            "email": "exclusive@brand-a.example.com",
+            "password": "ClientPass2026!",
+            "name": "Cliente Exclusivo",
+            "empresa_codigos": ["brand-a", "brand-b"],
+        },
+    )
+    assert registered.status_code == 201, registered.text
+    memberships = db_session.query(UserEmpresa).filter(
+        UserEmpresa.user_id == registered.json()["id"]
+    ).all()
+    assert {item.empresa_id for item in memberships} == {company_a["id"]}
+    wrong_portal_login = client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "exclusive@brand-a.example.com",
+            "password": "ClientPass2026!",
+            "empresa_codigo": "brand-b",
+        },
+    )
+    assert wrong_portal_login.status_code == 401

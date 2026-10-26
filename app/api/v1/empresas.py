@@ -8,6 +8,8 @@ from app.database import get_db
 from app.models.user import User
 from app.schemas.empresa import (
     EmpresaConAdminResponse,
+    EmpresaBrandingResponse,
+    EmpresaBrandingUpdate,
     EmpresaCreate,
     EmpresaEstadoUpdate,
     EmpresaResponse,
@@ -20,6 +22,7 @@ from app.schemas.empresa import (
     TenantAdminUpdate,
 )
 from app.services.empresa_service import EmpresaService
+from app.services.tenant_scope import effective_empresa_id
 
 
 router = APIRouter(prefix="/empresas", tags=["Empresas SaaS"])
@@ -31,11 +34,41 @@ async def list_empresas_publicas(db: Session = Depends(get_db)):
     return EmpresaService(db).list_empresas_activas()
 
 
+@router.get("/publicas/{codigo}/portal", response_model=EmpresaBrandingResponse)
+async def get_portal_publico(codigo: str, db: Session = Depends(get_db)):
+    """Identidad pública de un único tenant; no revela información de competidores."""
+    return EmpresaService(db).get_public_branding(codigo)
+
+
+@router.get("/branding/mia", response_model=EmpresaBrandingResponse)
+async def get_mi_branding(
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    empresa_id = effective_empresa_id(current_user)
+    if not empresa_id:
+        raise BadRequestException("Selecciona un tenant para consultar su identidad visual.")
+    return EmpresaService.serialize_branding(EmpresaService(db).get_empresa(empresa_id))
+
+
+@router.put("/branding/mia", response_model=EmpresaBrandingResponse)
+async def update_mi_branding(
+    request: EmpresaBrandingUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if current_user.is_platform_admin or current_user.role != "administrador":
+        raise ForbiddenException("Solo el administrador del tenant puede configurar su identidad visual.")
+    if not current_user.empresa_id:
+        raise BadRequestException("Tu cuenta no pertenece a un tenant.")
+    return EmpresaService(db).update_branding(current_user.empresa_id, request, current_user)
+
+
 @router.get("/mia", response_model=EmpresaResponse)
 async def get_mi_empresa(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    if not current_user.empresa_id:
+    empresa_id = effective_empresa_id(current_user)
+    if not empresa_id:
         raise BadRequestException("El usuario actual no pertenece a ninguna empresa.")
-    return EmpresaService(db).get_empresa(current_user.empresa_id)
+    return EmpresaService(db).get_empresa(empresa_id)
 
 
 @router.get("", response_model=list[EmpresaResponse])

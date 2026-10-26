@@ -35,6 +35,22 @@ async def register(request: RegisterRequest, db: Session = Depends(get_db)):
 
 
 @router.post(
+    "/register/tenant/{empresa_codigo}",
+    response_model=UserResponse,
+    status_code=201,
+    summary="Registrar cliente exclusivamente en el portal de un tenant",
+)
+async def register_for_tenant(
+    empresa_codigo: str, request: RegisterRequest, db: Session = Depends(get_db)
+):
+    code = empresa_codigo.strip().lower()
+    scoped_request = request.model_copy(
+        update={"empresa_codigo": code, "empresa_codigos": [code]}
+    )
+    return AuthService(db).register(scoped_request)
+
+
+@router.post(
     "/login",
     response_model=TokenResponse,
     summary="Login",
