@@ -43,6 +43,7 @@ class EmpresaResponse(BaseModel):
 
 
 class EmpresaPublicResponse(BaseModel):
+    id: int
     codigo: str
     nombre: str
 
