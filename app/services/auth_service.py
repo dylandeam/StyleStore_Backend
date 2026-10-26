@@ -197,12 +197,13 @@ class AuthService:
             if not selected_empresa:
                 raise CredentialsException(detail="El tenant seleccionado no existe")
             if not user.is_platform_admin:
-                membership = self.db.query(UserEmpresa.id).filter(
+                is_primary_tenant = user.empresa_id == selected_empresa.id
+                membership = None if is_primary_tenant else self.db.query(UserEmpresa.id).filter(
                     UserEmpresa.user_id == user.id,
                     UserEmpresa.empresa_id == selected_empresa.id,
                     UserEmpresa.active.is_(True),
                 ).first()
-                if not membership:
+                if not is_primary_tenant and not membership:
                     raise CredentialsException(
                         detail="Tu cuenta no está registrada en el tenant seleccionado"
                     )
@@ -254,7 +255,7 @@ class AuthService:
             .order_by(Empresa.nombre)
             .all()
         )
-        return [
+        result = [
             {
                 "id": membership.empresa.id,
                 "codigo": membership.empresa.codigo,
@@ -264,6 +265,18 @@ class AuthService:
             }
             for membership in memberships
         ]
+        if current_user.empresa_id and not any(item["id"] == current_user.empresa_id for item in result):
+            primary = self.db.query(Empresa).filter(Empresa.id == current_user.empresa_id).first()
+            if primary:
+                result.append({
+                    "id": primary.id,
+                    "codigo": primary.codigo,
+                    "nombre": primary.nombre,
+                    "active": primary.active,
+                    "is_current": True,
+                })
+                result.sort(key=lambda item: item["nombre"].lower())
+        return result
 
     def select_tenant(self, current_user: User, empresa_id: int) -> TokenResponse:
         membership = self.db.query(UserEmpresa).filter(
@@ -271,7 +284,8 @@ class AuthService:
             UserEmpresa.empresa_id == empresa_id,
             UserEmpresa.active.is_(True),
         ).first()
-        if not membership:
+        is_primary_tenant = current_user.empresa_id == empresa_id
+        if not membership and not is_primary_tenant:
             raise BadRequestException("Tu cuenta no está registrada en esa empresa.")
         empresa = self.db.query(Empresa).filter(Empresa.id == empresa_id).first()
         if not empresa or not empresa.active:

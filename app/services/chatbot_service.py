@@ -22,6 +22,7 @@ from app.models.user import User
 from app.models.empresa import Empresa
 from app.models.stock_inventario import StockInventario
 from app.config import settings
+from app.services.tenant_scope import effective_empresa_id
 
 
 def _normalize(text: str) -> str:
@@ -49,14 +50,22 @@ class ChatbotService:
         self.db = db
 
     def _empresa_id(self, user: Optional[User]) -> Optional[int]:
-        if user and user.is_platform_admin:
-            return None
         if user:
-            return user.empresa_id
+            return effective_empresa_id(user)
         empresa = self.db.query(Empresa).filter(
             Empresa.codigo == "stylestore", Empresa.active.is_(True)
         ).first()
         return empresa.id if empresa else -1
+
+    def _empresa(self, user: Optional[User]) -> Optional[Empresa]:
+        empresa_id = self._empresa_id(user)
+        if empresa_id is None:
+            return None
+        return self.db.query(Empresa).filter(Empresa.id == empresa_id).first()
+
+    def _brand_name(self, user: Optional[User]) -> str:
+        empresa = self._empresa(user)
+        return (empresa.nombre_marca or empresa.nombre) if empresa else "tu tienda"
 
     def _scope_empresa(self, query, user: Optional[User], column):
         empresa_id = self._empresa_id(user)
@@ -80,6 +89,15 @@ class ChatbotService:
         try:
             import httpx
 
+            empresa = self._empresa(user)
+            if user and user.is_platform_admin and empresa is None:
+                return {
+                    "respuesta": "Selecciona un tenant en el contexto global antes de consultar el chatbot. Así evitamos mezclar catálogos, sucursales o métricas entre empresas.",
+                    "chips": [],
+                    "ia_powered": False,
+                }
+            brand = (empresa.nombre_marca or empresa.nombre) if empresa else "StyleStore"
+
             # 1. Sucursales en vivo
             sucursales = self._scope_empresa(
                 self.db.query(Sucursal), user, Sucursal.empresa_id
@@ -96,11 +114,11 @@ class ChatbotService:
 
             user_name = user.name if user else "estimado cliente"
 
-            system_prompt = f"""Eres el Asistente Virtual Inteligente con IA de "StyleStore", una prestigiosa y moderna boutique de ropa y moda en Bolivia.
+            system_prompt = f"""Eres el Asistente Virtual Inteligente con IA de "{brand}", una tienda de ropa y moda en Bolivia.
 Tu misión es atender a los clientes con calidez, elegancia, agilidad y precisión, respondiendo tanto a consultas escritas como a consultas por voz.
-La moneda de StyleStore es el Boliviano (Bs.). El cliente actual se llama: {user_name}.
+La moneda de {brand} es el Boliviano (Bs.). El cliente actual se llama: {user_name}.
 
-INFORMACIÓN EN TIEMPO REAL DE STYLESTORE:
+INFORMACIÓN EN TIEMPO REAL DEL TENANT {brand.upper()}:
 1. SUCURSALES ACTIVAS:
 {suc_str}
 
@@ -108,12 +126,14 @@ INFORMACIÓN EN TIEMPO REAL DE STYLESTORE:
 {prods_str}
 
 3. POLÍTICAS Y SERVICIOS DISPONIBLES:
-- Envíos y Delivery: Servicio 'Delivery StyleStore' con rastreo GPS en tiempo real (Delivery Tracker en vivo), donde el repartidor comparte su ubicación y el cliente visualiza distancia, tiempo estimado y el mapa de su pedido.
+- Envíos y Delivery: Servicio de delivery de {brand} con rastreo GPS en tiempo real, donde el repartidor comparte su ubicación y el cliente visualiza distancia, tiempo estimado y el mapa de su pedido.
 - Métodos de Pago: QR Simple en línea, Tarjetas de Débito/Crédito, Efectivo contra entrega y PayPal Oficial (con conversión automática de USD a BOB).
 - Reservas en Tienda: Reserva hasta por 3 días; el cliente elige la hora de recojo dentro del horario de la sucursal.
 - Cambios y Devoluciones: Hasta 7 días calendario para solicitar cambios desde la sección 'Mis Compras'.
 
 REGLAS DE RESPUESTA:
+- Habla únicamente de {brand}. Nunca menciones, inventes ni compares información de otros tenants o tiendas de la plataforma.
+- Usa exclusivamente el catálogo y las sucursales incluidos en este contexto. Si un dato no aparece, indica que no está disponible.
 - Responde siempre en español, con un tono entusiasta, servicial y experto en moda.
 - Si el cliente pregunta por precios o rangos presupuestarios (por ejemplo: '¿hay pantalones de 60bs o menos?', '¿cuál es la prenda más barata?'), revisa rigurosamente la lista de productos de arriba y responde con exactitud mencionando los nombres y precios reales encontrados.
 - Si el cliente pregunta qué sucursales hay o sus direcciones, enuméralas con sus nombres y direcciones.
@@ -192,6 +212,14 @@ Rutas disponibles:
     def responder(self, mensaje: str, user: Optional[User] = None) -> Dict[str, Any]:
         """Procesa el mensaje del usuario y devuelve respuesta textual y chips de acción."""
         norm = _normalize(mensaje)
+        empresa = self._empresa(user)
+        if user and user.is_platform_admin and empresa is None:
+            return {
+                "respuesta": "Selecciona un tenant en el contexto global antes de consultar el chatbot. Así evitamos mezclar información entre empresas.",
+                "chips": [],
+                "ia_powered": False,
+            }
+        brand = (empresa.nombre_marca or empresa.nombre) if empresa else "StyleStore"
 
         # 1. Acción Ejecutable Inmediata: Agregar prenda al carrito (Punto 8 / v7)
         if any(f in norm for f in ["agrega", "agregar", "anade", "anadir", "pon en mi bolsa", "pon al carrito", "comprar", "metelo"]):
@@ -261,7 +289,7 @@ Rutas disponibles:
         if es_saludo_puro:
             nombre = f", {user.name}" if user else ""
             return {
-                "respuesta": f"¡Hola{nombre}! 👋 Bienvenido a StyleStore. ¿En qué puedo colaborarte hoy? Puedes consultarme sobre nuestras sucursales, prendas disponibles, temporadas, estado de tus pedidos o decirme 'agrega el vestido rojo al carrito' para comprar directamente.",
+                "respuesta": f"¡Hola{nombre}! 👋 Bienvenido a {brand}. ¿En qué puedo colaborarte hoy? Puedes consultarme sobre nuestras sucursales, prendas disponibles, temporadas, estado de tus pedidos o pedirme agregar una prenda al carrito.",
                 "chips": [
                     {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/admin/sucursales"},
                     {"label": "👗 Catálogo de Ropa", "action": "navigate", "route": "/catalogo"},
@@ -280,7 +308,7 @@ Rutas disponibles:
         if any(w in norm for w in ["hola", "buen dia", "buenas tardes", "buenas noches", "hey", "saludos"]):
             nombre = f", {user.name}" if user else ""
             return {
-                "respuesta": f"¡Hola{nombre}! 👋 Bienvenido a StyleStore. ¿En qué puedo colaborarte hoy? Puedes consultarme sobre nuestras sucursales, prendas disponibles, temporadas, estado de tus pedidos o decirme 'agrega el vestido rojo al carrito' para comprar directamente.",
+                "respuesta": f"¡Hola{nombre}! 👋 Bienvenido a {brand}. ¿En qué puedo colaborarte hoy? Puedes consultarme sobre nuestras sucursales, prendas disponibles, temporadas, estado de tus pedidos o pedirme agregar una prenda al carrito.",
                 "chips": [
                     {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/admin/sucursales"},
                     {"label": "👗 Catálogo de Ropa", "action": "navigate", "route": "/catalogo"},
@@ -300,7 +328,7 @@ Rutas disponibles:
                     "chips": [{"label": "Ver Catálogo Online", "action": "navigate", "route": "/catalogo"}],
                 }
 
-            lineas = ["🏬 **Nuestras Sucursales StyleStore:**\n"]
+            lineas = [f"🏬 **Sucursales de {brand}:**\n"]
             for s in sucursales:
                 lineas.append(f"• **{s.nombre}** ({s.ciudad}): {s.direccion} | Tel: {s.telefono or 'No registrado'}")
 
@@ -316,7 +344,7 @@ Rutas disponibles:
         # 3. Métodos de Pago / PayPal / QR / Efectivo
         if any(w in norm for w in ["pago", "pagar", "paypal", "qr", "efectivo", "tarjeta", "metodo"]):
             return {
-                "respuesta": "💳 **Métodos de Pago en StyleStore:**\n\n"
+                "respuesta": f"💳 **Métodos de Pago en {brand}:**\n\n"
                              "• **Tienda Online / Web:** Procesamos pagos seguros mediante **PayPal** (saldo PayPal y tarjetas internacionales Visa/MasterCard).\n"
                              "• **Caja Física / Tiendas:** Aceptamos **Efectivo** (con cálculo de vuelto) y **Código QR Simple** (transferencia bancaria inmediata).\n"
                              "• Puedes consultar todos tus recibos y notas en la sección Mis Pagos.",
@@ -329,8 +357,8 @@ Rutas disponibles:
         # 4. Envíos / Delivery StyleStore / Tracking
         if any(w in norm for w in ["envio", "envios", "delivery", "ubicacion maps", "costo envio", "seguimiento", "yango"]):
             return {
-                "respuesta": "🛵 **Delivery StyleStore Oficial:**\n\n"
-                             "• Realizamos despachos a domicilio mediante nuestro servicio propio de **Delivery StyleStore** con repartidores asignados.\n"
+                "respuesta": f"🛵 **Delivery de {brand}:**\n\n"
+                             f"• Realizamos despachos a domicilio mediante el servicio de **{brand}** con repartidores asignados.\n"
                              "• Al finalizar tu pedido, debes proporcionar tu **enlace de Google Maps o Apple Maps** para que el conductor llegue a tu puerta con exactitud.\n"
                              "• Podrás realizar seguimiento en tiempo real de tu pedido y consultar su estado en todo momento.",
                 "chips": [
@@ -343,7 +371,7 @@ Rutas disponibles:
         if any(w in norm for w in ["reserva", "reservar", "apartar", "separar prenda"]):
             return {
                 "respuesta": "🔖 **Políticas de Reserva de Prendas:**\n\n"
-                             "• Para reservar una prenda sin costo inicial, debes contar con **al menos 1 compra previa pagada** en StyleStore.\n"
+                             f"• Para reservar una prenda sin costo inicial, debes contar con **al menos 1 compra previa pagada** en {brand}.\n"
                              "• Las reservas tienen una vigencia máxima de **3 días calendario**.\n"
                              "• Puedes reservar en cualquier momento y debes elegir el recojo dentro del horario de atención de la sucursal.",
                 "chips": [
@@ -378,7 +406,7 @@ Rutas disponibles:
             temp_names = ", ".join([t.nombre for t in temporadas]) if temporadas else "Temporada Actual"
 
             return {
-                "respuesta": f"✨ **Moda y Tendencias StyleStore:**\n\n"
+                "respuesta": f"✨ **Moda y Tendencias de {brand}:**\n\n"
                              f"• **Colecciones Destacadas:** {col_names}\n"
                              f"• **Temporadas Disponibles:** {temp_names}\n\n"
                              f"Explora prendas exclusivas organizadas por estilo en nuestro catálogo interactivo.",
@@ -402,13 +430,16 @@ Rutas disponibles:
                     "chips": [{"label": "👗 Catálogo", "action": "navigate", "route": "/catalogo"}],
                 }
 
-            ultimas_ventas = self.db.query(OrdenVenta).filter(
-                OrdenVenta.codigo_cliente == cliente.codigo
+            ultimas_ventas = self.db.query(OrdenVenta).join(
+                Sucursal, OrdenVenta.sucursal_id == Sucursal.id
+            ).filter(
+                OrdenVenta.codigo_cliente == cliente.codigo,
+                Sucursal.empresa_id == self._empresa_id(user),
             ).order_by(OrdenVenta.id.desc()).limit(3).all()
 
             if not ultimas_ventas:
                 return {
-                    "respuesta": f"Hola {user.name}, aún no tienes compras registradas en StyleStore. ¡Te invitamos a ver las novedades de la temporada!",
+                    "respuesta": f"Hola {user.name}, aún no tienes compras registradas en {brand}. ¡Te invitamos a ver las novedades de la temporada!",
                     "chips": [{"label": "🛍️ Ir al Catálogo", "action": "navigate", "route": "/catalogo"}],
                 }
 
@@ -431,7 +462,7 @@ Rutas disponibles:
                 self.db.query(Producto), user, Producto.empresa_id
             ).filter(Producto.active == True).limit(5).all()
             if prods:
-                lineas = ["👗 **¡En StyleStore contamos con variadas prendas de moda y temporada!**\n\nAlgunas de nuestras prendas destacadas son:\n"]
+                lineas = [f"👗 **En {brand} contamos con estas prendas de moda y temporada:**\n\n"]
                 for p in prods:
                     lineas.append(f"• **{p.nombre}** (Ref: {p.codigo}) - Bs. {float(p.precio):.2f}")
                 lineas.append("\nPuedes explorar colores, tallas y stock en nuestro catálogo.")
@@ -493,7 +524,7 @@ Rutas disponibles:
 
         # 11. Respuesta por defecto
         return {
-            "respuesta": "Entiendo tu consulta. Como asistente virtual de StyleStore puedo ayudarte a consultar sucursales, recomendaciones de ropa, pedidos, envíos con Delivery StyleStore, políticas de reserva o solicitar cambios. ¿Cuál de estas opciones te gustaría explorar?",
+            "respuesta": f"Entiendo tu consulta. Como asistente virtual de {brand} puedo ayudarte con su catálogo, sucursales, pedidos, envíos, reservas o cambios. ¿Qué deseas consultar?",
             "chips": [
                 {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/admin/sucursales"},
                 {"label": "👗 Catálogo Online", "action": "navigate", "route": "/catalogo"},

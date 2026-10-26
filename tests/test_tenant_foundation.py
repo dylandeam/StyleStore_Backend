@@ -9,10 +9,14 @@ from app.models.envio import Envio
 from app.models.empresa import Empresa
 from app.models.plan_suscripcion import ContratacionPlan
 from app.models.user_empresa import UserEmpresa
+from app.models.categoria import Categoria
+from app.models.temporada import Temporada
+from app.models.producto import Producto
 from app.core.security import hash_password
 from app.services.report_ai_service import ReportAIService
 from app.services.plan_service import PlanService
 from app.services.paypal_service import PayPalService
+from app.config import settings
 
 
 def _create_empresa(client, admin_token: str, codigo: str, email: str) -> dict:
@@ -1060,3 +1064,87 @@ def test_tenant_branding_and_portal_registration_are_isolated(
         },
     )
     assert wrong_portal_login.status_code == 401
+
+
+def test_tenant_admin_can_login_directly_from_own_portal_without_legacy_membership(
+    client, db_session, admin_token
+):
+    company = _create_empresa(client, admin_token, "direct-admin", "owner@direct.example.com")
+    owner = db_session.query(User).filter(User.email == "owner@direct.example.com").one()
+    db_session.query(UserEmpresa).filter(UserEmpresa.user_id == owner.id).delete()
+    db_session.commit()
+
+    login = client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "owner@direct.example.com",
+            "password": "TenantPass2026!",
+            "empresa_codigo": "direct-admin",
+        },
+    )
+    assert login.status_code == 200, login.text
+    profile = client.get(
+        "/api/v1/users/me",
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+    )
+    assert profile.json()["empresa_id"] == company["id"]
+
+
+def test_chatbot_and_catalog_pdf_are_scoped_to_selected_tenant(
+    client, db_session, admin_token, monkeypatch
+):
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "")
+    company_a = _create_empresa(client, admin_token, "bot-a", "owner@bot-a.example.com")
+    company_b = _create_empresa(client, admin_token, "bot-b", "owner@bot-b.example.com")
+    empresa_a = db_session.query(Empresa).filter(Empresa.id == company_a["id"]).one()
+    empresa_b = db_session.query(Empresa).filter(Empresa.id == company_b["id"]).one()
+    empresa_a.nombre_marca = "Moda Aurora"
+    empresa_b.nombre_marca = "Moda Boreal"
+    for empresa, suffix in ((empresa_a, "AURORA"), (empresa_b, "BOREAL")):
+        category = Categoria(empresa_id=empresa.id, nombre=f"Polos {suffix}")
+        season = Temporada(empresa_id=empresa.id, nombre=f"Verano {suffix}")
+        db_session.add_all([category, season])
+        db_session.flush()
+        db_session.add(Producto(
+            codigo=f"PROD-{suffix}",
+            empresa_id=empresa.id,
+            nombre=f"Polo {suffix}",
+            descripcion=f"Prenda exclusiva {suffix}",
+            precio=Decimal("99.90"),
+            categoria_id=category.id,
+            temporada_id=season.id,
+            active=True,
+            visible_en_catalogo=True,
+        ))
+    db_session.commit()
+
+    global_chat = client.post(
+        "/api/v1/chatbot/mensaje",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"mensaje": "que ropa tienen"},
+    )
+    assert global_chat.status_code == 200
+    assert "Selecciona un tenant" in global_chat.json()["respuesta"]
+
+    scoped_headers = {
+        "Authorization": f"Bearer {admin_token}",
+        "X-Tenant-Context": str(company_a["id"]),
+    }
+    scoped_chat = client.post(
+        "/api/v1/chatbot/mensaje",
+        headers=scoped_headers,
+        json={"mensaje": "que ropa tienen"},
+    )
+    assert scoped_chat.status_code == 200, scoped_chat.text
+    assert "AURORA" in scoped_chat.json()["respuesta"]
+    assert "BOREAL" not in scoped_chat.json()["respuesta"]
+
+    pdf = client.get(
+        "/api/v1/catalogo/exportar-pdf",
+        headers=scoped_headers,
+        params={"categoria_id": db_session.query(Categoria).filter(Categoria.empresa_id == empresa_a.id).one().id},
+    )
+    assert pdf.status_code == 200, pdf.text
+    assert pdf.headers["content-type"] == "application/pdf"
+    assert pdf.content.startswith(b"%PDF")
+    assert len(pdf.content) > 1500

@@ -2,7 +2,8 @@
 Catálogo interactivo endpoints (v5 sección 15).
 Muestra productos visibles en catálogo con colores, tallas y stock disponible en tiempo real.
 """
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -16,9 +17,11 @@ from app.models.sucursal import Sucursal
 from app.models.empresa import Empresa
 from app.models.user import User
 from app.models.favorito import Favorito
-from app.api.deps import get_optional_current_user
+from app.api.deps import get_current_user, get_optional_current_user
 from app.core.exceptions import NotFoundException
 from app.services.promocion_service import PromocionService
+from app.services.catalog_pdf_service import CatalogPdfService
+from app.services.tenant_scope import effective_empresa_id
 
 router = APIRouter(prefix="/catalogo", tags=["Catálogo"])
 
@@ -30,11 +33,12 @@ def _resolve_empresa_id(
         sucursal = db.query(Sucursal).filter(Sucursal.id == sucursal_id, Sucursal.active.is_(True)).first()
         if not sucursal:
             raise NotFoundException("Sucursal no encontrada.")
-        if current_user and not current_user.is_platform_admin and sucursal.empresa_id != current_user.empresa_id:
+        scoped_empresa_id = effective_empresa_id(current_user) if current_user else None
+        if scoped_empresa_id is not None and sucursal.empresa_id != scoped_empresa_id:
             raise NotFoundException("Sucursal no encontrada.")
         return sucursal.empresa_id
     if current_user:
-        return current_user.empresa_id
+        return effective_empresa_id(current_user)
     default_empresa = db.query(Empresa).filter(Empresa.codigo == "stylestore", Empresa.active.is_(True)).first()
     return default_empresa.id if default_empresa else None
 
@@ -151,6 +155,33 @@ async def get_catalogo(
         })
 
     return result
+
+
+@router.get("/exportar-pdf", summary="Descargar catálogo PDF con identidad del tenant")
+async def export_catalog_pdf(
+    categoria_id: int | None = Query(None),
+    temporada_id: int | None = Query(None),
+    coleccion_id: int | None = Query(None),
+    sucursal_id: int | None = Query(None),
+    search: str | None = Query(None, max_length=120),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        content, filename = CatalogPdfService(db, current_user).generate(
+            categoria_id=categoria_id,
+            temporada_id=temporada_id,
+            coleccion_id=coleccion_id,
+            sucursal_id=sucursal_id,
+            search=search,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 from app.services.recommendation_service import RecommendationService

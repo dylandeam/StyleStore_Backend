@@ -224,6 +224,14 @@ class EmpresaService:
                 is_active=True,
             )
             self.db.add(admin)
+            self.db.flush()
+            self.db.add(
+                UserEmpresa(
+                    user_id=admin.id,
+                    empresa_id=empresa.id,
+                    active=True,
+                )
+            )
             self.db.commit()
             self.db.refresh(empresa)
             self.db.refresh(admin)
