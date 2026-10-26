@@ -71,6 +71,48 @@ class ChatbotService:
         empresa_id = self._empresa_id(user)
         return query if empresa_id is None else query.filter(column == empresa_id)
 
+    @staticmethod
+    def _navigation_chips(mensaje: str) -> list[dict[str, str]]:
+        """Las acciones son datos de la aplicación, nunca texto generado por la IA."""
+        norm = _normalize(mensaje)
+        chips: list[dict[str, str]] = []
+
+        def add(label: str, route: str) -> None:
+            if not any(item["route"] == route for item in chips):
+                chips.append({"label": label, "action": "navigate", "route": route})
+
+        if any(word in norm for word in ("sucursal", "direccion", "ubicacion", "horario")):
+            add("Ver sucursales", "/sucursales")
+        if any(word in norm for word in ("pago", "paypal", "qr", "efectivo")):
+            add("Mis pagos", "/cuenta/mis-pagos")
+        if any(word in norm for word in ("pedido", "compra", "seguimiento", "envio", "delivery")):
+            add("Mis compras", "/cuenta/mis-compras")
+        if any(word in norm for word in ("carrito", "agrega", "anade", "comprar")):
+            add("Ver carrito", "/carrito")
+        if any(word in norm for word in ("ropa", "prenda", "catalogo", "polo", "camisa", "pantalon", "precio")):
+            add("Ver catálogo", "/catalogo")
+
+        add("Ver catálogo", "/catalogo")
+        add("Mis compras", "/cuenta/mis-compras")
+        return chips[:3]
+
+    @staticmethod
+    def _clean_ai_response(raw_text: str) -> str:
+        """Elimina metadatos/rutas que un modelo pueda filtrar dentro de la respuesta."""
+        clean_lines: list[str] = []
+        for line in raw_text.replace("\r\n", "\n").splitlines():
+            stripped = line.strip()
+            marker = re.sub(r"[*_#`]", "", stripped).strip().lower()
+            if marker.startswith(("chips:", "acciones:", "rutas:")):
+                continue
+            if re.search(r"\[[^\]]+\|\s*/(?:catalogo|sucursales|admin|cuenta|carrito)", stripped, re.I):
+                continue
+            if re.fullmatch(r"[-—–_*\s]{3,}", stripped):
+                continue
+            clean_lines.append(line.rstrip())
+
+        return "\n".join(clean_lines).strip()
+
     def _scope_stock(self, query, user: Optional[User]):
         empresa_id = self._empresa_id(user)
         if empresa_id is None:
@@ -138,15 +180,9 @@ REGLAS DE RESPUESTA:
 - Si el cliente pregunta por precios o rangos presupuestarios (por ejemplo: '¿hay pantalones de 60bs o menos?', '¿cuál es la prenda más barata?'), revisa rigurosamente la lista de productos de arriba y responde con exactitud mencionando los nombres y precios reales encontrados.
 - Si el cliente pregunta qué sucursales hay o sus direcciones, enuméralas con sus nombres y direcciones.
 - Si el cliente desea comprar o añadir algo al carrito, infórmale amablemente que puede decir o escribir: 'agrega [nombre de prenda] al carrito'.
-- Mantén respuestas concisas, fáciles de leer en pantalla o escuchar por voz. Usa negritas y viñetas cuando sea apropiado.
-- Al final de tu respuesta, agrega SIEMPRE una última línea con CHIPS de navegación relevantes en este formato exacto:
-CHIPS: [Texto Chip | /ruta], [Texto Chip 2 | /ruta]
-Rutas disponibles:
-- /catalogo (Ver Catálogo)
-- /admin/sucursales (Nuestras Sucursales)
-- /cuenta/mis-compras (Mis Compras / Seguimiento)
-- /cuenta/mis-pagos (Mis Pagos)
-- /carrito (Bolsa de Compras)
+- Mantén respuestas concisas y fáciles de leer. Puedes usar negritas, viñetas y uno o dos emojis pertinentes.
+- Devuelve únicamente la respuesta destinada al cliente. Nunca escribas CHIPS, ACCIONES, rutas URL,
+  nombres de campos, JSON ni instrucciones técnicas; la aplicación agrega sus botones por separado.
 """
 
             response = httpx.post(
@@ -175,34 +211,13 @@ Rutas disponibles:
             if not raw_text:
                 return None
 
-            # Parsear chips al final del texto
-            chips = []
-            text_lines = []
-            for line in raw_text.splitlines():
-                if line.strip().startswith("CHIPS:"):
-                    chip_part = line.strip()[6:].strip()
-                    matches = re.findall(r"\[([^\]\|]+)\|([^\]]+)\]", chip_part)
-                    for label, route in matches:
-                        chips.append({
-                            "label": label.strip(),
-                            "action": "navigate",
-                            "route": route.strip()
-                        })
-                else:
-                    text_lines.append(line)
-
-            cleaned_text = "\n".join(text_lines).strip()
-
-            if not chips:
-                chips = [
-                    {"label": "👗 Catálogo", "action": "navigate", "route": "/catalogo"},
-                    {"label": "📍 Sucursales", "action": "navigate", "route": "/admin/sucursales"},
-                    {"label": "📦 Mis Compras", "action": "navigate", "route": "/cuenta/mis-compras"}
-                ]
+            cleaned_text = self._clean_ai_response(raw_text)
+            if not cleaned_text:
+                return None
 
             return {
                 "respuesta": cleaned_text,
-                "chips": chips,
+                "chips": self._navigation_chips(mensaje),
                 "ia_powered": True
             }
 
@@ -278,7 +293,7 @@ Rutas disponibles:
                     "respuesta": "No encontré en nuestro catálogo activo la prenda que intentas añadir. Por favor revisa el catálogo o indícame el nombre exacto de la prenda.",
                     "chips": [
                         {"label": "👗 Explorar Catálogo", "action": "navigate", "route": "/catalogo"},
-                        {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/admin/sucursales"},
+                        {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/sucursales"},
                     ],
                 }
 
@@ -291,7 +306,7 @@ Rutas disponibles:
             return {
                 "respuesta": f"¡Hola{nombre}! 👋 Bienvenido a {brand}. ¿En qué puedo colaborarte hoy? Puedes consultarme sobre nuestras sucursales, prendas disponibles, temporadas, estado de tus pedidos o pedirme agregar una prenda al carrito.",
                 "chips": [
-                    {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/admin/sucursales"},
+                    {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/sucursales"},
                     {"label": "👗 Catálogo de Ropa", "action": "navigate", "route": "/catalogo"},
                     {"label": "📦 Mis Compras", "action": "navigate", "route": "/cuenta/mis-compras"},
                     {"label": "💳 Métodos de Pago", "action": "navigate", "route": "/cuenta/mis-pagos"},
@@ -310,7 +325,7 @@ Rutas disponibles:
             return {
                 "respuesta": f"¡Hola{nombre}! 👋 Bienvenido a {brand}. ¿En qué puedo colaborarte hoy? Puedes consultarme sobre nuestras sucursales, prendas disponibles, temporadas, estado de tus pedidos o pedirme agregar una prenda al carrito.",
                 "chips": [
-                    {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/admin/sucursales"},
+                    {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/sucursales"},
                     {"label": "👗 Catálogo de Ropa", "action": "navigate", "route": "/catalogo"},
                     {"label": "📦 Mis Compras", "action": "navigate", "route": "/cuenta/mis-compras"},
                     {"label": "💳 Métodos de Pago", "action": "navigate", "route": "/cuenta/mis-pagos"},
@@ -336,7 +351,7 @@ Rutas disponibles:
             return {
                 "respuesta": "\n".join(lineas),
                 "chips": [
-                    {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/admin/sucursales"},
+                    {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/sucursales"},
                     {"label": "👗 Explorar Prendas", "action": "navigate", "route": "/catalogo"},
                 ],
             }
@@ -389,7 +404,7 @@ Rutas disponibles:
                              "• Ve a **Mis Compras**, selecciona tu pedido y pulsa 'Solicitar Cambio / Devolución'. El encargado revisará tu caso para canjearlo en la sucursal que elijas.",
                 "chips": [
                     {"label": "🔄 Solicitar Cambio en Mis Compras", "action": "navigate", "route": "/cuenta/mis-compras"},
-                    {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/admin/sucursales"},
+                    {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/sucursales"},
                 ],
             }
 
@@ -470,7 +485,7 @@ Rutas disponibles:
                     "respuesta": "\n".join(lineas),
                     "chips": [
                         {"label": "👗 Ver Catálogo Completo", "action": "navigate", "route": "/catalogo"},
-                        {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/admin/sucursales"},
+                        {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/sucursales"},
                     ],
                 }
 
@@ -508,7 +523,7 @@ Rutas disponibles:
                     "respuesta": "\n".join(lineas),
                     "chips": [
                         {"label": "👗 Ver en Catálogo", "action": "navigate", "route": "/catalogo"},
-                        {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/admin/sucursales"},
+                        {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/sucursales"},
                         {"label": "🛍️ Ir al Carrito", "action": "navigate", "route": "/carrito"},
                     ],
                 }
@@ -518,7 +533,7 @@ Rutas disponibles:
                     "respuesta": f"Por el momento no encontré prendas que coincidan exactamente con '{prenda_buscada}' en nuestro catálogo activo. Sin embargo, disponemos de camisas, pantalones, polos y novedades de temporada. ¡Te invitamos a ver todo el catálogo!",
                     "chips": [
                         {"label": "👗 Explorar Catálogo", "action": "navigate", "route": "/catalogo"},
-                        {"label": "📍 Consultar Sucursales", "action": "navigate", "route": "/admin/sucursales"},
+                        {"label": "📍 Consultar Sucursales", "action": "navigate", "route": "/sucursales"},
                     ],
                 }
 
@@ -526,7 +541,7 @@ Rutas disponibles:
         return {
             "respuesta": f"Entiendo tu consulta. Como asistente virtual de {brand} puedo ayudarte con su catálogo, sucursales, pedidos, envíos, reservas o cambios. ¿Qué deseas consultar?",
             "chips": [
-                {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/admin/sucursales"},
+                {"label": "📍 Ver Sucursales", "action": "navigate", "route": "/sucursales"},
                 {"label": "👗 Catálogo Online", "action": "navigate", "route": "/catalogo"},
                 {"label": "📦 Mis Compras", "action": "navigate", "route": "/cuenta/mis-compras"},
                 {"label": "🔄 Cambios y Devoluciones", "action": "navigate", "route": "/cuenta/mis-compras"},
