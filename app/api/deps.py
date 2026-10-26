@@ -9,6 +9,7 @@ from sqlalchemy.orm.attributes import set_committed_value
 from app.database import get_db
 from app.models.user import User
 from app.models.user_empresa import UserEmpresa
+from app.models.empresa import Empresa
 from app.core.security import decode_token
 from app.core.exceptions import (
     CredentialsException,
@@ -45,6 +46,26 @@ def _apply_token_tenant_scope(db: Session, user: User, payload: dict) -> User:
     # The entity lives only for this request/session. Marking it as committed prevents
     # an unrelated db.commit() from persisting the selected tenant on the account.
     set_committed_value(user, "empresa_id", empresa_id)
+    return user
+
+
+def _apply_platform_tenant_context(db: Session, request: Request, user: User) -> User:
+    """Validate the optional global tenant header and keep it request-local."""
+    raw_empresa_id = request.headers.get("X-Tenant-Context")
+    if not user.is_platform_admin:
+        return user
+    if hasattr(user, "_selected_empresa_id"):
+        delattr(user, "_selected_empresa_id")
+    if not raw_empresa_id or raw_empresa_id.lower() == "all":
+        return user
+    try:
+        empresa_id = int(raw_empresa_id)
+    except (TypeError, ValueError) as exc:
+        raise ForbiddenException("El contexto de tenant seleccionado no es válido") from exc
+    empresa = db.query(Empresa.id).filter(Empresa.id == empresa_id).first()
+    if not empresa:
+        raise ForbiddenException("El tenant seleccionado ya no existe")
+    setattr(user, "_selected_empresa_id", empresa_id)
     return user
 
 
@@ -100,6 +121,7 @@ async def get_current_user(
     user = user_service.get_user_by_id(user_id)
 
     user = _apply_token_tenant_scope(db, user, payload)
+    user = _apply_platform_tenant_context(db, request, user)
 
     if not user.is_active:
         raise CredentialsException(detail="User account is deactivated")
@@ -155,6 +177,7 @@ async def get_optional_current_user(
         user_service = UserService(db)
         user = user_service.get_user_by_id(user_id)
         user = _apply_token_tenant_scope(db, user, payload)
+        user = _apply_platform_tenant_context(db, request, user)
         if user and user.is_active:
             if not user.is_platform_admin and user.empresa_id is not None:
                 empresa, _ = PlanService(db).reconcile_tenant_access(user.empresa_id)
@@ -170,7 +193,7 @@ async def get_optional_current_user(
                         )
                     raise CredentialsException(detail="La empresa se encuentra suspendida")
             return user
-    except CredentialsException:
+    except (CredentialsException, ForbiddenException):
         raise
     except Exception:
         return None

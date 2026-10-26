@@ -43,7 +43,7 @@ async def register(request: RegisterRequest, db: Session = Depends(get_db)):
 async def login(request: LoginRequest, db: Session = Depends(get_db)):
     """Login and receive JWT tokens."""
     auth_service = AuthService(db)
-    return auth_service.login(request.email, request.password)
+    return auth_service.login(request.email, request.password, request.empresa_codigo)
 
 
 @router.post(

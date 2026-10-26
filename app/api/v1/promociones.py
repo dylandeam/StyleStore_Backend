@@ -21,13 +21,14 @@ from app.schemas.promocion import (
 )
 from app.services.promocion_service import PromocionService
 from app.core.exceptions import BadRequestException, NotFoundException
+from app.services.tenant_scope import effective_empresa_id
 
 router = APIRouter(prefix="/promociones", tags=["promociones"])
 
 
 def _empresa_objetivo(current_user: User, empresa_id: int | None = None) -> int:
     if current_user.is_platform_admin:
-        objetivo = empresa_id or current_user.empresa_id
+        objetivo = empresa_id or effective_empresa_id(current_user)
         if not objetivo:
             raise BadRequestException("El administrador SaaS debe indicar empresa_id.")
         return objetivo
@@ -129,8 +130,9 @@ def actualizar_promocion_agrupada(
     current_user: User = Depends(require_permission("promociones.gestionar")),
 ):
     query = db.query(PromocionAgrupada).filter(PromocionAgrupada.id == promocion_id)
-    if not current_user.is_platform_admin:
-        query = query.filter(PromocionAgrupada.empresa_id == current_user.empresa_id)
+    objetivo = effective_empresa_id(current_user)
+    if objetivo is not None:
+        query = query.filter(PromocionAgrupada.empresa_id == objetivo)
     item = query.first()
     if not item: raise NotFoundException("Promoción agrupada no encontrada.")
     _validar_objetivo(db, item.empresa_id, req)
@@ -145,7 +147,8 @@ def eliminar_promocion_agrupada(
     current_user: User = Depends(require_permission("promociones.gestionar")),
 ):
     query = db.query(PromocionAgrupada).filter(PromocionAgrupada.id == promocion_id)
-    if not current_user.is_platform_admin: query = query.filter(PromocionAgrupada.empresa_id == current_user.empresa_id)
+    objetivo = effective_empresa_id(current_user)
+    if objetivo is not None: query = query.filter(PromocionAgrupada.empresa_id == objetivo)
     item = query.first()
     if not item: raise NotFoundException("Promoción agrupada no encontrada.")
     db.delete(item); db.commit()
@@ -181,7 +184,8 @@ def actualizar_codigo(
     current_user: User = Depends(require_permission("promociones.gestionar")),
 ):
     query = db.query(CodigoDescuento).filter(CodigoDescuento.id == codigo_id)
-    if not current_user.is_platform_admin: query = query.filter(CodigoDescuento.empresa_id == current_user.empresa_id)
+    objetivo = effective_empresa_id(current_user)
+    if objetivo is not None: query = query.filter(CodigoDescuento.empresa_id == objetivo)
     item = query.first()
     if not item: raise NotFoundException("Código de descuento no encontrado.")
     for key, value in req.model_dump().items(): setattr(item, key, value)
@@ -197,7 +201,8 @@ def eliminar_codigo(
     current_user: User = Depends(require_permission("promociones.gestionar")),
 ):
     query = db.query(CodigoDescuento).filter(CodigoDescuento.id == codigo_id)
-    if not current_user.is_platform_admin: query = query.filter(CodigoDescuento.empresa_id == current_user.empresa_id)
+    objetivo = effective_empresa_id(current_user)
+    if objetivo is not None: query = query.filter(CodigoDescuento.empresa_id == objetivo)
     item = query.first()
     if not item: raise NotFoundException("Código de descuento no encontrado.")
     db.delete(item); db.commit(); return {"message": "Código eliminado."}

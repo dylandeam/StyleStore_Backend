@@ -11,6 +11,7 @@ from app.core.exceptions import ForbiddenException, NotFoundException
 from app.database import get_db
 from app.models.reembolso_offline import ReembolsoOffline
 from app.models.user import User
+from app.services.tenant_scope import effective_empresa_id
 from app.services.bitacora_service import BitacoraService
 
 router = APIRouter(prefix="/reembolsos", tags=["Reembolsos offline"])
@@ -60,8 +61,9 @@ async def list_refunds(
     if current_user.role not in {"administrador", "encargado_sucursal", "cajero"}:
         raise ForbiddenException("Solo el personal autorizado puede gestionar reembolsos.")
     query = db.query(ReembolsoOffline)
-    if not current_user.is_platform_admin:
-        query = query.filter(ReembolsoOffline.empresa_id == current_user.empresa_id)
+    empresa_id = effective_empresa_id(current_user)
+    if empresa_id is not None:
+        query = query.filter(ReembolsoOffline.empresa_id == empresa_id)
     if estado:
         query = query.filter(ReembolsoOffline.estado == estado)
     return [_serialize(item) for item in query.order_by(ReembolsoOffline.created_at.desc()).all()]
@@ -77,8 +79,9 @@ async def update_refund(
     if current_user.role not in {"administrador", "encargado_sucursal", "cajero"}:
         raise ForbiddenException("Solo el personal autorizado puede gestionar reembolsos.")
     query = db.query(ReembolsoOffline).filter(ReembolsoOffline.id == refund_id)
-    if not current_user.is_platform_admin:
-        query = query.filter(ReembolsoOffline.empresa_id == current_user.empresa_id)
+    empresa_id = effective_empresa_id(current_user)
+    if empresa_id is not None:
+        query = query.filter(ReembolsoOffline.empresa_id == empresa_id)
     refund = query.first()
     if not refund:
         raise NotFoundException("Reembolso no encontrado.")

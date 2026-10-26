@@ -50,6 +50,14 @@ class LoginRequest(BaseModel):
 
     email: EmailStr = Field(..., description="User email address")
     password: str = Field(..., description="User password")
+    empresa_codigo: str | None = Field(
+        None, max_length=50, description="Código del tenant elegido antes de iniciar sesión"
+    )
+
+    @field_validator("empresa_codigo")
+    @classmethod
+    def normalize_company_code(cls, value: str | None):
+        return value.strip().lower() if value and value.strip() else None
 
 
 class TokenResponse(BaseModel):

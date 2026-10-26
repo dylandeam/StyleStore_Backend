@@ -159,7 +159,7 @@ class AuthService:
 
         return user
 
-    def login(self, email: str, password: str) -> TokenResponse:
+    def login(self, email: str, password: str, empresa_codigo: str | None = None) -> TokenResponse:
         """
         Authenticate a user and return JWT tokens.
         """
@@ -188,8 +188,28 @@ class AuthService:
         if not user.is_active:
             raise CredentialsException(detail="La cuenta de usuario está desactivada")
 
-        if not user.is_platform_admin and user.empresa_id is not None:
-            empresa, _ = PlanService(self.db).reconcile_tenant_access(user.empresa_id)
+        selected_empresa_id = user.empresa_id
+        selected_empresa = None
+        if empresa_codigo:
+            selected_empresa = self.db.query(Empresa).filter(
+                Empresa.codigo == empresa_codigo.strip().lower()
+            ).first()
+            if not selected_empresa:
+                raise CredentialsException(detail="El tenant seleccionado no existe")
+            if not user.is_platform_admin:
+                membership = self.db.query(UserEmpresa.id).filter(
+                    UserEmpresa.user_id == user.id,
+                    UserEmpresa.empresa_id == selected_empresa.id,
+                    UserEmpresa.active.is_(True),
+                ).first()
+                if not membership:
+                    raise CredentialsException(
+                        detail="Tu cuenta no está registrada en el tenant seleccionado"
+                    )
+            selected_empresa_id = selected_empresa.id
+
+        if not user.is_platform_admin and selected_empresa_id is not None:
+            empresa, _ = PlanService(self.db).reconcile_tenant_access(selected_empresa_id)
             if not empresa.active:
                 if empresa.inactive_reason == "subscription_expired" and user.role == "administrador":
                     pass
@@ -205,11 +225,11 @@ class AuthService:
             "sub": str(user.id),
             "role": user.role,
             "email": user.email,
-            "empresa_id": user.empresa_id,
+            "empresa_id": selected_empresa_id,
         }
         access_token = create_access_token(data=token_data)
         refresh_token = create_refresh_token(
-            data={"sub": str(user.id), "empresa_id": user.empresa_id}
+            data={"sub": str(user.id), "empresa_id": selected_empresa_id}
         )
 
         # Log successful login in bitacora

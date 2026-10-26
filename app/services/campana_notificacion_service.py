@@ -49,6 +49,8 @@ class CampanaNotificacionService:
             query = self._tenant_users(campaign.empresa_id)
             if campaign.audiencia == "clientes":
                 query = query.filter(User.role == "cliente")
+            elif campaign.audiencia == "empleados":
+                query = query.filter(User.role.notin_(["cliente", "administrador"]))
             elif campaign.audiencia == "administradores":
                 query = query.filter(User.role == "administrador")
             elif campaign.audiencia == "usuarios_seleccionados":

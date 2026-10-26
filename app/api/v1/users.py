@@ -14,6 +14,7 @@ from app.schemas.user import (
 )
 from app.api.deps import get_current_user, require_permission
 from app.services.user_service import UserService
+from app.services.tenant_scope import effective_empresa_id
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -62,8 +63,8 @@ async def list_users(
     return service.list_users(
         search=search,
         role=role,
-        empresa_id=current_user.empresa_id,
-        include_all_empresas=current_user.is_platform_admin,
+        empresa_id=effective_empresa_id(current_user),
+        include_all_empresas=current_user.is_platform_admin and effective_empresa_id(current_user) is None,
     )
 
 

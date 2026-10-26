@@ -756,7 +756,9 @@ async def list_admin_carritos(
         .join(Cliente, Carrito.codigo_cliente == Cliente.codigo)
         .join(User, Cliente.user_id == User.id)
     )
-    if not current_user.is_platform_admin:
-        query = query.filter(User.empresa_id == current_user.empresa_id)
+    from app.services.tenant_scope import effective_empresa_id
+    empresa_id = effective_empresa_id(current_user)
+    if empresa_id is not None:
+        query = query.filter(User.empresa_id == empresa_id)
     carritos = query.order_by(Carrito.created_at.desc()).all()
     return [_serialize_carrito(c, db) for c in carritos]

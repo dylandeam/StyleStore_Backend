@@ -35,7 +35,7 @@ from app.models.categoria import Categoria
 from app.models.pago import Pago
 from app.models.temporada import Temporada
 from app.models.bitacora import Bitacora
-from app.services.tenant_scope import scope_by_empresa, scope_by_sucursal
+from app.services.tenant_scope import effective_empresa_id, scope_by_empresa, scope_by_sucursal
 
 
 def clean_sheet_title(title: str) -> str:
@@ -856,8 +856,9 @@ class ReportService:
         agrupadas por sucursal, restringidas estrictamente a las sucursales del tenant autenticado.
         """
         sucursales_q = self.db.query(Sucursal)
-        if not self.current_user.is_platform_admin:
-            sucursales_q = sucursales_q.filter(Sucursal.empresa_id == self.current_user.empresa_id)
+        empresa_id = effective_empresa_id(self.current_user)
+        if empresa_id is not None:
+            sucursales_q = sucursales_q.filter(Sucursal.empresa_id == empresa_id)
         sucursales = sucursales_q.order_by(Sucursal.id.asc()).all()
 
         sucursales_metricas = []

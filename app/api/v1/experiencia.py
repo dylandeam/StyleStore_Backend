@@ -12,6 +12,7 @@ from app.models.experiencia import CalificacionServicio, Reclamo
 from app.models.orden_venta import OrdenVenta
 from app.models.sucursal import Sucursal
 from app.models.user import User
+from app.services.tenant_scope import effective_empresa_id
 from app.schemas.experiencia import (
     CalificacionCreate, CalificacionResponse, ReclamoCreate, ReclamoResponse, ReclamoUpdate,
 )
@@ -88,8 +89,10 @@ async def list_ratings(current_user: User = Depends(get_current_user), db: Sessi
     query = db.query(CalificacionServicio)
     if current_user.role == "cliente":
         query = query.filter(CalificacionServicio.user_id == current_user.id, CalificacionServicio.empresa_id == current_user.empresa_id)
-    elif not current_user.is_platform_admin:
-        query = query.filter(CalificacionServicio.empresa_id == current_user.empresa_id)
+    else:
+        empresa_id = effective_empresa_id(current_user)
+        if empresa_id is not None:
+            query = query.filter(CalificacionServicio.empresa_id == empresa_id)
     return [_rating_dict(item) for item in query.order_by(CalificacionServicio.created_at.desc()).all()]
 
 
@@ -128,8 +131,10 @@ async def list_claims(
     query = db.query(Reclamo)
     if current_user.role == "cliente":
         query = query.filter(Reclamo.user_id == current_user.id, Reclamo.empresa_id == current_user.empresa_id)
-    elif not current_user.is_platform_admin:
-        query = query.filter(Reclamo.empresa_id == current_user.empresa_id)
+    else:
+        empresa_id = effective_empresa_id(current_user)
+        if empresa_id is not None:
+            query = query.filter(Reclamo.empresa_id == empresa_id)
     if estado:
         query = query.filter(Reclamo.estado == estado)
     return [_claim_dict(item) for item in query.order_by(Reclamo.created_at.desc()).all()]

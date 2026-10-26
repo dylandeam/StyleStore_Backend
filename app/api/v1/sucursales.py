@@ -12,6 +12,7 @@ from app.schemas.sucursal import SucursalCreate, SucursalUpdate, SucursalRespons
 from app.schemas.common import MessageResponse
 from app.services.sucursal_service import SucursalService
 from app.core.exceptions import ForbiddenException
+from app.services.tenant_scope import effective_empresa_id
 
 router = APIRouter(prefix="/sucursales", tags=["Sucursales"])
 
@@ -34,8 +35,8 @@ async def list_sucursales(
     ).first()
     return service.list_sucursales(
         active_only=active_only,
-        empresa_id=current_user.empresa_id if current_user else (default_empresa.id if default_empresa else -1),
-        include_all_empresas=bool(current_user and current_user.is_platform_admin),
+        empresa_id=effective_empresa_id(current_user) if current_user else (default_empresa.id if default_empresa else -1),
+        include_all_empresas=bool(current_user and current_user.is_platform_admin and effective_empresa_id(current_user) is None),
     )
 
 
@@ -57,8 +58,8 @@ async def get_sucursal(
     ).first()
     return service.get_sucursal_by_id(
         sucursal_id,
-        empresa_id=current_user.empresa_id if current_user else (default_empresa.id if default_empresa else -1),
-        include_all_empresas=bool(current_user and current_user.is_platform_admin),
+        empresa_id=effective_empresa_id(current_user) if current_user else (default_empresa.id if default_empresa else -1),
+        include_all_empresas=bool(current_user and current_user.is_platform_admin and effective_empresa_id(current_user) is None),
     )
 
 

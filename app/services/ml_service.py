@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.models.orden_venta import OrdenVenta
 from app.models.sucursal import Sucursal
 from app.models.user import User
-from app.services.tenant_scope import scope_by_sucursal
+from app.services.tenant_scope import effective_empresa_id, scope_by_sucursal
 
 
 SEED = 20261021
@@ -143,13 +143,17 @@ class MLService:
         self.db, self.current_user = db, current_user
 
     def _orders(self, sucursal_id: int | None = None) -> list[OrdenVenta]:
+        empresa_id = effective_empresa_id(self.current_user)
         query = scope_by_sucursal(
             self.db.query(OrdenVenta).filter(~OrdenVenta.estado.in_(["anulado", "cancelada"])),
             self.db, self.current_user, OrdenVenta.sucursal_id,
         )
         if sucursal_id:
-            allowed = self.db.query(Sucursal.id).filter(Sucursal.id == sucursal_id, Sucursal.empresa_id == self.current_user.empresa_id).first()
-            if not allowed and not self.current_user.is_platform_admin:
+            allowed_query = self.db.query(Sucursal.id).filter(Sucursal.id == sucursal_id)
+            if empresa_id is not None:
+                allowed_query = allowed_query.filter(Sucursal.empresa_id == empresa_id)
+            allowed = allowed_query.first()
+            if not allowed:
                 return []
             query = query.filter(OrdenVenta.sucursal_id == sucursal_id)
         return query.all()
@@ -176,7 +180,7 @@ class MLService:
             label = min(range(3), key=lambda idx: _distance(point, unsupervised["centers"][idx]))
             segments[unsupervised["names"][label]] += 1
         return {
-            "tenant_id": self.current_user.empresa_id, "sucursal_id": sucursal_id,
+            "tenant_id": effective_empresa_id(self.current_user), "sucursal_id": sucursal_id,
             "generado_en": date.today().isoformat(),
             "modelo_supervisado": {key: supervised[key] for key in ("tipo", "objetivo", "features", "seed", "filas_entrenamiento", "filas_prueba", "mae", "r2")},
             "pronostico_7_dias": forecasts,
@@ -217,8 +221,9 @@ class MLService:
             .join(Color, ProductoColor.color_id == Color.id)
             .join(Talla, StockInventario.talla_id == Talla.id)
         )
-        if not self.current_user.is_platform_admin:
-            query = query.filter(Sucursal.empresa_id == self.current_user.empresa_id)
+        empresa_id = effective_empresa_id(self.current_user)
+        if empresa_id is not None:
+            query = query.filter(Sucursal.empresa_id == empresa_id)
         if sucursal_id:
             query = query.filter(StockInventario.sucursal_id == sucursal_id)
 
@@ -237,8 +242,8 @@ class MLService:
                 OrdenVenta.fecha >= since_date,
             )
         )
-        if not self.current_user.is_platform_admin:
-            sales_query = sales_query.filter(Sucursal.empresa_id == self.current_user.empresa_id)
+        if empresa_id is not None:
+            sales_query = sales_query.filter(Sucursal.empresa_id == empresa_id)
         if sucursal_id:
             sales_query = sales_query.filter(OrdenVenta.sucursal_id == sucursal_id)
 
@@ -302,7 +307,7 @@ class MLService:
         items.sort(key=lambda x: (order_rank.get(x["criticidad"], 4), x["dias_cobertura"]))
 
         return {
-            "tenant_id": self.current_user.empresa_id,
+            "tenant_id": empresa_id,
             "sucursal_id": sucursal_id,
             "generado_en": date.today().isoformat(),
             "dias_horizonte_analizado": dias_horizonte,

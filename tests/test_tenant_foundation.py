@@ -942,3 +942,62 @@ def test_client_can_register_in_multiple_tenants(client, db_session, admin_token
     )
     db_session.refresh(user)
     assert user.is_active is True
+
+
+def test_platform_admin_header_scopes_modules_and_login_accepts_tenant_code(
+    client, db_session, admin_token
+):
+    company_a = _create_empresa(client, admin_token, "context-a", "admin@context-a.example.com")
+    company_b = _create_empresa(client, admin_token, "context-b", "admin@context-b.example.com")
+    headers_a = {"Authorization": f"Bearer {_login(client, 'admin@context-a.example.com')}"}
+    headers_b = {"Authorization": f"Bearer {_login(client, 'admin@context-b.example.com')}"}
+    for headers, name in ((headers_a, "Context A"), (headers_b, "Context B")):
+        response = client.post(
+            "/api/v1/sucursales",
+            headers=headers,
+            json={"name": name, "city": "La Paz", "address": "Calle 1", "phone": "70000123"},
+        )
+        assert response.status_code == 201, response.text
+
+    master_a = {
+        "Authorization": f"Bearer {admin_token}",
+        "X-Tenant-Context": str(company_a["id"]),
+    }
+    scoped = client.get("/api/v1/sucursales", headers=master_a)
+    assert scoped.status_code == 200, scoped.text
+    assert {item["name"] for item in scoped.json()} == {"Context A"}
+    global_view = client.get(
+        "/api/v1/sucursales", headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert {"Context A", "Context B"}.issubset({item["name"] for item in global_view.json()})
+
+    registered = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "context-client@example.com",
+            "password": "ClientPass2026!",
+            "name": "Context Client",
+            "empresa_codigos": ["context-a", "context-b"],
+        },
+    )
+    assert registered.status_code == 201, registered.text
+    selected_login = client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "context-client@example.com",
+            "password": "ClientPass2026!",
+            "empresa_codigo": "context-b",
+        },
+    )
+    assert selected_login.status_code == 200, selected_login.text
+    selected_profile = client.get(
+        "/api/v1/users/me",
+        headers={"Authorization": f"Bearer {selected_login.json()['access_token']}"},
+    )
+    assert selected_profile.json()["empresa_id"] == company_b["id"]
+
+    invalid_context = client.get(
+        "/api/v1/sucursales",
+        headers={"Authorization": f"Bearer {admin_token}", "X-Tenant-Context": "999999"},
+    )
+    assert invalid_context.status_code == 403

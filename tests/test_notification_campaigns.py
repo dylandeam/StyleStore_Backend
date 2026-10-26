@@ -97,3 +97,35 @@ def test_recurring_campaign_is_persisted_and_can_be_cancelled(
     )
     assert cancelled.status_code == 200
     assert cancelled.json()["estado"] == "cancelada"
+
+
+def test_tenant_admin_can_target_employees_without_notifying_clients(client, db_session):
+    empresa, admin, customer = _tenant_users(db_session)
+    employee = User(
+        empresa_id=empresa.id,
+        email="campaign-employee@example.com",
+        name="Campaign Employee",
+        hashed_password=hash_password("Test1234!"),
+        role="cajero",
+        is_active=True,
+    )
+    db_session.add(employee)
+    db_session.commit()
+    response = client.post(
+        "/api/v1/notificaciones/campanas",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+        json={
+            "titulo": "Aviso interno",
+            "mensaje": "Reunión de personal",
+            "audiencia": "empleados",
+        },
+    )
+    assert response.status_code == 200, response.text
+    delivered_ids = {
+        item.user_id for item in db_session.query(Notificacion).filter(
+            Notificacion.titulo == "Aviso interno"
+        ).all()
+    }
+    assert employee.id in delivered_ids
+    assert customer.id not in delivered_ids
+    assert admin.id not in delivered_ids

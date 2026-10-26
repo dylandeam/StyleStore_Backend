@@ -45,7 +45,7 @@ class CampanaRequest(BaseModel):
     mensaje: str = Field(min_length=3, max_length=2000)
     url_accion: str | None = Field(default=None, max_length=300)
     audiencia: Literal[
-        "todos", "clientes", "administradores", "usuarios_seleccionados", "admins_tenant"
+        "todos", "clientes", "empleados", "administradores", "usuarios_seleccionados", "admins_tenant"
     ]
     target_user_ids: list[int] = Field(default_factory=list, max_length=500)
     target_empresa_ids: list[int] = Field(default_factory=list, max_length=500)

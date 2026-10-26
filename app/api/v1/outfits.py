@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User
+from app.services.tenant_scope import effective_empresa_id
 from app.models.producto import Producto
 from app.models.producto_color import ProductoColor
 from app.models.stock_inventario import StockInventario
@@ -77,8 +78,9 @@ async def create_outfit(
 
     for item_in in payload.items:
         producto_query = db.query(Producto).filter(Producto.codigo == item_in.producto_codigo)
-        if not current_user.is_platform_admin:
-            producto_query = producto_query.filter(Producto.empresa_id == current_user.empresa_id)
+        empresa_id = effective_empresa_id(current_user)
+        if empresa_id is not None:
+            producto_query = producto_query.filter(Producto.empresa_id == empresa_id)
         producto = producto_query.first()
         if not producto:
             raise HTTPException(

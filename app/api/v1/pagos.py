@@ -32,7 +32,7 @@ from app.api.deps import get_current_user, get_optional_current_user, require_pe
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.bitacora_service import BitacoraService
 from app.services.paypal_service import paypal_service
-from app.services.tenant_scope import scope_by_sucursal
+from app.services.tenant_scope import effective_empresa_id, scope_by_sucursal
 from app.services.notificacion_service import NotificacionService
 from app.services.pago_service import PagoService
 
@@ -62,8 +62,9 @@ def _scoped_order(db: Session, current_user: User, order_id: int) -> OrdenVenta 
 
 def _scoped_payment(db: Session, current_user: User, payment_id: int) -> Pago | None:
     query = db.query(Pago).join(OrdenVenta, Pago.orden_venta_id == OrdenVenta.id).filter(Pago.id == payment_id)
-    if not current_user.is_platform_admin:
-        query = query.filter(Pago.empresa_id == current_user.empresa_id)
+    empresa_id = effective_empresa_id(current_user)
+    if empresa_id is not None:
+        query = query.filter(Pago.empresa_id == empresa_id)
     query = scope_by_sucursal(query, db, current_user, OrdenVenta.sucursal_id)
     payment = query.first()
     if payment and current_user.role == "cliente":

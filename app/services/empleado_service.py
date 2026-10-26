@@ -18,7 +18,7 @@ from app.schemas.empleado import (
 )
 from app.services.bitacora_service import BitacoraService
 from app.core.security import get_password_hash
-from app.services.tenant_scope import get_scoped_sucursal
+from app.services.tenant_scope import effective_empresa_id, get_scoped_sucursal
 
 
 class EmpleadoService:
@@ -40,9 +40,10 @@ class EmpleadoService:
 
     def _scope_query(self, current_user: User):
         query = self.db.query(Empleado).join(User, Empleado.user_id == User.id)
-        if not current_user.is_platform_admin:
+        empresa_id = effective_empresa_id(current_user)
+        if empresa_id is not None:
             query = query.filter(
-                User.empresa_id == current_user.empresa_id,
+                User.empresa_id == empresa_id,
                 User.is_platform_admin.is_(False),
             )
         return query
@@ -147,9 +148,10 @@ class EmpleadoService:
             .outerjoin(Empleado, Empleado.user_id == User.id)
             .filter(Empleado.codigo == None)
         )
-        if not current_user.is_platform_admin:
+        empresa_id = effective_empresa_id(current_user)
+        if empresa_id is not None:
             orphan_query = orphan_query.filter(
-                User.empresa_id == current_user.empresa_id,
+                User.empresa_id == empresa_id,
                 User.is_platform_admin.is_(False),
             )
         orphan_users = orphan_query.all()

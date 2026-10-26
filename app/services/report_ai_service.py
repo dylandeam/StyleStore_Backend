@@ -21,7 +21,7 @@ from app.models.stock_inventario import StockInventario
 from app.models.cliente import Cliente
 from app.models.user import User
 from app.config import settings
-from app.services.tenant_scope import scope_by_empresa, scope_by_sucursal
+from app.services.tenant_scope import effective_empresa_id, scope_by_empresa, scope_by_sucursal
 
 
 class ReportAIService:
@@ -37,12 +37,13 @@ class ReportAIService:
         )
 
     def _shipments(self, query):
-        if self.current_user.is_platform_admin:
+        empresa_id = effective_empresa_id(self.current_user)
+        if empresa_id is None:
             return query
         return query.join(OrdenVenta, Envio.orden_venta_id == OrdenVenta.id).filter(
             OrdenVenta.sucursal_id.in_(
                 self.db.query(Sucursal.id).filter(
-                    Sucursal.empresa_id == self.current_user.empresa_id
+                    Sucursal.empresa_id == empresa_id
                 )
             )
         )

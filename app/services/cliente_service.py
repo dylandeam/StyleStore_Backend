@@ -12,6 +12,7 @@ from app.models.user_empresa import UserEmpresa
 from app.schemas.cliente import ClienteCreate, ClienteUpdate, ClienteResponse
 from app.services.bitacora_service import BitacoraService
 from app.core.security import get_password_hash
+from app.services.tenant_scope import effective_empresa_id
 
 
 class ClienteService:
@@ -33,9 +34,10 @@ class ClienteService:
 
     def _scope_query(self, current_user: User):
         query = self.db.query(Cliente).join(User, Cliente.user_id == User.id)
-        if not current_user.is_platform_admin:
+        empresa_id = effective_empresa_id(current_user)
+        if empresa_id is not None:
             query = query.join(UserEmpresa, UserEmpresa.user_id == User.id).filter(
-                UserEmpresa.empresa_id == current_user.empresa_id,
+                UserEmpresa.empresa_id == empresa_id,
                 UserEmpresa.active.is_(True),
             )
         return query
@@ -48,8 +50,9 @@ class ClienteService:
             .outerjoin(Cliente, Cliente.user_id == User.id)
             .filter(Cliente.codigo == None)
         )
-        if not current_user.is_platform_admin:
-            orphan_query = orphan_query.filter(User.empresa_id == current_user.empresa_id)
+        empresa_id = effective_empresa_id(current_user)
+        if empresa_id is not None:
+            orphan_query = orphan_query.filter(User.empresa_id == empresa_id)
         orphan_users = orphan_query.all()
         if not orphan_users:
             return
