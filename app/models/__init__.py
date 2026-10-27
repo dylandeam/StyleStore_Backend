@@ -54,6 +54,7 @@ from app.models.reembolso_offline import ReembolsoOffline
 from app.models.promocion import PromocionAgrupada, CodigoDescuento
 from app.models.favorito import Favorito
 from app.models.experiencia import CalificacionServicio, Reclamo
+from app.models.resena_producto import ResenaProducto
 
 __all__ = [
     "Role",
@@ -117,4 +118,5 @@ __all__ = [
     "Favorito",
     "CalificacionServicio",
     "Reclamo",
+    "ResenaProducto",
 ]

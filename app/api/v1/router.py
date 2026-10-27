@@ -44,6 +44,7 @@ from app.api.v1.sync import router as sync_router
 from app.api.v1.reembolsos import router as reembolsos_router
 from app.api.v1.favoritos import router as favoritos_router
 from app.api.v1.experiencia import router as experiencia_router
+from app.api.v1.resenas_productos import router as resenas_productos_router
 
 api_v1_router = APIRouter()
 
@@ -88,3 +89,4 @@ api_v1_router.include_router(sync_router)
 api_v1_router.include_router(reembolsos_router)
 api_v1_router.include_router(favoritos_router)
 api_v1_router.include_router(experiencia_router)
+api_v1_router.include_router(resenas_productos_router)
