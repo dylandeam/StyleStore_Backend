@@ -45,6 +45,7 @@ class EmpresaService:
             "color_acento": empresa.color_acento,
             "color_fondo": empresa.color_fondo,
             "color_texto": empresa.color_texto,
+            "color_texto_contraste": empresa.color_texto_contraste,
         }
 
     def get_public_branding(self, codigo: str) -> dict:
@@ -178,6 +179,7 @@ class EmpresaService:
             "color_acento": empresa.color_acento,
             "color_fondo": empresa.color_fondo,
             "color_texto": empresa.color_texto,
+            "color_texto_contraste": empresa.color_texto_contraste,
             "active": empresa.active,
             "inactive_reason": empresa.inactive_reason,
             "created_at": empresa.created_at,

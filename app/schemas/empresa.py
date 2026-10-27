@@ -42,6 +42,7 @@ class EmpresaResponse(BaseModel):
     color_acento: str = "#274C77"
     color_fondo: str = "#EEE7D8"
     color_texto: str = "#172536"
+    color_texto_contraste: str = "#FFFFFF"
     active: bool
     inactive_reason: str | None = None
     created_at: datetime
@@ -74,6 +75,7 @@ class EmpresaBrandingResponse(BaseModel):
     color_acento: str
     color_fondo: str
     color_texto: str
+    color_texto_contraste: str = "#FFFFFF"
 
 
 class EmpresaBrandingUpdate(BaseModel):
@@ -85,9 +87,11 @@ class EmpresaBrandingUpdate(BaseModel):
     color_acento: str
     color_fondo: str
     color_texto: str
+    color_texto_contraste: str = "#FFFFFF"
 
     @field_validator(
-        "color_primario", "color_secundario", "color_acento", "color_fondo", "color_texto"
+        "color_primario", "color_secundario", "color_acento", "color_fondo", "color_texto",
+        "color_texto_contraste"
     )
     @classmethod
     def validate_hex_color(cls, value: str) -> str:

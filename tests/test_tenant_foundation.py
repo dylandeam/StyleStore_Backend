@@ -1022,6 +1022,7 @@ def test_tenant_branding_and_portal_registration_are_isolated(
         "color_acento": "#CC7722",
         "color_fondo": "#F7F1E8",
         "color_texto": "#211A2C",
+        "color_texto_contraste": "#FFFDF8",
     }
     updated = client.put(
         "/api/v1/empresas/branding/mia", headers=tenant_headers, json=branding_payload
@@ -1032,7 +1033,15 @@ def test_tenant_branding_and_portal_registration_are_isolated(
     public_portal = client.get("/api/v1/empresas/publicas/brand-a/portal")
     assert public_portal.status_code == 200, public_portal.text
     assert public_portal.json()["color_primario"] == "#332255"
+    assert public_portal.json()["color_texto_contraste"] == "#FFFDF8"
     assert client.get("/api/v1/empresas/publicas/no-existe/portal").status_code == 404
+
+    legacy_payload = {key: value for key, value in branding_payload.items() if key != "color_texto_contraste"}
+    legacy_update = client.put(
+        "/api/v1/empresas/branding/mia", headers=tenant_headers, json=legacy_payload
+    )
+    assert legacy_update.status_code == 200, legacy_update.text
+    assert legacy_update.json()["color_texto_contraste"] == "#FFFFFF"
 
     platform_update = client.put(
         "/api/v1/empresas/branding/mia",

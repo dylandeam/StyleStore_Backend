@@ -23,6 +23,7 @@ class Empresa(Base):
     color_acento: Mapped[str] = mapped_column(String(7), default="#274C77", server_default="#274C77", nullable=False)
     color_fondo: Mapped[str] = mapped_column(String(7), default="#EEE7D8", server_default="#EEE7D8", nullable=False)
     color_texto: Mapped[str] = mapped_column(String(7), default="#172536", server_default="#172536", nullable=False)
+    color_texto_contraste: Mapped[str] = mapped_column(String(7), default="#FFFFFF", server_default="#FFFFFF", nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
     inactive_reason: Mapped[str | None] = mapped_column(String(40), nullable=True)
     plazo_cambios_dias: Mapped[int] = mapped_column(Integer, default=7, server_default="7", nullable=False)
