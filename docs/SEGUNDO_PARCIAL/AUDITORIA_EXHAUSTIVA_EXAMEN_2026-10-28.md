@@ -35,7 +35,7 @@ Se cerró con una recomendación tenant-safe por producto, color y talla que:
 | Pág. 3 | PWA instalable | Verificado | `web/ngsw-config.json`, manifest y build Angular de producción |
 | Pág. 3 | Recursos offline y consulta de catálogo cacheado | Verificado | `web/src/app/core/services/offline-db.service.ts`, `carrito.service.ts` |
 | Pág. 3 | Precios, tallas, colores y stock conocido offline | Verificado | snapshot de catálogo web y SQLite móvil; pruebas de detalle y catálogo local |
-| Pág. 3 | Reserva offline | Verificado en Samsung y Railway | Acción visible, franjas provisionales locales, persistencia tras reinicio y operación `2CE4042B` confirmada por `/sync` al reconectar |
+| Pág. 3 | Reserva offline | Verificado en Samsung y Railway | Acción visible, franjas provisionales locales, persistencia tras reinicio; `2CE4042B` confirmó sync manual y `C6BF6223` sync automático al recuperar Wi‑Fi |
 | Pág. 3 | Venta de contado offline | Implementado, prueba física pendiente | Caja web conserva sucursales e inventario, limita a efectivo, genera ticket provisional y usa `queueCashSale`; Flutter conserva su pantalla offline |
 | Pág. 3 | Cola persistente y estados visibles | Verificado | ruta `/cuenta/operaciones-pendientes`, SQLite/IndexedDB; estados pendiente, sincronizando, confirmado, rechazado y conflicto |
 | Págs. 3–4 | Una operación no desaparece al fallar el envío | Verificado | `offline-db.service.ts`, `offline_sync_service.dart`, pruebas de preservación y reintento |
