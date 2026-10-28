@@ -10,6 +10,15 @@ from pydantic import BaseModel, Field
 from app.schemas.color import ColorResponse
 
 
+class ProductoTallaPrecioInput(BaseModel):
+    talla_id: int
+    precio: Decimal = Field(..., gt=Decimal("0"), max_digits=12, decimal_places=2)
+
+
+class ProductoTallaPrecioResponse(ProductoTallaPrecioInput):
+    talla_nombre: str
+
+
 class ProductoCreate(BaseModel):
     """Schema para crear un nuevo producto."""
 
@@ -33,6 +42,7 @@ class ProductoCreate(BaseModel):
     porcentaje_descuento: int = Field(0, ge=0, le=90)
     precio_descuento: Decimal | None = None
     titulo_promocion: str | None = None
+    precios_talla: list[ProductoTallaPrecioInput] = Field(default_factory=list)
 
 
 class ProductoUpdate(BaseModel):
@@ -57,6 +67,7 @@ class ProductoUpdate(BaseModel):
     porcentaje_descuento: int | None = Field(None, ge=0, le=90)
     precio_descuento: Decimal | None = None
     titulo_promocion: str | None = None
+    precios_talla: list[ProductoTallaPrecioInput] | None = None
 
 
 class PromocionUpdate(BaseModel):
@@ -97,6 +108,7 @@ class ProductoResponse(BaseModel):
 
     colores: list[ColorResponse] = Field(default_factory=list)
     stock_total: int = 0
+    precios_talla: list[ProductoTallaPrecioResponse] = Field(default_factory=list)
 
     created_at: datetime
     updated_at: datetime

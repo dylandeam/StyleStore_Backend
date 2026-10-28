@@ -61,6 +61,9 @@ class Producto(Base):
     temporada = relationship("Temporada", backref="productos_rel", lazy="joined")
     coleccion = relationship("Coleccion", back_populates="productos", lazy="joined")
     colores_rel = relationship("ProductoColor", back_populates="producto", cascade="all, delete-orphan", lazy="selectin")
+    precios_talla_rel = relationship(
+        "ProductoTallaPrecio", back_populates="producto", cascade="all, delete-orphan", lazy="selectin"
+    )
 
     def __repr__(self) -> str:
         return f"<Producto(codigo='{self.codigo}', nombre='{self.nombre}', precio={self.precio})>"

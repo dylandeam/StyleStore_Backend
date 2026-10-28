@@ -14,6 +14,8 @@ from app.models.categoria import Categoria
 from app.models.temporada import Temporada
 from app.models.coleccion import Coleccion
 from app.models.stock_inventario import StockInventario
+from app.models.producto_talla_precio import ProductoTallaPrecio
+from app.models.talla import Talla
 from app.models.user import User
 from app.schemas.producto import ProductoCreate, ProductoUpdate, ProductoResponse, PromocionUpdate
 from app.schemas.color import ColorResponse
@@ -92,6 +94,14 @@ class ProductoService:
             titulo_promocion=titulo_promocion,
             colores=colores_resp,
             stock_total=total_stock,
+            precios_talla=[
+                {
+                    "talla_id": item.talla_id,
+                    "talla_nombre": item.talla.nombre if item.talla else f"Talla #{item.talla_id}",
+                    "precio": item.precio,
+                }
+                for item in sorted(prod.precios_talla_rel, key=lambda value: value.talla_id)
+            ],
             created_at=prod.created_at,
             updated_at=prod.updated_at,
         )
@@ -235,6 +245,8 @@ class ProductoService:
         self.db.add(prod)
         self.db.flush()
 
+        self._sincronizar_precios_talla(prod, req.precios_talla, current_user)
+
         # Asignar colores habilitados
         if req.color_ids:
             for c_id in set(req.color_ids):
@@ -340,6 +352,9 @@ class ProductoService:
                     new_pc = ProductoColor(producto_codigo=prod.codigo, color_id=cid)
                     self.db.add(new_pc)
 
+        if req.precios_talla is not None:
+            self._sincronizar_precios_talla(prod, req.precios_talla, current_user)
+
         self.db.commit()
         self.db.refresh(prod)
 
@@ -352,6 +367,37 @@ class ProductoService:
             )
 
         return self._to_response(prod)
+
+    def _sincronizar_precios_talla(self, prod: Producto, precios, current_user: User) -> None:
+        """Reemplaza la tarifa general por talla y valida que cada talla pertenezca al tenant."""
+        incoming = {item.talla_id: item.precio for item in (precios or [])}
+        if incoming:
+            valid_ids = {
+                item.id
+                for item in scope_by_empresa(
+                    self.db.query(Talla), current_user, Talla.empresa_id
+                ).filter(Talla.id.in_(incoming.keys())).all()
+            }
+            missing = set(incoming) - valid_ids
+            if missing:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Las tallas {sorted(missing)} no pertenecen al tenant activo.",
+                )
+
+        existing = {item.talla_id: item for item in prod.precios_talla_rel}
+        for talla_id, item in list(existing.items()):
+            if talla_id not in incoming:
+                self.db.delete(item)
+        for talla_id, precio in incoming.items():
+            if talla_id in existing:
+                existing[talla_id].precio = precio
+            else:
+                self.db.add(ProductoTallaPrecio(
+                    producto_codigo=prod.codigo,
+                    talla_id=talla_id,
+                    precio=precio,
+                ))
 
     def delete_producto(self, codigo: str, current_user: User) -> dict:
         prod = self._query(current_user).filter(Producto.codigo == codigo).first()

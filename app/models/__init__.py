@@ -21,6 +21,7 @@ from app.models.talla import Talla
 from app.models.temporada import Temporada
 from app.models.coleccion import Coleccion
 from app.models.producto import Producto
+from app.models.producto_talla_precio import ProductoTallaPrecio
 from app.models.producto_color import ProductoColor
 from app.models.stock_inventario import StockInventario
 from app.models.traspaso_inventario import TraspasoInventario
@@ -76,6 +77,7 @@ __all__ = [
     "Temporada",
     "Coleccion",
     "Producto",
+    "ProductoTallaPrecio",
     "ProductoColor",
     "StockInventario",
     "TraspasoInventario",

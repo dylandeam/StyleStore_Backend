@@ -15,6 +15,7 @@ from app.models.user import User
 from app.schemas.stock_inventario import StockBulkUpdateRequest, StockInventarioResponse
 from app.services.bitacora_service import BitacoraService
 from app.services.tenant_scope import get_scoped_sucursal, scope_by_empresa, scope_by_sucursal
+from app.services.promocion_service import PromocionService
 
 
 class StockService:
@@ -43,6 +44,7 @@ class StockService:
 
         result = []
         for s in stocks:
+            _, precio_efectivo, _ = PromocionService(self.db).precio_stock(s)
             result.append(
                 StockInventarioResponse(
                     id=s.id,
@@ -55,6 +57,8 @@ class StockService:
                     sucursal_id=s.sucursal_id,
                     sucursal_nombre=s.sucursal.name if s.sucursal else "",
                     cantidad=s.cantidad,
+                    precio_variante=s.precio_variante,
+                    precio_efectivo=precio_efectivo,
                     updated_at=s.updated_at,
                 )
             )
@@ -112,12 +116,15 @@ class StockService:
 
             if stock_row:
                 stock_row.cantidad = item.cantidad
+                if "precio_variante" in item.model_fields_set:
+                    stock_row.precio_variante = item.precio_variante
             else:
                 stock_row = StockInventario(
                     producto_color_id=pc.id,
                     talla_id=item.talla_id,
                     sucursal_id=item.sucursal_id,
                     cantidad=item.cantidad,
+                    precio_variante=item.precio_variante,
                 )
                 self.db.add(stock_row)
 

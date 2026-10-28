@@ -3,6 +3,7 @@ Pydantic schemas para Stock_Inventario.
 Conforme a Especificación StyleStore v4.
 """
 from datetime import datetime
+from decimal import Decimal
 from pydantic import BaseModel, Field
 
 
@@ -14,6 +15,7 @@ class StockItemUpdate(BaseModel):
     talla_id: int
     sucursal_id: int
     cantidad: int = Field(..., ge=0)
+    precio_variante: Decimal | None = Field(None, gt=Decimal("0"), max_digits=12, decimal_places=2)
 
 
 class StockBulkUpdateRequest(BaseModel):
@@ -33,6 +35,8 @@ class StockInventarioResponse(BaseModel):
     sucursal_id: int
     sucursal_nombre: str
     cantidad: int
+    precio_variante: Decimal | None = None
+    precio_efectivo: Decimal
     updated_at: datetime
 
     model_config = {"from_attributes": True}

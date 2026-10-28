@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import BadRequestException
 from app.models.promocion import CodigoDescuento, PromocionAgrupada
+from app.models.producto_talla_precio import ProductoTallaPrecio
 
 
 CENT = Decimal("0.01")
@@ -39,7 +40,17 @@ class PromocionService:
 
     def precio_stock(self, stock) -> tuple[Decimal, Decimal, int]:
         producto = stock.producto_color.producto
-        original = Decimal(stock.precio_variante if stock.precio_variante is not None else producto.precio)
+        precio_talla = None
+        if stock.precio_variante is None:
+            precio_talla = self.db.query(ProductoTallaPrecio.precio).filter(
+                ProductoTallaPrecio.producto_codigo == producto.codigo,
+                ProductoTallaPrecio.talla_id == stock.talla_id,
+            ).scalar()
+        original = Decimal(
+            stock.precio_variante
+            if stock.precio_variante is not None
+            else (precio_talla if precio_talla is not None else producto.precio)
+        )
         porcentaje = self.porcentaje_producto(producto)
         precio = self._money(original * (Decimal(100 - porcentaje) / Decimal(100)))
         return original, precio, porcentaje

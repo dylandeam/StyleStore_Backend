@@ -98,7 +98,7 @@ async def get_catalogo(
             tallas_stock = []
             for s in stocks:
                 stock_total += s.cantidad
-                _, precio_stock, _ = PromocionService(db).precio_stock(s)
+                precio_original, precio_stock, _ = PromocionService(db).precio_stock(s)
                 tallas_stock.append({
                     "stock_inventario_id": s.id,
                     "talla_id": s.talla_id,
@@ -108,6 +108,7 @@ async def get_catalogo(
                     "sucursal_ciudad": s.sucursal.ciudad if s.sucursal else None,
                     "cantidad": s.cantidad,
                     "precio": float(precio_stock),
+                    "precio_original": float(precio_original),
                     "precio_variante": float(s.precio_variante) if s.precio_variante is not None else None,
                     "medidas": s.medidas or {},
                 })
@@ -236,7 +237,7 @@ async def get_producto_detalle(
             tallas_stock = []
             for s in stocks:
                 stock_total += s.cantidad
-                _, precio_stock, _ = PromocionService(db).precio_stock(s)
+                precio_original, precio_stock, _ = PromocionService(db).precio_stock(s)
                 tallas_stock.append({
                     "stock_inventario_id": s.id,
                     "talla_id": s.talla_id,
@@ -246,6 +247,7 @@ async def get_producto_detalle(
                     "sucursal_ciudad": s.sucursal.ciudad if s.sucursal else None,
                     "cantidad": s.cantidad,
                     "precio": float(precio_stock),
+                    "precio_original": float(precio_original),
                     "precio_variante": float(s.precio_variante) if s.precio_variante is not None else None,
                     "medidas": s.medidas or {},
                 })
