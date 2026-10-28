@@ -87,7 +87,7 @@ Se cerró con una recomendación tenant-safe por producto, color y talla que:
 ## Resultado de regresión local del 28/10/2026
 
 - Backend: pruebas específicas de reserva **22/22 aprobadas**; la regresión completa debe conservar su comprobante de ejecución antes del cierre.
-- Web: **12 pruebas aprobadas** y build de producción correcto.
+- Web: **16 pruebas aprobadas** y build de producción correcto, incluida recuperación offline de sucursales e inventario POS.
 - Flutter: **19 pruebas aprobadas**, incluidas persistencia SQLite, franjas de retiro y serialización de fecha compatible con el contrato central.
 
 ## Conclusión
