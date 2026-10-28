@@ -35,7 +35,7 @@ Se cerró con una recomendación tenant-safe por producto, color y talla que:
 | Pág. 3 | PWA instalable | Verificado | `web/ngsw-config.json`, manifest y build Angular de producción |
 | Pág. 3 | Recursos offline y consulta de catálogo cacheado | Verificado | `web/src/app/core/services/offline-db.service.ts`, `carrito.service.ts` |
 | Pág. 3 | Precios, tallas, colores y stock conocido offline | Verificado | snapshot de catálogo web y SQLite móvil; pruebas de detalle y catálogo local |
-| Pág. 3 | Reserva offline | Implementado, prueba física pendiente | Acción visible en catálogo/detalle móvil, franjas provisionales locales, SQLite/IndexedDB y contrato `/sync` |
+| Pág. 3 | Reserva offline | Verificado en Samsung y Railway | Acción visible, franjas provisionales locales, persistencia tras reinicio y operación `2CE4042B` confirmada por `/sync` al reconectar |
 | Pág. 3 | Venta de contado offline | Implementado, prueba física pendiente | Caja web conserva sucursales e inventario, limita a efectivo, genera ticket provisional y usa `queueCashSale`; Flutter conserva su pantalla offline |
 | Pág. 3 | Cola persistente y estados visibles | Verificado | ruta `/cuenta/operaciones-pendientes`, SQLite/IndexedDB; estados pendiente, sincronizando, confirmado, rechazado y conflicto |
 | Págs. 3–4 | Una operación no desaparece al fallar el envío | Verificado | `offline-db.service.ts`, `offline_sync_service.dart`, pruebas de preservación y reintento |
@@ -88,7 +88,7 @@ Se cerró con una recomendación tenant-safe por producto, color y talla que:
 
 - Backend: pruebas específicas de reserva **22/22 aprobadas**; la regresión completa debe conservar su comprobante de ejecución antes del cierre.
 - Web: **12 pruebas aprobadas** y build de producción correcto.
-- Flutter: **18 pruebas aprobadas**, incluidas persistencia SQLite de reserva/venta y generación local de franjas de retiro.
+- Flutter: **19 pruebas aprobadas**, incluidas persistencia SQLite, franjas de retiro y serialización de fecha compatible con el contrato central.
 
 ## Conclusión
 
