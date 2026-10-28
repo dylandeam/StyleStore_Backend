@@ -99,6 +99,58 @@ class NotificacionService:
             empresa_id=empresa_id,
         )
 
+    def notificar_nueva_venta_online(self, orden) -> int:
+        """Avisa una sola vez al personal activo del tenant sobre una orden online nueva."""
+        tipo_venta = str(getattr(orden, "tipo_venta", "") or "").strip().lower().replace("_", " ")
+        sucursal = getattr(orden, "sucursal", None)
+        empresa_id = getattr(sucursal, "empresa_id", None)
+        if not orden or tipo_venta != "en linea" or empresa_id is None:
+            return 0
+
+        action_url = f"/admin/ventas?orden_id={orden.id}"
+        cliente = getattr(orden, "cliente", None)
+        cliente_nombre = (
+            getattr(orden, "comprador_nombre", None)
+            or getattr(cliente, "nombre", None)
+            or getattr(orden, "codigo_cliente", None)
+            or "Cliente"
+        )
+        sucursal_nombre = getattr(sucursal, "name", None) or "la sucursal asignada"
+        mensaje = (
+            f"Se registró la orden online #{orden.id} de {cliente_nombre} por "
+            f"Bs {float(orden.total):.2f} para {sucursal_nombre}. Revisa su preparación y entrega."
+        )
+
+        usuarios = self.db.query(User).filter(
+            User.empresa_id == empresa_id,
+            User.is_active == True,
+            User.is_platform_admin == False,
+        ).all()
+        enviados = 0
+        for user in usuarios:
+            role = str(user.role or "").strip().lower()
+            if role in {"cliente", "customer"}:
+                continue
+            existente = self.db.query(Notificacion).filter(
+                Notificacion.empresa_id == empresa_id,
+                Notificacion.user_id == user.id,
+                Notificacion.tipo == "nueva_venta_online",
+                Notificacion.url_accion == action_url,
+            ).first()
+            if existente:
+                continue
+            self.crear_notificacion(
+                user_id=user.id,
+                tipo="nueva_venta_online",
+                titulo="Nueva venta online",
+                mensaje=mensaje,
+                url_accion=action_url,
+                enviar_email=False,
+                empresa_id=empresa_id,
+            )
+            enviados += 1
+        return enviados
+
     def listar_notificaciones_usuario(
         self, user_id: int, empresa_id: int, limit: int = 30, offset: int = 0
     ) -> List[Dict[str, Any]]:

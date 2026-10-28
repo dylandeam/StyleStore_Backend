@@ -29,6 +29,7 @@ from app.models.sucursal import Sucursal
 from app.models.reserva import Reserva
 from app.services.agenda_service import hour_blocks
 from app.services.promocion_service import PromocionService
+from app.services.notificacion_service import NotificacionService
 
 router = APIRouter(prefix="/carrito", tags=["Carrito de Compras"])
 
@@ -453,6 +454,11 @@ async def confirm_cart(
         db.refresh(orden)
 
         try:
+            NotificacionService(db).notificar_nueva_venta_online(orden)
+        except Exception as notif_err:
+            print(f"Warning notificación nueva venta online #{orden.id}: {notif_err}")
+
+        try:
             BitacoraService.registrar(
                 db=db,
                 user=current_user,
@@ -712,6 +718,11 @@ async def checkout_cart(
 
         db.commit()
         db.refresh(orden)
+
+        try:
+            NotificacionService(db).notificar_nueva_venta_online(orden)
+        except Exception as notif_err:
+            print(f"Warning notificación nueva venta online #{orden.id}: {notif_err}")
 
         try:
             BitacoraService.registrar(
