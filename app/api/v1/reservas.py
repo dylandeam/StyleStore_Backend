@@ -338,7 +338,7 @@ async def verificar_elegibilidad_reserva(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Verifica si el cliente tiene al menos 1 compra pagada para poder reservar prendas."""
+    """Informa el historial del cliente sin bloquear el requisito básico de reserva."""
     from app.models.orden_venta import OrdenVenta
     from app.models.carrito import Carrito
     from sqlalchemy import or_, func
@@ -353,9 +353,9 @@ async def verificar_elegibilidad_reserva(
     cliente = db.query(Cliente).filter(Cliente.user_id == current_user.id).first()
     if not cliente:
         return {
-            "puede_reservar": False,
+            "puede_reservar": True,
             "compras_previas": 0,
-            "mensaje": "Aún no tienes compras registradas en StyleStore. Debes realizar al menos 1 compra pagada para habilitar reservas.",
+            "mensaje": "Tu cuenta puede reservar prendas. El horario y el stock se validarán al confirmar.",
         }
 
     compras_count = (
@@ -367,15 +367,14 @@ async def verificar_elegibilidad_reserva(
         .count()
     )
 
-    puede = compras_count > 0
     mensaje = (
-        "¡Excelente! Tu cuenta está habilitada para reservar prendas sin costo previo."
-        if puede
-        else "Para habilitar la reserva de prendas en tienda, necesitas al menos 1 compra previa pagada."
+        "Tu cuenta puede reservar prendas; además, ya cuenta con compras confirmadas."
+        if compras_count > 0
+        else "Tu cuenta puede reservar prendas. No es necesario haber comprado antes."
     )
 
     return {
-        "puede_reservar": puede,
+        "puede_reservar": True,
         "compras_previas": compras_count,
         "mensaje": mensaje,
     }
@@ -393,10 +392,7 @@ async def create_reserva(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Crea una reserva desde el catálogo descontando stock atómicamente (requiere ≥ 1 compra previa)."""
-    from app.models.orden_venta import OrdenVenta
-    from app.models.carrito import Carrito
-    from sqlalchemy import or_, func
+    """Crea una reserva desde el catálogo y descuenta stock de forma atómica."""
     from app.services.notificacion_service import NotificacionService
 
     # Obtener o registrar cliente si no existe
@@ -412,21 +408,6 @@ async def create_reserva(
         )
         db.add(cliente)
         db.flush()
-
-    # Validar regla de reserva: al menos 1 compra previa pagada (a excepción de staff para pruebas)
-    if current_user.role not in ["administrador", "encargado"]:
-        compras_previas = (
-            db.query(OrdenVenta)
-            .filter(
-                OrdenVenta.codigo_cliente == cliente.codigo,
-                func.lower(OrdenVenta.estado).in_(["pagado", "pagada", "completado", "completada", "entregado", "entregada"]),
-            )
-            .count()
-        )
-        if compras_previas < 1:
-            raise BadRequestException(
-                "Solo los clientes con al menos 1 compra previa pagada pueden reservar prendas. ¡Realiza tu primera compra para desbloquear reservas exclusivas!"
-            )
 
     sucursal = get_scoped_sucursal(db, current_user, payload.sucursal_id)
 

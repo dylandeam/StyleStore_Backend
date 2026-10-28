@@ -3,7 +3,7 @@ Pruebas para las funcionalidades de la Especificación StyleStore v6:
 - Dashboard de estadísticas con filtro por sucursal
 - Chatbot local inteligente con chips de navegación
 - Sistema de notificaciones y suscripciones (in-app y email)
-- Regla de reserva de prendas (elegibilidad con ≥ 1 compra previa y límite de 7 días)
+- Reserva básica de prendas para todo cliente y agenda máxima de 3 días
 - Cambios y Devoluciones con validación de 7 días
 - Venta presencial con Efectivo y QR
 - Los 8 nuevos reportes dinámicos
@@ -337,17 +337,17 @@ def test_notificaciones_usuario(client: TestClient, auth_tokens):
     assert "items" in res_list.json()
 
 
-def test_regla_reserva_elegibilidad(client: TestClient, auth_tokens, sample_inventory, db_session):
+def test_cliente_nuevo_puede_reservar_sin_compra_previa(client: TestClient, auth_tokens, sample_inventory, db_session):
     headers = {"Authorization": f"Bearer {auth_tokens['client_token']}"}
     
-    # Sin compras previas, elegibilidad debe ser False
+    # El examen exige reservas como función básica: una cuenta nueva no puede quedar bloqueada.
     res_eleg = client.get("/api/v1/reservas/elegibilidad", headers=headers)
     assert res_eleg.status_code == 200
     eleg = res_eleg.json()
-    assert eleg["puede_reservar"] is False
+    assert eleg["puede_reservar"] is True
     assert eleg["compras_previas"] == 0
 
-    # Intentar reservar sin compras debe fallar con 400
+    # La reserva debe crearse sin exigir una venta anterior.
     res_reserva = client.post(
         "/api/v1/reservas",
         json={
@@ -356,38 +356,9 @@ def test_regla_reserva_elegibilidad(client: TestClient, auth_tokens, sample_inve
         },
         headers=headers,
     )
-    assert res_reserva.status_code == 400
-    assert "al menos 1 compra previa" in res_reserva.json()["detail"]
-
-    # Simular una compra pagada previa para el cliente
-    orden_previa = OrdenVenta(
-        fecha=date.today() - timedelta(days=2),
-        estado="pagada",
-        total=Decimal("150.00"),
-        tipo_venta="presencial",
-        codigo_cliente=auth_tokens["client_profile"].codigo,
-        sucursal_id=sample_inventory["sucursal"].id,
-    )
-    db_session.add(orden_previa)
-    db_session.commit()
-
-    # Ahora debe ser elegible
-    res_eleg2 = client.get("/api/v1/reservas/elegibilidad", headers=headers)
-    assert res_eleg2.status_code == 200
-    assert res_eleg2.json()["puede_reservar"] is True
-
-    # Ahora la reserva debe crearse exitosamente
-    res_crear = client.post(
-        "/api/v1/reservas",
-        json={
-            "sucursal_id": sample_inventory["sucursal"].id,
-            "items": [{"stock_inventario_id": sample_inventory["stock"].id, "cantidad": 1}],
-        },
-        headers=headers,
-    )
-    assert res_crear.status_code == 201
-    reserva_id = res_crear.json()["id"]
-    assert res_crear.json()["estado"] == "pendiente"
+    assert res_reserva.status_code == 201, res_reserva.text
+    reserva_id = res_reserva.json()["id"]
+    assert res_reserva.json()["estado"] == "pendiente"
 
     # Verificar que el cliente ve sus reservas en /reservas/mias
     res_mias = client.get("/api/v1/reservas/mias", headers=headers)

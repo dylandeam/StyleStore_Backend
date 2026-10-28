@@ -1,5 +1,7 @@
 # Auditoría exhaustiva contra el examen — 28/10/2026
 
+> **Corrección de auditoría (28/10/2026).** La primera versión de este documento sobrevaloró la existencia de servicios y colas internas como evidencia de que el requisito era utilizable. La prueba desde la interfaz encontró dos brechas obligatorias: la reserva móvil estaba escondida en un icono y no podía elegir horario sin red; la caja web tenía cola offline, pero no podía recuperar sucursales e inventario al perder conexión. Ambas se corrigieron en código y pruebas locales. Permanecen abiertas hasta completar el humo físico en Samsung y navegador instalado; por ello este documento ya no declara el proyecto al 100 %.
+
 ## Fuente y criterio de cierre
 
 Fuente primaria: `D:\Descargas\Examen Parcial-2 - Sistemas 2 - S2-2026.pdf` (12 páginas).
@@ -33,15 +35,15 @@ Se cerró con una recomendación tenant-safe por producto, color y talla que:
 | Pág. 3 | PWA instalable | Verificado | `web/ngsw-config.json`, manifest y build Angular de producción |
 | Pág. 3 | Recursos offline y consulta de catálogo cacheado | Verificado | `web/src/app/core/services/offline-db.service.ts`, `carrito.service.ts` |
 | Pág. 3 | Precios, tallas, colores y stock conocido offline | Verificado | snapshot de catálogo web y SQLite móvil; pruebas de detalle y catálogo local |
-| Pág. 3 | Reserva offline | Verificado | `offline-operations.service.ts`, `reserva.service.ts`, contrato `/sync` |
-| Pág. 3 | Venta de contado offline | Verificado | `venta.service.ts`, `queueCashSale`, pantalla Flutter de venta offline |
+| Pág. 3 | Reserva offline | Implementado, prueba física pendiente | Acción visible en catálogo/detalle móvil, franjas provisionales locales, SQLite/IndexedDB y contrato `/sync` |
+| Pág. 3 | Venta de contado offline | Implementado, prueba física pendiente | Caja web conserva sucursales e inventario, limita a efectivo, genera ticket provisional y usa `queueCashSale`; Flutter conserva su pantalla offline |
 | Pág. 3 | Cola persistente y estados visibles | Verificado | ruta `/cuenta/operaciones-pendientes`, SQLite/IndexedDB; estados pendiente, sincronizando, confirmado, rechazado y conflicto |
 | Págs. 3–4 | Una operación no desaparece al fallar el envío | Verificado | `offline-db.service.ts`, `offline_sync_service.dart`, pruebas de preservación y reintento |
 | Pág. 4 | Flutter con SQLite e integridad referencial | Verificado | `mobile/lib/services/local_database_service.dart`; pruebas de reapertura, ámbitos y detalles |
 | Pág. 4 | Catálogo, sucursales, clientes mínimos, ventas, reservas y detalles locales | Verificado | esquema SQLite y 16 pruebas Flutter aprobadas el 28/10/2026 |
 | Pág. 4 | UUID, tenant, sucursal, reintento, idempotencia y conflictos | Verificado | modelos y servicio `sync`, pruebas `test_sync.py` y `test_sync_metricas_conflicto.py` |
 | Págs. 4–5 | Venta offline con detalle, precios, total, pago y estado | Verificado | contrato `venta_efectivo`, persistencia local y confirmación central transaccional |
-| Pág. 5 | Solo contado sin conexión | Verificado | bloqueo de PayPal/QR offline en web y móvil |
+| Pág. 5 | Solo contado sin conexión | Verificado localmente | bloqueo explícito de PayPal/QR offline en web y móvil; falta repetir humo de navegador instalado |
 | Pág. 5 | Cambios de prendas dentro de plazo | Verificado | módulo de cambios/devoluciones, plazo configurable por tenant y pruebas en `test_v6_features.py` |
 | Págs. 5–6 | Reporte por lenguaje natural escrito | Verificado | `/reportes/asistente-ia`, `report_ai_service.py`, Groq con fallback local |
 | Pág. 5 | Entrada verbal | Implementado, requiere humo externo | Web Speech `es-BO`; depende del permiso y compatibilidad del navegador |
@@ -84,10 +86,10 @@ Se cerró con una recomendación tenant-safe por producto, color y talla que:
 
 ## Resultado de regresión local del 28/10/2026
 
-- Backend: **145 pruebas aprobadas**, incluida la restricción de recomendaciones por capacidad del plan.
+- Backend: pruebas específicas de reserva **22/22 aprobadas**; la regresión completa debe conservar su comprobante de ejecución antes del cierre.
 - Web: **12 pruebas aprobadas** y build de producción correcto.
-- Flutter: **16 pruebas aprobadas**.
+- Flutter: **18 pruebas aprobadas**, incluidas persistencia SQLite de reserva/venta y generación local de franjas de retiro.
 
 ## Conclusión
 
-La revisión no encontró una familia obligatoria del PDF completamente ausente. Sí encontró una diferencia entre **tener analítica** y **aplicarla a una decisión operativa**. La redistribución predictiva cierra esa diferencia sin automatizar movimientos peligrosos ni romper la aprobación humana. Los siguientes controles ya no son módulos faltantes, sino validaciones E2E de la versión desplegada y del guion de defensa.
+No corresponde afirmar todavía que el proyecto está al 100 %. La revisión estática encontró gran parte de la arquitectura, pero la prueba de accesibilidad real descubrió brechas que esa revisión no detectó. El cierre exige demostrar, desde las pantallas finales, reserva móvil offline, venta web de contado offline, persistencia después de reiniciar, sincronización idempotente al reconectar y resolución visible de conflictos. Solo después de esas evidencias se puede cambiar su estado a **Verificado**.
