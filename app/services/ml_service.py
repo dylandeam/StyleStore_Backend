@@ -319,3 +319,202 @@ class MLService:
             "items": items,
         }
 
+    def transfer_recommendations(
+        self,
+        sucursal_id: int | None = None,
+        dias_horizonte: int = 30,
+    ) -> dict[str, Any]:
+        """Propone traspasos entre sucursales usando demanda real y stock disponible.
+
+        La recomendación nunca compromete más de la mitad del stock donante, conserva
+        una reserva equivalente a catorce días de su propia demanda y descuenta los
+        traspasos pendientes para no sugerir dos veces las mismas unidades.
+        """
+        from sqlalchemy import func
+        from app.models.color import Color
+        from app.models.orden_venta import DetalleVenta
+        from app.models.producto import Producto
+        from app.models.producto_color import ProductoColor
+        from app.models.stock_inventario import StockInventario
+        from app.models.talla import Talla
+        from app.models.traspaso_inventario import TraspasoInventario
+
+        empresa_id = effective_empresa_id(self.current_user)
+        stock_rows = (
+            self.db.query(
+                StockInventario,
+                Producto.nombre.label("producto_nombre"),
+                Producto.codigo.label("producto_codigo"),
+                Sucursal.name.label("sucursal_nombre"),
+                Color.nombre.label("color_nombre"),
+                Talla.nombre.label("talla_nombre"),
+            )
+            .join(Sucursal, StockInventario.sucursal_id == Sucursal.id)
+            .join(ProductoColor, StockInventario.producto_color_id == ProductoColor.id)
+            .join(Producto, ProductoColor.producto_codigo == Producto.codigo)
+            .join(Color, ProductoColor.color_id == Color.id)
+            .join(Talla, StockInventario.talla_id == Talla.id)
+        )
+        if empresa_id is not None:
+            stock_rows = stock_rows.filter(Sucursal.empresa_id == empresa_id)
+        stocks = stock_rows.all()
+
+        since_date = date.today() - timedelta(days=dias_horizonte)
+        sales_query = (
+            self.db.query(
+                DetalleVenta.stock_inventario_id,
+                func.coalesce(func.sum(DetalleVenta.cantidad), 0).label("unidades_vendidas"),
+            )
+            .join(OrdenVenta, DetalleVenta.orden_venta_id == OrdenVenta.id)
+            .join(Sucursal, OrdenVenta.sucursal_id == Sucursal.id)
+            .filter(
+                ~OrdenVenta.estado.in_(["anulado", "cancelada"]),
+                OrdenVenta.fecha >= since_date,
+            )
+        )
+        if empresa_id is not None:
+            sales_query = sales_query.filter(Sucursal.empresa_id == empresa_id)
+        sales_by_stock = {
+            int(row[0]): int(row[1] or 0)
+            for row in sales_query.group_by(DetalleVenta.stock_inventario_id).all()
+            if row[0] is not None
+        }
+
+        pending_query = self.db.query(TraspasoInventario).filter(
+            TraspasoInventario.estado == "pendiente"
+        )
+        if empresa_id is not None:
+            pending_query = pending_query.filter(TraspasoInventario.empresa_id == empresa_id)
+        pending_out: dict[tuple[int, int, int], int] = defaultdict(int)
+        pending_in: dict[tuple[int, int, int], int] = defaultdict(int)
+        for transfer in pending_query.all():
+            variant = (transfer.producto_color_id, transfer.talla_id)
+            pending_out[(transfer.sucursal_origen_id, *variant)] += transfer.cantidad
+            pending_in[(transfer.sucursal_destino_id, *variant)] += transfer.cantidad
+
+        variants: dict[tuple[int, int], list[dict[str, Any]]] = defaultdict(list)
+        for stock, product_name, product_code, branch_name, color_name, size_name in stocks:
+            sold = sales_by_stock.get(stock.id, 0)
+            velocity = sold / max(dias_horizonte, 1)
+            outgoing = pending_out[(stock.sucursal_id, stock.producto_color_id, stock.talla_id)]
+            incoming = pending_in[(stock.sucursal_id, stock.producto_color_id, stock.talla_id)]
+            effective_stock = max(0, int(stock.cantidad or 0) - outgoing + incoming)
+            coverage = effective_stock / velocity if velocity > 0 else (999.0 if effective_stock else 0.0)
+            variants[(stock.producto_color_id, stock.talla_id)].append({
+                "stock_id": stock.id,
+                "producto_color_id": stock.producto_color_id,
+                "talla_id": stock.talla_id,
+                "sucursal_id": stock.sucursal_id,
+                "sucursal": branch_name,
+                "producto": product_name,
+                "codigo": product_code,
+                "color": color_name,
+                "talla": size_name,
+                "stock_actual": int(stock.cantidad or 0),
+                "stock_efectivo": effective_stock,
+                "pendiente_salida": outgoing,
+                "pendiente_entrada": incoming,
+                "vendidas": sold,
+                "velocidad": velocity,
+                "cobertura": coverage,
+            })
+
+        recommendations: list[dict[str, Any]] = []
+        priority_rank = {"CRITICA": 0, "ALTA": 1, "MEDIA": 2}
+        for variant_rows in variants.values():
+            targets = [
+                row for row in variant_rows
+                if row["velocidad"] > 0
+                and row["stock_efectivo"] <= max(3, math.ceil(row["velocidad"] * 15))
+                and (sucursal_id is None or row["sucursal_id"] == sucursal_id)
+            ]
+            targets.sort(key=lambda row: (row["cobertura"], -row["vendidas"]))
+
+            donor_budget: dict[int, int] = {}
+            for donor in variant_rows:
+                reserve = max(2, math.ceil(donor["velocidad"] * 14))
+                donor_budget[donor["stock_id"]] = max(
+                    0,
+                    min(
+                        donor["stock_efectivo"] // 2,
+                        donor["stock_efectivo"] - reserve,
+                    ),
+                )
+
+            for target in targets:
+                donors = [
+                    donor for donor in variant_rows
+                    if donor["sucursal_id"] != target["sucursal_id"]
+                    and donor_budget[donor["stock_id"]] > 0
+                    and donor["stock_efectivo"] > target["stock_efectivo"]
+                    and donor["velocidad"] < target["velocidad"]
+                ]
+                if not donors:
+                    continue
+                donors.sort(key=lambda row: (row["velocidad"], -donor_budget[row["stock_id"]]))
+                donor = donors[0]
+                desired_stock = max(5, math.ceil(target["velocidad"] * 21))
+                shortage = max(1, desired_stock - target["stock_efectivo"])
+                quantity = min(shortage, donor_budget[donor["stock_id"]])
+                if quantity <= 0:
+                    continue
+                donor_budget[donor["stock_id"]] -= quantity
+
+                coverage = target["cobertura"]
+                priority = "CRITICA" if coverage <= 3 or target["stock_efectivo"] == 0 else (
+                    "ALTA" if coverage <= 7 else "MEDIA"
+                )
+                confidence = min(
+                    97,
+                    55 + min(target["vendidas"], 15) * 2 + (10 if donor["vendidas"] == 0 else 4),
+                )
+                recommendations.append({
+                    "producto_color_id": target["producto_color_id"],
+                    "talla_id": target["talla_id"],
+                    "producto": target["producto"],
+                    "codigo": target["codigo"],
+                    "color": target["color"],
+                    "talla": target["talla"],
+                    "sucursal_origen_id": donor["sucursal_id"],
+                    "sucursal_origen": donor["sucursal"],
+                    "stock_origen": donor["stock_actual"],
+                    "stock_origen_efectivo": donor["stock_efectivo"],
+                    "ventas_origen_30d": donor["vendidas"],
+                    "sucursal_destino_id": target["sucursal_id"],
+                    "sucursal_destino": target["sucursal"],
+                    "stock_destino": target["stock_actual"],
+                    "stock_destino_efectivo": target["stock_efectivo"],
+                    "ventas_destino_30d": target["vendidas"],
+                    "dias_cobertura_destino": round(coverage, 1),
+                    "cantidad_recomendada": quantity,
+                    "prioridad": priority,
+                    "confianza_porcentaje": confidence,
+                    "explicacion": (
+                        f"{target['sucursal']} vendió {target['vendidas']} un. en {dias_horizonte} días "
+                        f"y conserva {target['stock_efectivo']}; {donor['sucursal']} vendió "
+                        f"{donor['vendidas']} y dispone de {donor['stock_efectivo']}. "
+                        f"Mover {quantity} mantiene una reserva operativa en el origen."
+                    ),
+                })
+
+        recommendations.sort(
+            key=lambda item: (
+                priority_rank.get(item["prioridad"], 3),
+                -item["confianza_porcentaje"],
+                item["dias_cobertura_destino"],
+            )
+        )
+        return {
+            "tenant_id": empresa_id,
+            "sucursal_destino_id": sucursal_id,
+            "generado_en": date.today().isoformat(),
+            "dias_horizonte_analizado": dias_horizonte,
+            "total_variantes_evaluadas": len(variants),
+            "total_recomendaciones": len(recommendations),
+            "criterio": (
+                "Demanda real de 30 días, cobertura objetivo de 21 días, máximo 50% del stock "
+                "donante y reserva mínima de 14 días en origen."
+            ),
+            "items": recommendations,
+        }
+

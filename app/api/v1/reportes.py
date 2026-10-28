@@ -273,6 +273,24 @@ async def get_predictive_stock_alerts(
     )
 
 
+@router.get(
+    "/recomendaciones-traspaso-stock",
+    summary="Recomendar traspasos de stock entre sucursales mediante analítica predictiva",
+)
+async def get_stock_transfer_recommendations(
+    sucursal_id: Optional[int] = None,
+    current_user: User = Depends(require_plan_capability("predicciones")),
+    db: Session = Depends(get_db),
+):
+    """Compara demanda, cobertura y excedentes por variante dentro del tenant autenticado."""
+    from app.services.ml_service import MLService
+
+    if sucursal_id == 0:
+        sucursal_id = None
+    _validate_report_sucursal(db, current_user, sucursal_id)
+    return MLService(db, current_user).transfer_recommendations(sucursal_id=sucursal_id)
+
+
 @router.get("/alertas-stock-predictivo/excel", summary="Exportar alertas predictivas de stock en Excel (REQ-068)")
 async def excel_alertas_stock_predictivo(
     sucursal_id: Optional[int] = None,

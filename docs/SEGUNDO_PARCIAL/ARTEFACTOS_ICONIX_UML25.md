@@ -506,7 +506,74 @@ graph TB
 
 ---
 
-## 8. Verificación y Trazabilidad
+## 8. Extensión ICONIX: redistribución predictiva de stock
 
-- **Trazabilidad de Requisitos:** Los artefactos modelados cubren con rigor técnico los requerimientos `REQ-001` a `REQ-073`, en especial el diseño de sincronización offline (`REQ-013`, `REQ-023`–`REQ-036`), multitenancy (`REQ-003`–`REQ-007`), transacciones atómicas (`REQ-011`, `REQ-012`), reportes comparativos (`REQ-039`, `REQ-063`) y analítica ML (`REQ-042`–`REQ-045`).
+### 8.1. Caso de uso CU-13 — Revisar y ejecutar recomendación de traspaso
+
+**Actor principal:** Administrador tenant o encargado autorizado.
+
+**Precondiciones:** usuario autenticado, plan con capacidad `predicciones`, dos o más sucursales del mismo tenant y stock comparable de la misma variante.
+**Flujo básico:**
+
+1. El actor abre Inventario y solicita actualizar el análisis.
+2. El sistema agrupa stock por producto, color y talla dentro del tenant.
+3. El sistema calcula velocidad de venta y cobertura de los últimos 30 días.
+4. El sistema descuenta entradas/salidas de traspasos pendientes.
+5. El sistema propone origen, destino y cantidad conservando la reserva del origen.
+6. El actor revisa la explicación, ajusta si corresponde y crea la solicitud.
+7. Un usuario autorizado aprueba el traspaso; recién entonces el backend mueve stock atómicamente.
+
+**Flujos alternos:** sin capacidad de plan se responde 403; una sucursal ajena se responde 404; si cambia el stock antes de aprobar, se rechaza con conflicto y no se mueve ninguna unidad; repetir una solicitud con la misma clave idempotente devuelve el mismo traspaso.
+
+### 8.2. Robustez
+
+```mermaid
+graph LR
+    Admin["Actor: Administrador tenant"] --> UI["Boundary: Inventario Angular"]
+    UI --> API["Boundary: Reportes API"]
+    API --> ML["Control: MLService.transfer_recommendations"]
+    ML --> Ventas["Entity: OrdenVenta / DetalleVenta"]
+    ML --> Stock["Entity: StockInventario"]
+    ML --> Pendientes["Entity: TraspasoInventario"]
+    ML --> API
+    API --> UI
+    UI --> TransferAPI["Boundary: Inventario / traspasos"]
+    TransferAPI --> TransferService["Control: TraspasoInventarioService"]
+    TransferService --> Stock
+    TransferService --> Pendientes
+```
+
+### 8.3. Secuencia de recomendación y aprobación
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Admin as Administrador tenant
+    participant Web as Inventario Angular
+    participant ReportAPI as Reportes API
+    participant ML as MLService
+    participant DB as PostgreSQL
+    participant TransferAPI as Traspasos API
+
+    Admin->>Web: Actualizar análisis
+    Web->>ReportAPI: GET recomendaciones-traspaso-stock (JWT)
+    ReportAPI->>ReportAPI: validar tenant, sucursal y capacidad
+    ReportAPI->>ML: transfer_recommendations(sucursal_id)
+    ML->>DB: stock + ventas 30d + traspasos pendientes
+    DB-->>ML: datos aislados del tenant
+    ML-->>Web: recomendaciones explicadas
+    Admin->>Web: Revisar traspaso
+    Web->>TransferAPI: POST solicitud (idempotency_key)
+    TransferAPI-->>Web: estado pendiente
+    Admin->>TransferAPI: Aprobar solicitud
+    TransferAPI->>DB: bloquear, revalidar y mover stock atómicamente
+    DB-->>TransferAPI: commit
+    TransferAPI-->>Web: traspaso aprobado
+```
+
+---
+
+## 9. Verificación y Trazabilidad
+
+- **Trazabilidad de Requisitos:** Los artefactos modelados cubren con rigor técnico los requerimientos `REQ-001` a `REQ-074`, en especial el diseño de sincronización offline (`REQ-013`, `REQ-023`–`REQ-036`), multitenancy (`REQ-003`–`REQ-007`), transacciones atómicas (`REQ-011`, `REQ-012`), reportes comparativos (`REQ-039`, `REQ-063`), analítica ML (`REQ-042`–`REQ-045`) y redistribución predictiva (`REQ-074`).
 - **Validación:** El modelado se corresponde unívocamente con el código real versionado en los repositorios de GitHub de Backend, Frontend Web y Mobile.

@@ -1,4 +1,5 @@
 """REQ-062: traspasos de inventario seguros entre sucursales."""
+from datetime import date, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -8,6 +9,7 @@ from app.models.color import Color
 from app.models.empresa import Empresa
 from app.models.producto import Producto
 from app.models.producto_color import ProductoColor
+from app.models.orden_venta import DetalleVenta, OrdenVenta
 from app.models.stock_inventario import StockInventario
 from app.models.sucursal import Sucursal
 from app.models.talla import Talla
@@ -143,3 +145,89 @@ def test_transfer_revalidates_stock_and_is_tenant_scoped(client, db_session):
     hidden = client.get("/api/v1/inventario/traspasos", headers={"Authorization": f"Bearer {other_token}"})
     assert hidden.status_code == 200
     assert hidden.json() == []
+
+
+def test_predictive_recommendation_uses_sales_and_reserves_half_of_donor_stock(client, db_session):
+    admin, token, origin, destination, variant, size, source_stock = _scenario(db_session)
+    PlanService(db_session).contract(admin, "profesional")
+    destination_stock = StockInventario(
+        producto_color_id=variant.id,
+        talla_id=size.id,
+        sucursal_id=destination.id,
+        cantidad=1,
+        precio_variante=Decimal("275"),
+    )
+    db_session.add(destination_stock)
+    db_session.flush()
+    order = OrdenVenta(
+        fecha=date.today() - timedelta(days=3),
+        estado="pagada",
+        total=Decimal("2475"),
+        tipo_venta="presencial",
+        sucursal_id=destination.id,
+    )
+    db_session.add(order)
+    db_session.flush()
+    db_session.add(DetalleVenta(
+        orden_venta_id=order.id,
+        stock_inventario_id=destination_stock.id,
+        producto_nombre="Chaqueta",
+        cantidad=9,
+        precio_unitario=Decimal("275"),
+        subtotal=Decimal("2475"),
+    ))
+    db_session.commit()
+
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.get(
+        "/api/v1/reportes/recomendaciones-traspaso-stock",
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["tenant_id"] == admin.empresa_id
+    assert payload["total_recomendaciones"] == 1
+    recommendation = payload["items"][0]
+    assert recommendation["sucursal_origen_id"] == origin.id
+    assert recommendation["sucursal_destino_id"] == destination.id
+    assert recommendation["stock_origen"] == 10
+    assert recommendation["stock_destino"] == 1
+    assert recommendation["ventas_destino_30d"] == 9
+    assert recommendation["cantidad_recomendada"] == 5
+    assert "reserva operativa" in recommendation["explicacion"]
+
+    created = client.post(
+        "/api/v1/inventario/traspasos",
+        headers=headers,
+        json={
+            "sucursal_origen_id": recommendation["sucursal_origen_id"],
+            "sucursal_destino_id": recommendation["sucursal_destino_id"],
+            "producto_color_id": recommendation["producto_color_id"],
+            "talla_id": recommendation["talla_id"],
+            "cantidad": recommendation["cantidad_recomendada"],
+            "idempotency_key": str(uuid4()),
+            "observacion": "Recomendación predictiva de redistribución",
+        },
+    )
+    assert created.status_code == 201, created.text
+
+    recalculated = client.get(
+        "/api/v1/reportes/recomendaciones-traspaso-stock",
+        headers=headers,
+    )
+    assert recalculated.status_code == 200
+    assert recalculated.json()["total_recomendaciones"] == 0
+    db_session.refresh(source_stock)
+    assert source_stock.cantidad == 10  # La solicitud no mueve stock hasta ser aprobada.
+
+
+def test_predictive_transfer_recommendations_require_the_plan_capability(client, db_session):
+    _, token, *_ = _scenario(db_session)
+
+    response = client.get(
+        "/api/v1/reportes/recomendaciones-traspaso-stock",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 403
+    assert "predicciones" in response.json()["detail"].lower()

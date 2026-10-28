@@ -77,6 +77,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-071 | TERMINADO_VERIFICADO | Banner global reactivo informa sin conexión, catálogo cacheado con fecha, operaciones pendientes con enlace a cola y actualización Service Worker PWA |
 | REQ-072 | TERMINADO_VERIFICADO | Aislamiento por empresa+usuario en SQLite móvil v2, carrito pendiente protegido, limpieza segura y diagnósticos; 14 pruebas Flutter y sincronización física aprobadas (`mobile@66ef919`) |
 | REQ-073 | TERMINADO_VERIFICADO | Vencimiento marca la contratación como vencida e inactiva el tenant; la renovación exclusiva para admin exige captura PayPal `COMPLETED`. Verificado E2E en Railway/PayPal Sandbox: contrato anterior reemplazado, nuevo Intermedio pagado/activo y tenant activo |
+| REQ-074 | TERMINADO_VERIFICADO | Redistribución predictiva compara ventas y cobertura por variante entre sucursales del tenant, limita el origen al 50 %, conserva reserva de demanda, descuenta traspasos pendientes y abre el flujo humano de revisión/aprobación; verificado en `test_inventory_transfers.py` y build Angular |
 
 ## Decisiones bloqueadas explícitamente
 
