@@ -11,7 +11,7 @@ Este archivo es la copia versionada de seguimiento solicitada por el plan maestr
 | REQ-005 | TERMINADO_VERIFICADO | Empresa y sucursal son entidades separadas; la consola web y el perfil móvil muestran jerarquía, planes, estado, asignación de sucursal con resiliencia offline en SQLite |
 | REQ-006 | TERMINADO_VERIFICADO | Aislamiento estricto multi-tenant en recursos principales y secundarios; respaldos exclusivos de admin y rechazo HTTP 404 ante referencias cruzadas comprobado en suite |
 | REQ-007 | TERMINADO_VERIFICADO | Tenant derivado obligatoriamente del JWT; pruebas A/B en test_tenant_foundation.py y test_secondary_tenant_security.py confirman cero fuga de datos |
-| REQ-008 | TERMINADO_VERIFICADO | Autenticación robusta JWT, refresh tokens, blacklist y guards RBAC verificados en test_auth.py y test_bitacora_security.py |
+| REQ-008 | TERMINADO_VERIFICADO | Autenticación robusta JWT, refresh tokens y blacklist; roles y matrices de permisos aislados por tenant, administrables por el tenant o por el SaaS con contexto seleccionado. Backend, operaciones offline y Mobile aplican dinámicamente los bloqueos de compra, carrito, reservas y reseñas. Verificado en `test_auth.py`, `test_bitacora_security.py` y `test_tenant_role_permissions.py`. |
 | REQ-009 | TERMINADO_VERIFICADO | Cabecera lineal única `4f6a8b012345`; smoke desplegado confirma modelos críticos sincronizados (reservas, catálogo, pagos, notificaciones y sync) |
 | REQ-010 | TERMINADO_VERIFICADO | Precio por variante y medidas en cm configurables en inventario y aplicados a catálogo, carrito, POS y sync (REQ-060/REQ-061) |
 | REQ-011 | TERMINADO_VERIFICADO | Bloqueo pesimista de stock atómico online y en sincronización con protección contra sobreventa (REQ-034/REQ-035) |
