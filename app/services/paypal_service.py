@@ -268,17 +268,79 @@ class PayPalService:
                     return res.json()
                 elif res.status_code == 422 and "ORDER_ALREADY_CAPTURED" in res.text:
                     logger.info(f"Orden PayPal {paypal_order_id} ya capturada previamente.")
-                    return {
-                        "id": paypal_order_id,
-                        "status": "COMPLETED",
-                        "purchase_units": [{"payments": {"captures": [{"id": f"CAP-{paypal_order_id}", "status": "COMPLETED"}]}}],
-                    }
+                    # Recuperar el identificador real de captura. Es indispensable
+                    # para que un reembolso posterior vuelva a la cuenta correcta.
+                    return await self.get_order(paypal_order_id, allow_mock=allow_mock)
                 else:
                     logger.error(f"Error capturando orden PayPal: {res.text}")
                     # Retornamos dict con detalle del error
                     return {"status": "FAILED", "error": res.text}
         except Exception as ex:
             logger.error(f"Excepción al capturar orden PayPal: {ex}")
+            return {"status": "FAILED", "error": str(ex)}
+
+    async def get_order(self, paypal_order_id: str, *, allow_mock: bool = False) -> dict:
+        """Consulta el estado remoto para conciliar pagos aprobados en otro dispositivo."""
+        simulated = (
+            "MOCK" in paypal_order_id.upper()
+            or "FALLBACK" in paypal_order_id.upper()
+            or self.is_mock_mode()
+        )
+        if simulated:
+            if not allow_mock:
+                return {"status": "FAILED", "error": "Identificador PayPal simulado no permitido."}
+            return {
+                "id": paypal_order_id,
+                "status": "COMPLETED",
+                "purchase_units": [{"payments": {"captures": [{
+                    "id": f"CAP-{paypal_order_id}", "status": "COMPLETED"
+                }]}}],
+            }
+        token = await self.get_access_token()
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                res = await client.get(
+                    f"{self.base_url}/v2/checkout/orders/{paypal_order_id}",
+                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                )
+                if res.status_code == 200:
+                    return res.json()
+                return {"status": "FAILED", "error": res.text}
+        except Exception as ex:
+            logger.error(f"Excepción consultando orden PayPal {paypal_order_id}: {ex}")
+            return {"status": "FAILED", "error": str(ex)}
+
+    async def refund_capture(
+        self,
+        capture_id: str,
+        *,
+        idempotency_key: str,
+        allow_mock: bool = False,
+    ) -> dict:
+        """Reembolsa íntegramente una captura, con idempotencia de extremo a extremo."""
+        simulated = "MOCK" in capture_id.upper() or "FALLBACK" in capture_id.upper() or self.is_mock_mode()
+        if simulated:
+            if not allow_mock:
+                return {"status": "FAILED", "error": "Captura PayPal simulada no permitida."}
+            return {"id": f"RFND-{capture_id}", "status": "COMPLETED"}
+        token = await self.get_access_token()
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                res = await client.post(
+                    f"{self.base_url}/v2/payments/captures/{capture_id}/refund",
+                    json={},
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": "application/json",
+                        "PayPal-Request-Id": f"stylestore-refund-{idempotency_key}",
+                    },
+                )
+                if res.status_code in (200, 201):
+                    return res.json()
+                logger.error(f"Error reembolsando captura PayPal {capture_id}: {res.text}")
+                return {"status": "FAILED", "error": res.text}
+        except Exception as ex:
+            logger.error(f"Excepción reembolsando captura PayPal {capture_id}: {ex}")
             return {"status": "FAILED", "error": str(ex)}
 
 

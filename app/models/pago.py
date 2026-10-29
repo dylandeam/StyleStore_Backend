@@ -4,7 +4,7 @@ Conforme a Especificación StyleStore v5.
 """
 from datetime import datetime
 from decimal import Decimal
-from sqlalchemy import String, Integer, DateTime, Numeric, ForeignKey, func
+from sqlalchemy import String, Integer, DateTime, Numeric, ForeignKey, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -28,6 +28,10 @@ class Pago(Base):
     estado: Mapped[str] = mapped_column(String(30), nullable=False, default="pendiente")  # 'pendiente', 'aprobado', 'fallido'
     paypal_order_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     paypal_capture_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    operation_uuid: Mapped[str | None] = mapped_column(String(36), nullable=True, unique=True, index=True)
+    paypal_refund_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    refund_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    refunded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     recibo_numero: Mapped[str | None] = mapped_column(String(40), nullable=True, unique=True, index=True)
     email_confirmacion_enviado_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     email_confirmacion_intentos: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")

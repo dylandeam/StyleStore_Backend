@@ -7,6 +7,7 @@ Soporta:
 """
 from datetime import datetime
 from decimal import Decimal
+from uuid import uuid4
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
@@ -23,6 +24,7 @@ from app.schemas.pago_envio import (
     PagoResponse,
     PayPalCrearOrdenRequest,
     PayPalCapturarOrdenRequest,
+    PayPalReconciliationItem,
     CobroCajaRequest,
     CobroCajaResponse,
     QRConfigDTO,
@@ -33,8 +35,8 @@ from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.bitacora_service import BitacoraService
 from app.services.paypal_service import paypal_service
 from app.services.tenant_scope import effective_empresa_id, scope_by_sucursal
-from app.services.notificacion_service import NotificacionService
 from app.services.pago_service import PagoService
+from app.services.payment_reconciliation_service import PaymentReconciliationService
 
 router = APIRouter(prefix="/pagos", tags=["Pagos"])
 
@@ -138,12 +140,14 @@ async def create_paypal_order(
             tipo_pago="en linea",
             estado="pendiente",
             paypal_order_id=paypal_order_id,
+            operation_uuid=str(uuid4()),
         )
         db.add(pago_existente)
     else:
         pago_existente.paypal_order_id = paypal_order_id
         pago_existente.tipo_pago = "en linea"
         pago_existente.estado = "pendiente"
+        pago_existente.operation_uuid = pago_existente.operation_uuid or str(uuid4())
 
     db.commit()
 
@@ -161,7 +165,7 @@ async def create_paypal_order(
     return order_data
 
 
-@router.post("/paypal/capturar-orden", response_model=PagoResponse, summary="Capturar fondos de PayPal", dependencies=[Depends(require_plan_capability("ventas"))])
+@router.post("/paypal/capturar-orden", response_model=PagoResponse, summary="Capturar fondos de PayPal")
 async def capture_paypal_order(
     payload: PayPalCapturarOrdenRequest,
     current_user: User | None = Depends(get_optional_current_user),
@@ -172,120 +176,57 @@ async def capture_paypal_order(
     Implementa idempotencia para evitar errores si la orden ya fue procesada,
     y resuelve la orden automáticamente si se proporciona solo el token de PayPal.
     """
-    orden = None
-    pago = None
-
-    # 1. Buscar orden por ID si fue provisto
-    if payload.orden_venta_id and payload.orden_venta_id > 0:
-        orden = _scoped_order(db, current_user, payload.orden_venta_id) if current_user else None
-
-    # 2. Si no se encontró por ID, buscar pago por paypal_order_id
-    if not orden or not pago:
-        pago = db.query(Pago).filter(Pago.paypal_order_id == payload.paypal_order_id).first()
-        if pago and not orden:
-            orden = (
-                _scoped_order(db, current_user, pago.orden_venta_id)
-                if current_user
-                else db.query(OrdenVenta).filter(OrdenVenta.id == pago.orden_venta_id).first()
-            )
-            if not orden:
-                pago = None
-
-    # 3. Si aún no tenemos orden, buscar la última orden pendiente del sistema o cliente
-    if not orden and current_user:
-        order_query = scope_by_sucursal(
-            db.query(OrdenVenta), db, current_user, OrdenVenta.sucursal_id
-        )
-        if current_user.role == "cliente":
-            cliente = db.query(Cliente).filter(Cliente.user_id == current_user.id).first()
-            if cliente:
-                order_query = order_query.filter(OrdenVenta.codigo_cliente == cliente.codigo)
-        orden = order_query.order_by(OrdenVenta.id.desc()).first()
-
-    if not orden:
-        raise NotFoundException("No se encontró ninguna orden de venta asociada al token de PayPal.")
-
+    pago = db.query(Pago).filter(Pago.paypal_order_id == payload.paypal_order_id).first()
     if not pago:
-        pago = db.query(Pago).filter(Pago.orden_venta_id == orden.id).first()
+        raise NotFoundException("No se encontró una orden asociada al identificador PayPal.")
+    if current_user and not _scoped_order(db, current_user, pago.orden_venta_id):
+        raise NotFoundException("La orden PayPal no pertenece al tenant o usuario activo.")
 
-    # Si ya está aprobada, retornar directamente (idempotencia)
-    if pago and pago.estado == "aprobado" and pago.paypal_capture_id:
-        PagoService(db).confirmar(pago)
-        NotificacionService(db).notificar_experiencia_poscompra(orden)
-        return pago
-
-    # Llamar a PayPal para capturar fondos
-    capture_res = await paypal_service.capture_order(
-        payload.paypal_order_id,
-        allow_mock=settings.ALLOW_MOCK_PAYPAL,
-    )
-    status_capture = capture_res.get("status")
-
-    if status_capture not in ["COMPLETED", "SAVED"]:
-        raw_error = str(capture_res.get("error", "Rechazado"))
-        if "ORDER_NOT_APPROVED" in raw_error:
-            message = (
-                "PayPal todavía no registra la aprobación. Abre el enlace de pago, "
-                "confirma la compra y luego vuelve a intentarlo desde Mis Pedidos."
-            )
-        elif "PAYMENT_DENIED" in raw_error:
-            message = (
-                "PayPal rechazó el pago Sandbox. Verifica que comprador y comercio "
-                "Sandbox admitan pagos en USD y vuelve a intentarlo desde Mis Pedidos."
-            )
-        else:
-            message = "PayPal rechazó o no confirmó el pago. Inténtalo nuevamente desde Mis Pedidos."
+    reconciled, message = await PaymentReconciliationService(db).reconcile(pago)
+    if reconciled.estado not in {"aprobado", "reembolsado"}:
         raise BadRequestException(message)
+    return reconciled
 
-    # Extraer capture ID
-    capture_id = payload.paypal_order_id
-    try:
-        units = capture_res.get("purchase_units", [])
-        if units and "payments" in units[0] and "captures" in units[0]["payments"]:
-            capture_id = units[0]["payments"]["captures"][0].get("id", capture_id)
-    except Exception:
-        pass
 
-    if not pago:
-        pago = Pago(
-            orden_venta_id=orden.id,
-            empresa_id=_payment_company_id(orden, current_user),
-            monto=orden.total,
-            tipo_pago="en linea",
-            estado="aprobado",
-            paypal_order_id=payload.paypal_order_id,
-            paypal_capture_id=capture_id,
-        )
-        db.add(pago)
+@router.post(
+    "/paypal/reconciliar-pendientes",
+    response_model=list[PayPalReconciliationItem],
+    summary="Conciliar cobros aprobados desde otro dispositivo",
+    dependencies=[Depends(require_plan_capability("ventas"))],
+)
+async def reconcile_pending_paypal_orders(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Reconoce aprobaciones externas sin depender del navegador que abrió el enlace."""
+    query = db.query(Pago).join(OrdenVenta, Pago.orden_venta_id == OrdenVenta.id).filter(
+        Pago.estado.in_(["pendiente", "reembolso_pendiente"]),
+        Pago.paypal_order_id.isnot(None),
+    )
+    empresa_id = effective_empresa_id(current_user)
+    if empresa_id is not None:
+        query = query.filter(Pago.empresa_id == empresa_id)
+    if current_user.role == "cliente":
+        cliente = db.query(Cliente).filter(Cliente.user_id == current_user.id).first()
+        if not cliente:
+            return []
+        query = query.filter(OrdenVenta.codigo_cliente == cliente.codigo)
     else:
-        pago.estado = "aprobado"
-        pago.paypal_order_id = payload.paypal_order_id
-        pago.paypal_capture_id = capture_id
+        query = scope_by_sucursal(query, db, current_user, OrdenVenta.sucursal_id)
 
-    orden.estado = "pagada"
-    orden.metodo_pago = "paypal"
-    db.commit()
-    db.refresh(pago)
-    PagoService(db).confirmar(pago)
-
-    # Registro en Bitácora con fallback seguro de usuario
-    user_audit = current_user
-    if not user_audit:
-        cliente = db.query(Cliente).filter(Cliente.codigo == orden.codigo_cliente).first()
-        if cliente and cliente.user_id:
-            user_audit = db.query(User).filter(User.id == cliente.user_id).first()
-
-    if user_audit:
-        BitacoraService.registrar(
-            db=db,
-            user=user_audit,
-            action=f"Completó pago exitoso con PayPal ({capture_id}) para Orden #{orden.id}",
-            module="pagos",
-        )
-
-    NotificacionService(db).notificar_experiencia_poscompra(orden)
-
-    return pago
+    results: list[PayPalReconciliationItem] = []
+    for candidate in query.order_by(Pago.id.asc()).limit(25).all():
+        payment, message = await PaymentReconciliationService(db).reconcile(candidate)
+        results.append(PayPalReconciliationItem(
+            orden_venta_id=payment.orden_venta_id,
+            payment_operation_uuid=payment.operation_uuid or "",
+            estado=payment.estado,
+            paypal_order_id=payment.paypal_order_id or "",
+            paypal_capture_id=payment.paypal_capture_id,
+            paypal_refund_id=payment.paypal_refund_id,
+            mensaje=message,
+        ))
+    return results
 
 
 # ==========================================
@@ -337,12 +278,14 @@ async def process_caja_payment(
             tipo_pago="qr" if metodo == "qr" else "en caja",
             metodo_pago=metodo,
             estado="aprobado",
+            operation_uuid=str(uuid4()),
         )
         db.add(pago)
     else:
         pago.tipo_pago = "qr" if metodo == "qr" else "en caja"
         pago.metodo_pago = metodo
         pago.estado = "aprobado"
+        pago.operation_uuid = pago.operation_uuid or str(uuid4())
 
     db.commit()
     db.refresh(pago)
@@ -395,6 +338,7 @@ async def process_payment(
         estado="aprobado",
         paypal_order_id=pp_id,
         paypal_capture_id=payload.paypal_capture_id,
+        operation_uuid=str(uuid4()),
     )
     db.add(pago)
 
@@ -642,11 +586,13 @@ async def confirmar_cobro_online(
             tipo_pago="en linea",
             estado="aprobado",
             paypal_order_id=f"ONLINE-CONFIRMED-{orden.id}",
+            operation_uuid=str(uuid4()),
         )
         db.add(pago)
     else:
         pago.estado = "aprobado"
         pago.tipo_pago = orden.metodo_pago or "en linea"
+        pago.operation_uuid = pago.operation_uuid or str(uuid4())
 
     db.commit()
     db.refresh(pago)

@@ -1,6 +1,8 @@
 """Tenant boundary regression tests for the SaaS foundation."""
 from datetime import date, timedelta
 from decimal import Decimal
+from io import BytesIO
+from pypdf import PdfReader
 
 from app.models.user import User
 from app.models.cliente import Cliente
@@ -12,6 +14,10 @@ from app.models.user_empresa import UserEmpresa
 from app.models.categoria import Categoria
 from app.models.temporada import Temporada
 from app.models.producto import Producto
+from app.models.color import Color
+from app.models.talla import Talla
+from app.models.producto_color import ProductoColor
+from app.models.producto_talla_precio import ProductoTallaPrecio
 from app.core.security import hash_password
 from app.services.report_ai_service import ReportAIService
 from app.services.plan_service import PlanService
@@ -1114,7 +1120,7 @@ def test_chatbot_and_catalog_pdf_are_scoped_to_selected_tenant(
         season = Temporada(empresa_id=empresa.id, nombre=f"Verano {suffix}")
         db_session.add_all([category, season])
         db_session.flush()
-        db_session.add(Producto(
+        product = Producto(
             codigo=f"PROD-{suffix}",
             empresa_id=empresa.id,
             nombre=f"Polo {suffix}",
@@ -1124,7 +1130,21 @@ def test_chatbot_and_catalog_pdf_are_scoped_to_selected_tenant(
             temporada_id=season.id,
             active=True,
             visible_en_catalogo=True,
-        ))
+        )
+        db_session.add(product)
+        db_session.flush()
+        color = Color(empresa_id=empresa.id, nombre=f"Negro {suffix}")
+        size = Talla(empresa_id=empresa.id, nombre=f"XXL {suffix}")
+        db_session.add_all([color, size])
+        db_session.flush()
+        db_session.add_all([
+            ProductoColor(producto_codigo=product.codigo, color_id=color.id),
+            ProductoTallaPrecio(
+                producto_codigo=product.codigo,
+                talla_id=size.id,
+                precio=Decimal("129.90"),
+            ),
+        ])
     db_session.commit()
 
     global_chat = client.post(
@@ -1157,3 +1177,10 @@ def test_chatbot_and_catalog_pdf_are_scoped_to_selected_tenant(
     assert pdf.headers["content-type"] == "application/pdf"
     assert pdf.content.startswith(b"%PDF")
     assert len(pdf.content) > 1500
+    pdf_text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(pdf.content)).pages)
+    assert "Moda Aurora" in pdf_text
+    assert "Color(es):" in pdf_text
+    assert "Negro AURORA" in pdf_text
+    assert "Tallas y precios" in pdf_text
+    assert "XXL AURORA" in pdf_text
+    assert "129.90" in pdf_text

@@ -5,7 +5,7 @@ Fuente de verdad para ventas presenciales y en línea.
 """
 from datetime import datetime, date, time
 from decimal import Decimal
-from sqlalchemy import String, Integer, DateTime, Date, Time, Numeric, ForeignKey, func
+from sqlalchemy import String, Integer, DateTime, Date, Time, Numeric, ForeignKey, Boolean, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -44,6 +44,12 @@ class OrdenVenta(Base):
     efectivo_recibido: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     cambio_devuelto: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     metodo_pago: Mapped[str | None] = mapped_column(String(50), default="EFECTIVO", nullable=True)
+    # Las órdenes PayPal nuevas descuentan inventario al confirmar el cobro. Este
+    # indicador evita doble descuento en reintentos y conserva compatibilidad con
+    # órdenes históricas, cuyo stock ya fue reservado durante el checkout.
+    inventario_descontado: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", nullable=False
+    )
     tipo_entrega: Mapped[str | None] = mapped_column(String(20), nullable=True)
     fecha_recojo: Mapped[date | None] = mapped_column(Date, nullable=True)
     hora_recojo: Mapped[time | None] = mapped_column(Time, nullable=True)

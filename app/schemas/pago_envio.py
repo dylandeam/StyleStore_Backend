@@ -24,6 +24,10 @@ class PagoResponse(BaseModel):
     estado: str
     paypal_order_id: str | None = None
     paypal_capture_id: str | None = None
+    operation_uuid: str | None = None
+    paypal_refund_id: str | None = None
+    refund_reason: str | None = None
+    refunded_at: datetime | None = None
     recibo_numero: str | None = None
     email_confirmacion_enviado_at: datetime | None = None
     created_at: datetime
@@ -40,6 +44,16 @@ class PayPalCrearOrdenRequest(BaseModel):
 class PayPalCapturarOrdenRequest(BaseModel):
     paypal_order_id: str
     orden_venta_id: int | None = None
+
+
+class PayPalReconciliationItem(BaseModel):
+    orden_venta_id: int
+    payment_operation_uuid: str
+    estado: str
+    paypal_order_id: str
+    paypal_capture_id: str | None = None
+    paypal_refund_id: str | None = None
+    mensaje: str
 
 
 class CobroCajaRequest(BaseModel):
@@ -223,5 +237,10 @@ class OrdenVentaResponse(BaseModel):
     pago_estado: str | None = None
     recibo_numero: str | None = None
     pago_email_confirmado: bool = False
+    payment_operation_uuid: str | None = None
+    paypal_order_id: str | None = None
+    paypal_capture_id: str | None = None
+    paypal_refund_id: str | None = None
+    refund_reason: str | None = None
 
     model_config = {"from_attributes": True}

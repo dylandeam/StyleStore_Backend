@@ -318,6 +318,7 @@ async def confirm_cart(
         descuento_promociones = Decimal("0.00")
 
         # Validar y descontar stock atómicamente
+        descontar_inventario = (payload.metodo_pago or "EFECTIVO").strip().lower() != "paypal"
         for item in carrito.items:
             stock = _get_scoped_stock(db, current_user, item.stock_inventario_id, lock=True)
             if not stock:
@@ -332,8 +333,10 @@ async def confirm_cart(
             if stock.sucursal_id and not sucursal_id_desde_stock:
                 sucursal_id_desde_stock = stock.sucursal_id
 
-            # Descuento atómico
-            stock.cantidad -= item.cantidad
+            # PayPal descuenta al capturar. Así una aprobación externa se concilia
+            # contra el stock central y, si otra venta se adelantó, se reembolsa.
+            if descontar_inventario:
+                stock.cantidad -= item.cantidad
 
             # Datos para detalle venta
             precio_original, precio_final, _ = promo_service.precio_stock(stock)
@@ -408,6 +411,7 @@ async def confirm_cart(
             sucursal_id=sucursal_final,
             carrito_id=carrito.id,
             metodo_pago=metodo,
+            inventario_descontado=descontar_inventario,
             tipo_entrega=payload.tipo_entrega,
             fecha_recojo=payload.fecha_recojo if payload.tipo_entrega == "recojo" else None,
             hora_recojo=payload.hora_recojo if payload.tipo_entrega == "recojo" else None,
@@ -527,6 +531,7 @@ async def checkout_cart(
         subtotal_original = Decimal("0.00")
         descuento_promociones = Decimal("0.00")
 
+        descontar_inventario = (payload.metodo_pago or "EFECTIVO").strip().lower() != "paypal"
         for item in carrito.items:
             stock = _get_scoped_stock(db, current_user, item.stock_inventario_id, lock=True)
             if not stock:
@@ -541,7 +546,8 @@ async def checkout_cart(
             if stock.sucursal_id and not sucursal_id_desde_stock:
                 sucursal_id_desde_stock = stock.sucursal_id
 
-            stock.cantidad -= item.cantidad
+            if descontar_inventario:
+                stock.cantidad -= item.cantidad
             precio_original, precio_final, _ = promo_service.precio_stock(stock)
             subtotal = precio_final * item.cantidad
             subtotal_original += precio_original * item.cantidad
@@ -612,6 +618,7 @@ async def checkout_cart(
             sucursal_id=sucursal_final,
             carrito_id=carrito.id,
             metodo_pago=metodo,
+            inventario_descontado=descontar_inventario,
             tipo_entrega=payload.tipo_entrega or ("delivery" if payload.direccion_envio else None),
             fecha_recojo=payload.fecha_recojo if payload.tipo_entrega == "recojo" else None,
             hora_recojo=payload.hora_recojo if payload.tipo_entrega == "recojo" else None,

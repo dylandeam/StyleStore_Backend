@@ -13,6 +13,13 @@ from app.models.envio import Envio
 from app.models.cliente import Cliente
 from app.models.empresa import Empresa
 from app.models.sucursal import Sucursal
+from app.models.color import Color
+from app.models.talla import Talla
+from app.models.producto_color import ProductoColor
+from app.models.stock_inventario import StockInventario
+from app.models.orden_venta import DetalleVenta
+from app.models.pago import Pago
+from app.models.notificacion import Notificacion
 from app.config import settings
 
 
@@ -189,6 +196,108 @@ def test_caja_pos_y_paypal_flow(client: TestClient, admin_token: str, db_session
     assert res_pp_cap.status_code == 200
     pago_cap = res_pp_cap.json()
     assert pago_cap["estado"] == "aprobado"
+    assert pago_cap["operation_uuid"]
+
+
+def test_paypal_cross_device_capture_and_automatic_stock_refund(
+    client: TestClient, admin_token: str, db_session
+):
+    """La aprobación externa no requiere sesión local y el último comprador recibe reembolso."""
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    cli = _ensure_cliente(db_session, "CLI-PAYPAL-CONFLICT")
+    empresa, sucursal = _default_tenant(db_session)
+
+    cat = Categoria(nombre="Categoría conciliación", empresa_id=empresa.id)
+    temp = Temporada(nombre="Temporada conciliación", empresa_id=empresa.id)
+    color = Color(nombre="Negro conciliación", empresa_id=empresa.id)
+    talla = Talla(nombre="M-CONC", empresa_id=empresa.id)
+    db_session.add_all([cat, temp, color, talla])
+    db_session.flush()
+    product = Producto(
+        codigo="PAYPAL-CONFLICT-01",
+        empresa_id=empresa.id,
+        nombre="Prenda agotada en sincronización",
+        precio=Decimal("69.99"),
+        categoria_id=cat.id,
+        temporada_id=temp.id,
+    )
+    db_session.add(product)
+    db_session.flush()
+    product_color = ProductoColor(producto_codigo=product.codigo, color_id=color.id)
+    db_session.add(product_color)
+    db_session.flush()
+    stock = StockInventario(
+        producto_color_id=product_color.id,
+        talla_id=talla.id,
+        sucursal_id=sucursal.id,
+        cantidad=0,
+    )
+    db_session.add(stock)
+    db_session.flush()
+    order = OrdenVenta(
+        codigo_cliente=cli.codigo,
+        total=Decimal("69.99"),
+        estado="pendiente_pago",
+        tipo_venta="en linea",
+        metodo_pago="PAYPAL",
+        inventario_descontado=False,
+        sucursal_id=sucursal.id,
+    )
+    db_session.add(order)
+    db_session.flush()
+    db_session.add(DetalleVenta(
+        orden_venta_id=order.id,
+        stock_inventario_id=stock.id,
+        producto_nombre=product.nombre,
+        color_nombre=color.nombre,
+        talla_nombre=talla.nombre,
+        cantidad=1,
+        precio_unitario=Decimal("69.99"),
+        subtotal=Decimal("69.99"),
+    ))
+    db_session.commit()
+
+    created = client.post(
+        "/api/v1/pagos/paypal/crear-orden",
+        json={"orden_venta_id": order.id},
+        headers=headers,
+    )
+    assert created.status_code == 200
+    paypal_id = created.json()["id"]
+
+    # Simula el retorno en otro teléfono: no comparte el token de StyleStore.
+    captured = client.post(
+        "/api/v1/pagos/paypal/capturar-orden",
+        json={"paypal_order_id": paypal_id},
+    )
+    assert captured.status_code == 200
+    data = captured.json()
+    assert data["estado"] == "reembolsado"
+    assert data["operation_uuid"]
+    assert data["paypal_capture_id"]
+    assert data["paypal_refund_id"]
+
+    db_session.refresh(order)
+    assert order.estado == "reembolsada_stock"
+    assert order.inventario_descontado is False
+    assert db_session.query(Pago).filter(Pago.id == data["id"]).one().refund_reason
+    notice = db_session.query(Notificacion).filter(
+        Notificacion.user_id == cli.user_id,
+        Notificacion.tipo == "reembolso_stock_paypal",
+    ).one()
+    assert "dinero" in notice.titulo.lower()
+
+    # Repetir el callback conserva los mismos IDs y no duplica devolución/aviso.
+    replay = client.post(
+        "/api/v1/pagos/paypal/capturar-orden",
+        json={"paypal_order_id": paypal_id},
+    )
+    assert replay.status_code == 200
+    assert replay.json()["paypal_refund_id"] == data["paypal_refund_id"]
+    assert db_session.query(Notificacion).filter(
+        Notificacion.user_id == cli.user_id,
+        Notificacion.tipo == "reembolso_stock_paypal",
+    ).count() == 1
 
 
 def test_qr_pago_config_y_cobro_qr(client: TestClient, admin_token: str, db_session):

@@ -3,10 +3,12 @@ from __future__ import annotations
 
 from io import BytesIO
 from pathlib import Path
+from base64 import b64decode
+from urllib.parse import urlparse
 from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_LEFT, TA_RIGHT
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
@@ -26,6 +28,7 @@ from sqlalchemy.orm import Session
 from app.models.empresa import Empresa
 from app.models.producto import Producto
 from app.models.producto_color import ProductoColor
+from app.models.producto_talla_precio import ProductoTallaPrecio
 from app.models.stock_inventario import StockInventario
 from app.models.sucursal import Sucursal
 from app.models.uploaded_file import UploadedFile
@@ -85,6 +88,7 @@ class CatalogPdfService:
         accent = self._color(empresa.color_acento, "#274C77")
         surface = self._color(empresa.color_secundario, "#FBF8F1")
         text_color = self._color(empresa.color_texto, "#172536")
+        primary_text = self._contrast_color(primary)
         brand = empresa.nombre_marca or empresa.nombre
 
         document = SimpleDocTemplate(
@@ -102,9 +106,17 @@ class CatalogPdfService:
             "CatalogTitle", parent=styles["Title"], fontName="Helvetica-Bold",
             fontSize=22, leading=26, textColor=primary, spaceAfter=3 * mm,
         )
+        brand_title_style = ParagraphStyle(
+            "BrandTitle", parent=title_style, textColor=primary_text,
+            alignment=TA_LEFT, spaceAfter=1.5 * mm,
+        )
         subtitle_style = ParagraphStyle(
             "CatalogSubtitle", parent=styles["BodyText"], fontSize=9.5,
             leading=13, textColor=accent,
+        )
+        brand_subtitle_style = ParagraphStyle(
+            "BrandSubtitle", parent=subtitle_style, textColor=primary_text,
+            alignment=TA_LEFT,
         )
         name_style = ParagraphStyle(
             "ProductName", parent=styles["Heading3"], fontName="Helvetica-Bold",
@@ -121,9 +133,9 @@ class CatalogPdfService:
         story = []
 
         logo = self._image_flowable(empresa.logo_url, 25 * mm, 25 * mm)
-        brand_copy = [Paragraph(escape(brand), title_style)]
+        brand_copy = [Paragraph(escape(brand), brand_title_style)]
         if empresa.eslogan:
-            brand_copy.append(Paragraph(escape(empresa.eslogan), subtitle_style))
+            brand_copy.append(Paragraph(escape(empresa.eslogan), brand_subtitle_style))
         header = Table(
             [[logo or "", brand_copy]],
             colWidths=[31 * mm, 144 * mm],
@@ -131,7 +143,7 @@ class CatalogPdfService:
         )
         header.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("BACKGROUND", (0, 0), (-1, -1), surface),
+            ("BACKGROUND", (0, 0), (-1, -1), primary),
             ("BOX", (0, 0), (-1, -1), 1, primary),
             ("LEFTPADDING", (0, 0), (-1, -1), 10),
             ("RIGHTPADDING", (0, 0), (-1, -1), 10),
@@ -179,15 +191,55 @@ class CatalogPdfService:
             if product.descripcion:
                 details.append(Spacer(1, 1.5 * mm))
                 details.append(Paragraph(escape(product.descripcion[:260]), body_style))
+            color_names = sorted({
+                rel.color.nombre for rel in product.colores_rel if rel.color and rel.color.nombre
+            })
             details.append(Spacer(1, 2 * mm))
-            details.append(Paragraph(f"Existencias: <b>{stock_total}</b>", body_style))
+            details.append(Paragraph(
+                f"<b>Color(es):</b> {escape(', '.join(color_names) if color_names else 'No especificado')}",
+                body_style,
+            ))
+            details.append(Paragraph(f"<b>Existencias:</b> {stock_total}", body_style))
+
+            size_rows = self._size_price_rows(product, branch, pct)
+            if size_rows:
+                size_header = [
+                    Paragraph("Talla", body_style),
+                    Paragraph("Precio", body_style),
+                    Paragraph("Stock", body_style),
+                ]
+                size_table = Table(
+                    [size_header] + [
+                        [
+                            Paragraph(escape(row[0]), body_style),
+                            Paragraph(f"Bs. {row[1]:.2f}", body_style),
+                            Paragraph(str(row[2]), body_style),
+                        ]
+                        for row in size_rows
+                    ],
+                    # Prioriza la talla para conservar nombres comerciales completos
+                    # (por ejemplo, "XXL AURORA") en una sola línea legible.
+                    colWidths=[30 * mm, 23 * mm, 13 * mm],
+                    hAlign="LEFT",
+                )
+                size_table.setStyle(TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, 0), surface),
+                    ("TEXTCOLOR", (0, 0), (-1, -1), text_color),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("GRID", (0, 0), (-1, -1), .35, colors.HexColor("#D9D0BF")),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                    ("TOPPADDING", (0, 0), (-1, -1), 3),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ]))
+                details.extend([Spacer(1, 2 * mm), Paragraph("Tallas y precios", name_style), size_table])
 
             price_text = f"Bs. {final_price:.2f}"
             if pct:
                 price_text += f"<br/><font size='8'>Antes Bs. {float(product.precio):.2f} · {pct}% OFF</font>"
             card = Table(
                 [[self._image_flowable(product.foto, 34 * mm, 34 * mm) or "", details, Paragraph(price_text, price_style)]],
-                colWidths=[39 * mm, 94 * mm, 42 * mm],
+                colWidths=[39 * mm, 102 * mm, 34 * mm],
             )
             card.setStyle(TableStyle([
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -222,6 +274,36 @@ class CatalogPdfService:
         filename = f"catalogo-{empresa.codigo}.pdf"
         return output.getvalue(), filename
 
+    def _size_price_rows(
+        self, product: Producto, branch: Sucursal | None, discount_pct: int
+    ) -> list[tuple[str, float, int]]:
+        """Resume cada talla con su precio efectivo y stock en el ámbito exportado."""
+        configured = {
+            item.talla_id: float(item.precio) for item in product.precios_talla_rel
+        }
+        inventory = []
+        for color_rel in product.colores_rel:
+            for stock in color_rel.inventarios_rel:
+                if branch and stock.sucursal_id != branch.id:
+                    continue
+                inventory.append(stock)
+        size_ids = set(configured) | {stock.talla_id for stock in inventory}
+        rows: list[tuple[str, float, int]] = []
+        for size_id in size_ids:
+            size_stocks = [stock for stock in inventory if stock.talla_id == size_id]
+            size = next((stock.talla for stock in size_stocks if stock.talla), None)
+            if size is None:
+                configured_row = self.db.query(ProductoTallaPrecio).filter(
+                    ProductoTallaPrecio.producto_codigo == product.codigo,
+                    ProductoTallaPrecio.talla_id == size_id,
+                ).first()
+                size = configured_row.talla if configured_row else None
+            variant_prices = [float(stock.precio_variante) for stock in size_stocks if stock.precio_variante is not None]
+            base_price = configured.get(size_id) or (variant_prices[0] if variant_prices else float(product.precio))
+            effective_price = base_price * (100 - discount_pct) / 100
+            rows.append((size.nombre if size else f"#{size_id}", effective_price, sum(stock.cantidad for stock in size_stocks)))
+        return sorted(rows, key=lambda item: item[0])
+
     def _image_flowable(self, raw_path: str | None, max_width: float, max_height: float):
         content = self._image_bytes(raw_path)
         if not content:
@@ -236,11 +318,18 @@ class CatalogPdfService:
             return None
 
     def _image_bytes(self, raw_path: str | None) -> bytes | None:
-        if not raw_path or raw_path.startswith(("http://", "https://", "data:")):
+        if not raw_path:
             return None
+        if raw_path.startswith("data:"):
+            try:
+                return b64decode(raw_path.split(",", 1)[1])
+            except (ValueError, IndexError):
+                return None
+        if raw_path.startswith(("http://", "https://")):
+            raw_path = urlparse(raw_path).path
         normalized = raw_path.replace("\\", "/").lstrip("/")
         parts = normalized.split("/")
-        if len(parts) >= 3 and parts[0] == "uploads":
+        if len(parts) >= 2:
             record = self.db.query(UploadedFile).filter(
                 UploadedFile.folder == parts[-2],
                 UploadedFile.filename == parts[-1],
@@ -262,3 +351,11 @@ class CatalogPdfService:
             return colors.HexColor(value or fallback)
         except ValueError:
             return colors.HexColor(fallback)
+
+    @staticmethod
+    def _contrast_color(background):
+        red, green, blue = background.red, background.green, background.blue
+        def linear(channel: float) -> float:
+            return channel / 12.92 if channel <= .04045 else ((channel + .055) / 1.055) ** 2.4
+        luminance = .2126 * linear(red) + .7152 * linear(green) + .0722 * linear(blue)
+        return colors.white if luminance < .42 else colors.HexColor("#172536")
