@@ -95,6 +95,31 @@ def test_permissions_are_tenant_scoped_persistent_and_enforced(client, db_sessio
     )
     assert unaffected.status_code != 403
 
+    # Tenant administrators obey their own matrix as well, but retain the
+    # structural roles screen so they can undo an overly restrictive setup.
+    admin_role_a = db_session.query(Role).filter(
+        Role.empresa_id == empresa_a.id,
+        Role.nombre == "Administrador",
+    ).one()
+    admin_matrix = client.get(
+        f"/api/v1/roles/{admin_role_a.id}/permissions",
+        headers=_headers(admin_a),
+    )
+    admin_codes = [item["code"] for item in admin_matrix.json()["permissions"]]
+    admin_update = client.put(
+        f"/api/v1/roles/{admin_role_a.id}/permissions",
+        headers=_headers(admin_a),
+        json={"permission_codes": [code for code in admin_codes if code != "resenas.crear"]},
+    )
+    assert admin_update.status_code == 200, admin_update.text
+    blocked_admin = client.put(
+        "/api/v1/productos/NO-EXISTE/resenas/mia",
+        headers=_headers(admin_a),
+        json={"puntuacion": 5, "comentario": "Prueba de permiso del administrador."},
+    )
+    assert blocked_admin.status_code == 403
+    assert client.get("/api/v1/roles", headers=_headers(admin_a)).status_code == 200
+
     # A tenant administrator cannot mutate a role that belongs to another tenant.
     cross_tenant = client.put(
         f"/api/v1/roles/{client_role_b.id}/permissions",
