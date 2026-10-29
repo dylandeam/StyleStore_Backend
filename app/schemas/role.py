@@ -62,3 +62,11 @@ class UpdateRolePermissionsRequest(BaseModel):
     permission_codes: list[str] = Field(
         ..., description="List of permission codes to assign to the role"
     )
+
+
+class EffectivePermissionsResponse(BaseModel):
+    """Permissions currently effective for the authenticated user and tenant."""
+
+    empresa_id: int | None = None
+    role: str
+    permission_codes: list[str]

@@ -385,7 +385,7 @@ async def verificar_elegibilidad_reserva(
     response_model=ReservaResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Crear reserva",
-    dependencies=[Depends(require_plan_capability("reservas"))],
+    dependencies=[Depends(require_plan_capability("reservas")), Depends(require_permission("reservas.crear"))],
 )
 async def create_reserva(
     payload: ReservaCreate,

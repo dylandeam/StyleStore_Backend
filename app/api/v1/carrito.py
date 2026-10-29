@@ -164,7 +164,7 @@ async def get_my_cart(
     return _serialize_carrito(carrito, db)
 
 
-@router.post("/items", response_model=CarritoResponse, summary="Agregar producto al carrito")
+@router.post("/items", response_model=CarritoResponse, summary="Agregar producto al carrito", dependencies=[Depends(require_permission("carrito.usar"))])
 async def add_item_to_cart(
     payload: DetalleCarritoCreate,
     current_user: User = Depends(get_current_user),
@@ -226,7 +226,7 @@ async def add_item_to_cart(
     return _serialize_carrito(carrito, db)
 
 
-@router.patch("/items/{item_id}", response_model=CarritoResponse, summary="Actualizar cantidad de un ítem")
+@router.patch("/items/{item_id}", response_model=CarritoResponse, summary="Actualizar cantidad de un ítem", dependencies=[Depends(require_permission("carrito.usar"))])
 async def update_cart_item(
     item_id: int,
     payload: DetalleCarritoUpdate,
@@ -259,7 +259,7 @@ async def update_cart_item(
     return _serialize_carrito(carrito, db)
 
 
-@router.delete("/items/{item_id}", response_model=CarritoResponse, summary="Quitar ítem del carrito")
+@router.delete("/items/{item_id}", response_model=CarritoResponse, summary="Quitar ítem del carrito", dependencies=[Depends(require_permission("carrito.usar"))])
 async def remove_cart_item(
     item_id: int,
     current_user: User = Depends(get_current_user),
@@ -286,7 +286,7 @@ async def remove_cart_item(
     return _serialize_carrito(carrito, db)
 
 
-@router.post("/confirmar", summary="Confirmar carrito y generar Orden de Venta", dependencies=[Depends(require_plan_capability("ventas"))])
+@router.post("/confirmar", summary="Confirmar carrito y generar Orden de Venta", dependencies=[Depends(require_plan_capability("ventas")), Depends(require_permission("ventas.comprar"))])
 async def confirm_cart(
     payload: ConfirmarCarritoRequest,
     current_user: User = Depends(get_current_user),
@@ -487,7 +487,7 @@ async def confirm_cart(
         )
 
 
-@router.post("/checkout", summary="Checkout integral con Delivery StyleStore para Web y Móvil", dependencies=[Depends(require_plan_capability("ventas"))])
+@router.post("/checkout", summary="Checkout integral con Delivery StyleStore para Web y Móvil", dependencies=[Depends(require_plan_capability("ventas")), Depends(require_permission("ventas.comprar"))])
 async def checkout_cart(
     payload: CheckoutRequest,
     current_user: User = Depends(get_current_user),

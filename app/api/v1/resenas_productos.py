@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, get_optional_current_user
+from app.api.deps import get_current_user, get_optional_current_user, require_permission
 from app.database import get_db
 from app.models.user import User
 from app.schemas.resena_producto import ResenaProductoUpsert, ResenasProductoResponse
@@ -21,7 +21,7 @@ async def list_product_reviews(
     return ResenaProductoService(db).list_for_product(codigo, current_user)
 
 
-@router.put("/mia", response_model=ResenasProductoResponse)
+@router.put("/mia", response_model=ResenasProductoResponse, dependencies=[Depends(require_permission("resenas.crear"))])
 async def save_my_product_review(
     codigo: str,
     payload: ResenaProductoUpsert,
@@ -31,7 +31,7 @@ async def save_my_product_review(
     return ResenaProductoService(db).upsert(codigo, payload, current_user)
 
 
-@router.delete("/mia", response_model=ResenasProductoResponse)
+@router.delete("/mia", response_model=ResenasProductoResponse, dependencies=[Depends(require_permission("resenas.crear"))])
 async def delete_my_product_review(
     codigo: str,
     current_user: User = Depends(get_current_user),

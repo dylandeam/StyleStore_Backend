@@ -15,6 +15,7 @@ from app.core.exceptions import (
     UserNotFoundException,
 )
 from app.services.bitacora_service import BitacoraService
+from app.services.tenant_scope import effective_empresa_id
 
 
 class UserService:
@@ -112,16 +113,26 @@ class UserService:
             if existing_ci:
                 raise BadRequestException(f"Ya existe un usuario con el CI '{request.ci}'.")
 
-        # Resolve role
+        # Resolve roles only inside the acting tenant. A role ID from another
+        # company must never be assignable even by guessing it.
+        target_empresa_id = effective_empresa_id(current_user) or current_user.empresa_id
         role_obj = None
         if request.role_id:
-            role_obj = self.db.query(Role).filter(Role.id == request.role_id).first()
+            role_obj = self.db.query(Role).filter(
+                Role.id == request.role_id,
+                Role.empresa_id == target_empresa_id,
+            ).first()
         if not role_obj and request.role:
             role_obj = (
                 self.db.query(Role)
-                .filter((Role.nombre.ilike(request.role.replace("_", " "))) | (Role.nombre.ilike(request.role)))
+                .filter(
+                    Role.empresa_id == target_empresa_id,
+                    (Role.nombre.ilike(request.role.replace("_", " "))) | (Role.nombre.ilike(request.role)),
+                )
                 .first()
             )
+        if request.role_id and not role_obj:
+            raise ForbiddenException("El rol seleccionado no pertenece al tenant activo.")
 
         role_str = role_obj.nombre.lower().replace(" ", "_") if role_obj else request.role.lower()
         role_id_val = role_obj.id if role_obj else None
@@ -143,7 +154,7 @@ class UserService:
             clean_apellido = raw_apellido
 
         user = User(
-            empresa_id=current_user.empresa_id,
+            empresa_id=target_empresa_id,
             email=request.email,
             name=clean_name,
             apellido=clean_apellido,
@@ -190,15 +201,24 @@ class UserService:
         if request.direccion is not None:
             user.direccion = request.direccion.strip()
 
+        target_empresa_id = user.empresa_id
         if request.role_id is not None:
-            role_obj = self.db.query(Role).filter(Role.id == request.role_id).first()
+            role_obj = self.db.query(Role).filter(
+                Role.id == request.role_id,
+                Role.empresa_id == target_empresa_id,
+            ).first()
             if role_obj:
                 user.role_id = role_obj.id
                 user.role = role_obj.nombre.lower().replace(" ", "_")
+            else:
+                raise ForbiddenException("El rol seleccionado no pertenece al tenant del usuario.")
         elif request.role is not None:
             role_obj = (
                 self.db.query(Role)
-                .filter((Role.nombre.ilike(request.role.replace("_", " "))) | (Role.nombre.ilike(request.role)))
+                .filter(
+                    Role.empresa_id == target_empresa_id,
+                    (Role.nombre.ilike(request.role.replace("_", " "))) | (Role.nombre.ilike(request.role)),
+                )
                 .first()
             )
             if role_obj:

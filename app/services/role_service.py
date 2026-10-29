@@ -8,10 +8,16 @@ from app.models.role import Role
 from app.models.permission import Permission
 from app.models.role_permission import RolePermission
 from app.models.user import User
-from app.core.exceptions import NotFoundException, BadRequestException
+from app.core.exceptions import NotFoundException, BadRequestException, ForbiddenException
 from app.services.bitacora_service import BitacoraService
 
 AVAILABLE_ROLES = ["administrador", "encargado_sucursal", "cajero", "cliente"]
+
+
+def role_slug(nombre: str) -> str:
+    """Keep the public role codes stable while roles are isolated per tenant."""
+    slug = nombre.strip().lower().replace(" ", "_")
+    return "encargado_sucursal" if slug == "encargado_de_sucursal" else slug
 
 BASE_PERMISSIONS = [
     # Usuarios (CU1)
@@ -104,8 +110,14 @@ BASE_PERMISSIONS = [
 
     # Carrito y Ventas (v5 sección 17, 18, 23)
     {"code": "carrito.ver", "module": "carrito", "description": "Visualizar carritos de compra"},
+    {"code": "carrito.usar", "module": "carrito", "description": "Agregar, modificar y quitar prendas del carrito"},
     {"code": "ventas.ver", "module": "ventas", "description": "Visualizar listado consolidado de ventas"},
+    {"code": "ventas.crear", "module": "ventas", "description": "Registrar ventas presenciales y cobros de mostrador"},
+    {"code": "ventas.comprar", "module": "ventas", "description": "Confirmar compras y procesar pagos como cliente"},
     {"code": "ventas.eliminar", "module": "ventas", "description": "Eliminar registros de venta"},
+
+    # Participación del cliente
+    {"code": "resenas.crear", "module": "resenas", "description": "Publicar, editar o eliminar reseñas de productos"},
 
     # Envíos (v5 sección 24)
     {"code": "envios.ver", "module": "envios", "description": "Visualizar envíos de compras en línea"},
@@ -128,8 +140,44 @@ BASE_PERMISSIONS = [
 class RoleService:
     """Service for managing RBAC roles and permissions."""
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, empresa_id: int | None = None):
         self.db = db
+        self.empresa_id = empresa_id
+
+    def _require_empresa(self) -> int:
+        if self.empresa_id is None:
+            raise ForbiddenException(
+                "Selecciona un tenant antes de administrar sus roles y permisos."
+            )
+        return self.empresa_id
+
+    @staticmethod
+    def slug(nombre: str) -> str:
+        return role_slug(nombre)
+
+    def effective_permission_codes(self, user: User) -> list[str]:
+        """Return the matrix used by web/mobile to adapt without publishing a new app."""
+        if user.is_platform_admin or user.role == "administrador":
+            return [item.code for item in self.list_all_permissions()]
+        if not user.role_id:
+            return []
+        role = self.db.query(Role).filter(
+            Role.id == user.role_id,
+            Role.empresa_id == user.empresa_id,
+            Role.active.is_(True),
+        ).first()
+        if not role:
+            return []
+        return [
+            code
+            for (code,) in (
+                self.db.query(Permission.code)
+                .join(RolePermission, Permission.id == RolePermission.permission_id)
+                .filter(RolePermission.role_id == user.role_id)
+                .order_by(Permission.code)
+                .all()
+            )
+        ]
 
     def seed_default_permissions_and_roles(self):
         """Seed base permissions and assign default roles dynamically."""
@@ -148,7 +196,11 @@ class RoleService:
                 existing.module = perm_data["module"]
         self.db.commit()
 
-        # 2. Ensure base roles exist in `roles` table
+        # The permission catalog is global, but role matrices are tenant-owned.
+        if self.empresa_id is None:
+            return
+
+        # 2. Ensure base roles exist only inside the selected tenant.
         base_role_defs = [
             ("Administrador", "Acceso total y administración de la plataforma StyleStore"),
             ("Encargado de Sucursal", "Gestión de catálogo, sucursales, reservas e inventario"),
@@ -157,12 +209,22 @@ class RoleService:
         ]
 
         role_map: dict[str, Role] = {}
+        new_role_ids: set[int] = set()
         for role_name, desc in base_role_defs:
-            role_obj = self.db.query(Role).filter(Role.nombre.ilike(role_name)).first()
+            role_obj = self.db.query(Role).filter(
+                Role.empresa_id == self.empresa_id,
+                Role.nombre.ilike(role_name),
+            ).first()
             if not role_obj:
-                role_obj = Role(nombre=role_name, descripcion=desc, active=True)
+                role_obj = Role(
+                    empresa_id=self.empresa_id,
+                    nombre=role_name,
+                    descripcion=desc,
+                    active=True,
+                )
                 self.db.add(role_obj)
                 self.db.flush()
+                new_role_ids.add(role_obj.id)
             role_map[role_name.lower()] = role_obj
 
         self.db.commit()
@@ -173,7 +235,10 @@ class RoleService:
         cajero_role = role_map.get("cajero")
         encargado_role = role_map.get("encargado de sucursal")
 
-        users_without_role_id = self.db.query(User).filter(User.role_id.is_(None)).all()
+        users_without_role_id = self.db.query(User).filter(
+            User.empresa_id == self.empresa_id,
+            User.role_id.is_(None),
+        ).all()
         for u in users_without_role_id:
             r_str = (u.role or "cliente").lower()
             if "admin" in r_str and admin_role:
@@ -189,12 +254,13 @@ class RoleService:
         # 4. Assign permissions to roles
         all_perms = self.db.query(Permission).all()
 
-        # Administrador gets all permissions
-        if admin_role:
+        # Defaults are assigned only when a tenant role is first created. Reloading
+        # this service must never restore a permission deliberately disabled by an admin.
+        if admin_role and admin_role.id in new_role_ids:
             for perm in all_perms:
                 exists = (
                     self.db.query(RolePermission)
-                    .filter((RolePermission.role_id == admin_role.id) | (RolePermission.role == "administrador"))
+                    .filter(RolePermission.role_id == admin_role.id)
                     .filter(RolePermission.permission_id == perm.id)
                     .first()
                 )
@@ -202,12 +268,12 @@ class RoleService:
                     self.db.add(RolePermission(role_id=admin_role.id, role="administrador", permission_id=perm.id))
 
         # Encargado de Sucursal
-        if encargado_role:
+        if encargado_role and encargado_role.id in new_role_ids:
             for perm in all_perms:
-                if perm.module in ["productos", "categorias", "colores", "tallas", "temporadas", "colecciones", "proximamente", "reservas", "inventario", "catalogo", "promociones"] or perm.code in ["sucursales.ver", "usuarios.ver"]:
+                if perm.module in ["productos", "categorias", "colores", "tallas", "temporadas", "colecciones", "proximamente", "reservas", "inventario", "catalogo", "promociones", "ventas"] or perm.code in ["sucursales.ver", "usuarios.ver"]:
                     exists = (
                         self.db.query(RolePermission)
-                        .filter((RolePermission.role_id == encargado_role.id) | (RolePermission.role == "encargado_sucursal"))
+                        .filter(RolePermission.role_id == encargado_role.id)
                         .filter(RolePermission.permission_id == perm.id)
                         .first()
                     )
@@ -215,16 +281,16 @@ class RoleService:
                         self.db.add(RolePermission(role_id=encargado_role.id, role="encargado_sucursal", permission_id=perm.id))
 
         # Cajero
-        if cajero_role:
+        if cajero_role and cajero_role.id in new_role_ids:
             for perm in all_perms:
                 if perm.code in [
                     "productos.ver", "catalogo.ver", "sucursales.ver", "categorias.ver",
                     "colores.ver", "tallas.ver", "temporadas.ver", "colecciones.ver",
-                    "clientes.ver", "ventas.ver", "reservas.ver", "inventario.ver", "promociones.ver"
+                    "clientes.ver", "ventas.ver", "ventas.crear", "reservas.ver", "inventario.ver", "promociones.ver"
                 ]:
                     exists = (
                         self.db.query(RolePermission)
-                        .filter((RolePermission.role_id == cajero_role.id) | (RolePermission.role == "cajero"))
+                        .filter(RolePermission.role_id == cajero_role.id)
                         .filter(RolePermission.permission_id == perm.id)
                         .first()
                     )
@@ -232,16 +298,17 @@ class RoleService:
                         self.db.add(RolePermission(role_id=cajero_role.id, role="cajero", permission_id=perm.id))
 
         # Cliente
-        if cliente_role:
+        if cliente_role and cliente_role.id in new_role_ids:
             for perm in all_perms:
                 if perm.code in [
                     "catalogo.ver", "productos.ver", "sucursales.ver",
                     "categorias.ver", "colores.ver", "tallas.ver", "temporadas.ver",
-                    "colecciones.ver", "proximamente.ver", "reservas.crear", "promociones.ver"
+                    "colecciones.ver", "proximamente.ver", "reservas.crear", "promociones.ver",
+                    "carrito.ver", "carrito.usar", "ventas.comprar", "resenas.crear"
                 ]:
                     exists = (
                         self.db.query(RolePermission)
-                        .filter((RolePermission.role_id == cliente_role.id) | (RolePermission.role == "cliente"))
+                        .filter(RolePermission.role_id == cliente_role.id)
                         .filter(RolePermission.permission_id == perm.id)
                         .first()
                     )
@@ -252,12 +319,13 @@ class RoleService:
 
     def list_roles(self) -> list[dict]:
         """List all system roles and their permission counts."""
-        roles = self.db.query(Role).order_by(Role.id).all()
+        empresa_id = self._require_empresa()
+        roles = self.db.query(Role).filter(Role.empresa_id == empresa_id).order_by(Role.id).all()
         result = []
         for r in roles:
             perm_count = (
                 self.db.query(RolePermission)
-                .filter((RolePermission.role_id == r.id) | (RolePermission.role == r.nombre.lower()))
+                .filter(RolePermission.role_id == r.id)
                 .count()
             )
             user_count = self.db.query(User).filter(User.role_id == r.id).count()
@@ -266,7 +334,7 @@ class RoleService:
                 "nombre": r.nombre,
                 "descripcion": r.descripcion,
                 "active": r.active,
-                "role": r.nombre.lower().replace(" ", "_"),
+                "role": role_slug(r.nombre),
                 "permission_count": perm_count,
                 "user_count": user_count,
                 "created_at": r.created_at,
@@ -275,18 +343,26 @@ class RoleService:
 
     def get_role_by_id(self, role_id: int) -> Role:
         """Get role by ID or raise 404."""
-        role = self.db.query(Role).filter(Role.id == role_id).first()
+        role = self.db.query(Role).filter(
+            Role.id == role_id,
+            Role.empresa_id == self._require_empresa(),
+        ).first()
         if not role:
             raise NotFoundException(f"El rol con ID {role_id} no existe.")
         return role
 
     def create_role(self, nombre: str, descripcion: str | None, current_user: User) -> Role:
         """Create a new role."""
-        existing = self.db.query(Role).filter(Role.nombre.ilike(nombre.strip())).first()
+        empresa_id = self._require_empresa()
+        existing = self.db.query(Role).filter(
+            Role.empresa_id == empresa_id,
+            Role.nombre.ilike(nombre.strip()),
+        ).first()
         if existing:
             raise BadRequestException(f"Ya existe un rol con el nombre '{nombre}'.")
 
         role = Role(
+            empresa_id=empresa_id,
             nombre=nombre.strip(),
             descripcion=descripcion.strip() if descripcion else None,
             active=True,
@@ -307,7 +383,11 @@ class RoleService:
         """Update role information."""
         role = self.get_role_by_id(role_id)
         if nombre and nombre.strip() != role.nombre:
-            existing = self.db.query(Role).filter(Role.nombre.ilike(nombre.strip()), Role.id != role_id).first()
+            existing = self.db.query(Role).filter(
+                Role.empresa_id == self._require_empresa(),
+                Role.nombre.ilike(nombre.strip()),
+                Role.id != role_id,
+            ).first()
             if existing:
                 raise BadRequestException(f"Ya existe otro rol con el nombre '{nombre}'.")
             role.nombre = nombre.strip()
@@ -364,23 +444,33 @@ class RoleService:
         if isinstance(role_id_or_name, int) or (isinstance(role_id_or_name, str) and role_id_or_name.isdigit()):
             role = self.get_role_by_id(int(role_id_or_name))
         else:
-            role = self.db.query(Role).filter(Role.nombre.ilike(str(role_id_or_name).replace("_", " "))).first()
+            lookup = str(role_id_or_name)
+            aliases = [lookup.replace("_", " "), lookup]
+            if lookup == "encargado_sucursal":
+                aliases.append("Encargado de Sucursal")
+            role = self.db.query(Role).filter(
+                Role.empresa_id == self._require_empresa(),
+                Role.nombre.ilike(aliases[0]),
+            ).first()
             if not role:
-                role = self.db.query(Role).filter(Role.nombre.ilike(str(role_id_or_name))).first()
+                role = self.db.query(Role).filter(
+                    Role.empresa_id == self._require_empresa(),
+                    Role.nombre.ilike(aliases[-1]),
+                ).first()
             if not role:
                 raise NotFoundException(f"El rol '{role_id_or_name}' no existe.")
 
         role_perms = (
             self.db.query(Permission)
             .join(RolePermission, Permission.id == RolePermission.permission_id)
-            .filter((RolePermission.role_id == role.id) | (RolePermission.role == role.nombre.lower()))
+            .filter(RolePermission.role_id == role.id)
             .order_by(Permission.module, Permission.code)
             .all()
         )
         return {
             "id": role.id,
             "nombre": role.nombre,
-            "role": role.nombre.lower().replace(" ", "_"),
+            "role": role_slug(role.nombre),
             "permissions": role_perms,
         }
 
@@ -394,9 +484,19 @@ class RoleService:
         if isinstance(role_id_or_name, int) or (isinstance(role_id_or_name, str) and role_id_or_name.isdigit()):
             role = self.get_role_by_id(int(role_id_or_name))
         else:
-            role = self.db.query(Role).filter(Role.nombre.ilike(str(role_id_or_name).replace("_", " "))).first()
+            lookup = str(role_id_or_name)
+            aliases = [lookup.replace("_", " "), lookup]
+            if lookup == "encargado_sucursal":
+                aliases.append("Encargado de Sucursal")
+            role = self.db.query(Role).filter(
+                Role.empresa_id == self._require_empresa(),
+                Role.nombre.ilike(aliases[0]),
+            ).first()
             if not role:
-                role = self.db.query(Role).filter(Role.nombre.ilike(str(role_id_or_name))).first()
+                role = self.db.query(Role).filter(
+                    Role.empresa_id == self._require_empresa(),
+                    Role.nombre.ilike(aliases[-1]),
+                ).first()
             if not role:
                 raise NotFoundException(f"El rol '{role_id_or_name}' no existe.")
 
@@ -408,13 +508,11 @@ class RoleService:
         ) if permission_codes else []
 
         # Remove existing permissions for this role
-        self.db.query(RolePermission).filter(
-            (RolePermission.role_id == role.id) | (RolePermission.role == role.nombre.lower())
-        ).delete()
+        self.db.query(RolePermission).filter(RolePermission.role_id == role.id).delete()
 
         # Add new permissions
         for perm in permissions:
-            self.db.add(RolePermission(role_id=role.id, role=role.nombre.lower(), permission_id=perm.id))
+            self.db.add(RolePermission(role_id=role.id, role=role_slug(role.nombre), permission_id=perm.id))
 
         self.db.commit()
 

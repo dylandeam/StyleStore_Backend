@@ -18,6 +18,7 @@ from app.core.exceptions import (
 )
 from app.models.permission import Permission
 from app.models.role_permission import RolePermission
+from app.models.role import Role
 from app.services.auth_service import AuthService
 from app.services.plan_service import PlanService
 from app.services.user_service import UserService
@@ -46,6 +47,45 @@ def _apply_token_tenant_scope(db: Session, user: User, payload: dict) -> User:
     # The entity lives only for this request/session. Marking it as committed prevents
     # an unrelated db.commit() from persisting the selected tenant on the account.
     set_committed_value(user, "empresa_id", empresa_id)
+    return user
+
+
+def _apply_tenant_role_scope(db: Session, user: User) -> User:
+    """Resolve the equivalent role inside the request's selected tenant."""
+    if user.is_platform_admin or user.empresa_id is None:
+        return user
+    from app.services.role_service import RoleService
+
+    if user.role_id:
+        current_role = db.query(Role.id).filter(
+            Role.id == user.role_id,
+            Role.empresa_id == user.empresa_id,
+        ).first()
+        if current_role:
+            return user
+    normalized = (user.role or "cliente").replace("_", " ")
+    candidates = [normalized, user.role]
+    if user.role == "encargado_sucursal":
+        candidates.append("Encargado de Sucursal")
+    tenant_role = None
+    for candidate in candidates:
+        tenant_role = db.query(Role).filter(
+            Role.empresa_id == user.empresa_id,
+            Role.nombre.ilike(candidate),
+        ).first()
+        if tenant_role:
+            break
+    if tenant_role is None:
+        RoleService(db, user.empresa_id).seed_default_permissions_and_roles()
+        for candidate in candidates:
+            tenant_role = db.query(Role).filter(
+                Role.empresa_id == user.empresa_id,
+                Role.nombre.ilike(candidate),
+            ).first()
+            if tenant_role:
+                break
+    if tenant_role and user.role_id != tenant_role.id:
+        set_committed_value(user, "role_id", tenant_role.id)
     return user
 
 
@@ -121,6 +161,7 @@ async def get_current_user(
     user = user_service.get_user_by_id(user_id)
 
     user = _apply_token_tenant_scope(db, user, payload)
+    user = _apply_tenant_role_scope(db, user)
     user = _apply_platform_tenant_context(db, request, user)
 
     if not user.is_active:
@@ -177,6 +218,7 @@ async def get_optional_current_user(
         user_service = UserService(db)
         user = user_service.get_user_by_id(user_id)
         user = _apply_token_tenant_scope(db, user, payload)
+        user = _apply_tenant_role_scope(db, user)
         user = _apply_platform_tenant_context(db, request, user)
         if user and user.is_active:
             if not user.is_platform_admin and user.empresa_id is not None:
@@ -216,23 +258,36 @@ def require_permission(permission_code: str):
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
     ) -> User:
-        if current_user.role in ["administrador", "encargado_sucursal"]:
+        if current_user.is_platform_admin or current_user.role == "administrador":
             return current_user
 
         query_filter = [Permission.code == permission_code]
         if current_user.role_id:
-            query_filter.append((RolePermission.role_id == current_user.role_id) | (RolePermission.role == current_user.role))
+            query_filter.append(RolePermission.role_id == current_user.role_id)
         else:
-            query_filter.append(RolePermission.role == current_user.role)
+            query_filter.append(RolePermission.id == -1)
 
         has_perm = (
             db.query(RolePermission)
             .join(Permission, RolePermission.permission_id == Permission.id)
+            .join(Role, RolePermission.role_id == Role.id)
             .filter(*query_filter)
+            .filter(Role.active.is_(True), Role.empresa_id == current_user.empresa_id)
             .first()
         )
         if not has_perm:
-            raise ForbiddenException(f"No tiene el permiso requerido: '{permission_code}'")
+            unavailable_messages = {
+                "carrito.usar": "El carrito no está disponible temporalmente en esta tienda.",
+                "ventas.comprar": "Las compras no están disponibles temporalmente en esta tienda.",
+                "reservas.crear": "Las reservas no están disponibles temporalmente en esta tienda.",
+                "resenas.crear": "Las reseñas no están disponibles temporalmente en esta tienda.",
+            }
+            raise ForbiddenException(
+                unavailable_messages.get(
+                    permission_code,
+                    f"No tiene el permiso requerido: '{permission_code}'",
+                )
+            )
         return current_user
 
     return permission_checker

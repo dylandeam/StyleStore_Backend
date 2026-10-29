@@ -209,11 +209,17 @@ class EmpresaService:
         if self.db.query(User).filter(User.email == data.admin_email).first():
             raise ConflictException("Ya existe un usuario con el correo del administrador indicado.")
 
-        role = self.db.query(Role).filter(Role.nombre.ilike("administrador")).first()
         try:
             empresa = Empresa(codigo=data.codigo, nombre=data.nombre.strip(), active=True)
             self.db.add(empresa)
             self.db.flush()
+
+            from app.services.role_service import RoleService
+            RoleService(self.db, empresa.id).seed_default_permissions_and_roles()
+            role = self.db.query(Role).filter(
+                Role.empresa_id == empresa.id,
+                Role.nombre.ilike("administrador"),
+            ).first()
 
             admin = User(
                 empresa_id=empresa.id,

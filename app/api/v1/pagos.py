@@ -93,7 +93,7 @@ async def get_paypal_status(
         "bob_per_usd": settings.PAYPAL_BOB_PER_USD,
     }
 
-@router.post("/paypal/crear-orden", summary="Crear orden en PayPal Orders v2", dependencies=[Depends(require_plan_capability("ventas"))])
+@router.post("/paypal/crear-orden", summary="Crear orden en PayPal Orders v2", dependencies=[Depends(require_plan_capability("ventas")), Depends(require_permission("ventas.comprar"))])
 async def create_paypal_order(
     payload: PayPalCrearOrdenRequest,
     current_user: User = Depends(get_current_user),

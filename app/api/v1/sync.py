@@ -15,6 +15,7 @@ from app.models.permission import Permission
 from app.models.reserva import Reserva
 from app.models.resena_producto import ResenaProducto
 from app.models.role_permission import RolePermission
+from app.models.role import Role
 from app.models.sync_operation import SyncOperation
 from app.models.reembolso_offline import ReembolsoOffline
 from app.models.user import User
@@ -23,6 +24,7 @@ from app.schemas.reserva import ReservaCreate
 from app.schemas.resena_producto import ResenaProductoUpsert
 from app.services.resena_producto_service import ResenaProductoService
 from app.services.notificacion_service import NotificacionService
+from app.services.role_service import RoleService
 from app.schemas.sync import (
     SyncBatchRequest,
     SyncDiagnosticoItem,
@@ -49,14 +51,26 @@ def _response(record: SyncOperation, db: Session) -> SyncOperationResponse:
 
 
 def _can_register_sale(db: Session, user: User) -> bool:
-    if user.role in ["administrador", "encargado_sucursal"]:
+    return _has_permission(db, user, "ventas.crear")
+
+
+def _has_permission(db: Session, user: User, permission_code: str) -> bool:
+    if user.is_platform_admin or user.role == "administrador":
         return True
-    filters = [Permission.code == "productos.editar"]
+    filters = [Permission.code == permission_code]
     if user.role_id:
-        filters.append((RolePermission.role_id == user.role_id) | (RolePermission.role == user.role))
+        filters.append(RolePermission.role_id == user.role_id)
     else:
-        filters.append(RolePermission.role == user.role)
-    return db.query(RolePermission).join(Permission, RolePermission.permission_id == Permission.id).filter(*filters).first() is not None
+        return False
+    return (
+        db.query(RolePermission)
+        .join(Permission, RolePermission.permission_id == Permission.id)
+        .join(Role, RolePermission.role_id == Role.id)
+        .filter(*filters)
+        .filter(Role.active.is_(True), Role.empresa_id == user.empresa_id)
+        .first()
+        is not None
+    )
 
 
 def _find_owned(db: Session, operation_uuid: str, user: User) -> SyncOperation | None:
@@ -107,6 +121,9 @@ async def _process(payload: SyncOperationRequest, user: User, db: Session) -> Sy
     if user.empresa_id is None:
         raise ForbiddenException("La sincronización comercial requiere pertenecer a una empresa")
 
+    RoleService(db, user.empresa_id).seed_default_permissions_and_roles()
+    db.refresh(user)
+
     operation_uuid = str(payload.operation_uuid)
     empresa_id = user.empresa_id
     user_id = user.id
@@ -143,6 +160,8 @@ async def _process(payload: SyncOperationRequest, user: User, db: Session) -> Sy
 
     try:
         if payload.operation_type == "reserva":
+            if not _has_permission(db, user, "reservas.crear"):
+                raise ForbiddenException("Las reservas no están disponibles temporalmente en esta tienda.")
             business_payload = ReservaCreate.model_validate({**payload.payload, "operation_uuid": operation_uuid})
             result = await create_reserva(business_payload, user, db)
             result_type = "reserva"
@@ -161,6 +180,8 @@ async def _process(payload: SyncOperationRequest, user: User, db: Session) -> Sy
             result = await create_venta_presencial(business_payload, user, db)
             result_type = "venta"
         else:
+            if not _has_permission(db, user, "resenas.crear"):
+                raise ForbiddenException("Las reseñas no están disponibles temporalmente en esta tienda.")
             codigo = str(payload.payload.get("codigo") or "").strip()
             if not codigo:
                 raise HTTPException(status_code=400, detail="La reseña no identifica una prenda")

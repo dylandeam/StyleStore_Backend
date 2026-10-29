@@ -81,9 +81,14 @@ class AuthService:
             if existing_ci:
                 raise UserAlreadyExistsException("Ya existe un usuario registrado con este carnet de identidad (CI).")
 
-        # Resolve role_id for 'cliente'
+        # Resolve the client role inside this tenant (never from another company).
         from app.models.role import Role
-        role_cliente = self.db.query(Role).filter(Role.nombre.ilike("cliente")).first()
+        from app.services.role_service import RoleService
+        RoleService(self.db, empresa.id).seed_default_permissions_and_roles()
+        role_cliente = self.db.query(Role).filter(
+            Role.empresa_id == empresa.id,
+            Role.nombre.ilike("cliente"),
+        ).first()
         role_id_val = role_cliente.id if role_cliente else None
 
         # Sanitize name and apellido to prevent duplicate surnames (e.g. 'Lupita Cardozo Mendez' + 'Cardozo Mendez')
