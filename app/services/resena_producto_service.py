@@ -105,7 +105,13 @@ class ResenaProductoService:
             "puede_comentar": bool(current_user and current_user.role == "cliente" and not current_user.is_platform_admin),
         }
 
-    def upsert(self, codigo: str, payload: ResenaProductoUpsert, current_user: User) -> dict:
+    def upsert(
+        self,
+        codigo: str,
+        payload: ResenaProductoUpsert,
+        current_user: User,
+        operation_uuid: str | None = None,
+    ) -> dict:
         if current_user.role != "cliente" or current_user.is_platform_admin:
             raise ForbiddenException("Solo los clientes pueden publicar reseñas de prendas")
         product = self._get_product(codigo, current_user)
@@ -118,6 +124,8 @@ class ResenaProductoService:
             review.puntuacion = payload.puntuacion
             review.comentario = payload.comentario
             review.active = True
+            if operation_uuid:
+                review.client_operation_uuid = operation_uuid
         else:
             review = ResenaProducto(
                 empresa_id=product.empresa_id,
@@ -125,6 +133,7 @@ class ResenaProductoService:
                 user_id=current_user.id,
                 puntuacion=payload.puntuacion,
                 comentario=payload.comentario,
+                client_operation_uuid=operation_uuid,
             )
             self.db.add(review)
         self.db.commit()

@@ -13,12 +13,16 @@ from app.database import get_db
 from app.models.orden_venta import OrdenVenta
 from app.models.permission import Permission
 from app.models.reserva import Reserva
+from app.models.resena_producto import ResenaProducto
 from app.models.role_permission import RolePermission
 from app.models.sync_operation import SyncOperation
 from app.models.reembolso_offline import ReembolsoOffline
 from app.models.user import User
 from app.schemas.pago_envio import VentaPresencialCreate
 from app.schemas.reserva import ReservaCreate
+from app.schemas.resena_producto import ResenaProductoUpsert
+from app.services.resena_producto_service import ResenaProductoService
+from app.services.notificacion_service import NotificacionService
 from app.schemas.sync import (
     SyncBatchRequest,
     SyncDiagnosticoItem,
@@ -73,9 +77,14 @@ def _reconcile_processing(db: Session, record: SyncOperation) -> SyncOperation:
     if record.operation_type == "reserva":
         resource = db.query(Reserva).filter(Reserva.client_operation_uuid == record.operation_uuid).first()
         result_type = "reserva"
-    else:
+    elif record.operation_type == "venta_efectivo":
         resource = db.query(OrdenVenta).filter(OrdenVenta.client_operation_uuid == record.operation_uuid).first()
         result_type = "venta"
+    else:
+        resource = db.query(ResenaProducto).filter(
+            ResenaProducto.client_operation_uuid == record.operation_uuid
+        ).first()
+        result_type = "resena_producto"
     if resource:
         record.status = "confirmada"
         record.result_type = result_type
@@ -84,6 +93,14 @@ def _reconcile_processing(db: Session, record: SyncOperation) -> SyncOperation:
         db.commit()
         db.refresh(record)
     return record
+
+
+def _notify_result(db: Session, record: SyncOperation, user: User) -> None:
+    try:
+        NotificacionService(db).notificar_resultado_operacion_offline(record, user)
+    except Exception:
+        # La notificación es complementaria: nunca debe revertir una operación confirmada.
+        db.rollback()
 
 
 async def _process(payload: SyncOperationRequest, user: User, db: Session) -> SyncOperationResponse:
@@ -95,7 +112,9 @@ async def _process(payload: SyncOperationRequest, user: User, db: Session) -> Sy
     user_id = user.id
     existing = _find_owned(db, operation_uuid, user)
     if existing:
-        return _response(_reconcile_processing(db, existing), db)
+        existing = _reconcile_processing(db, existing)
+        _notify_result(db, existing, user)
+        return _response(existing, db)
     collision = db.query(SyncOperation.id).filter(SyncOperation.operation_uuid == operation_uuid).first()
     if collision:
         raise ForbiddenException("El identificador de operación pertenece a otro ámbito")
@@ -127,7 +146,7 @@ async def _process(payload: SyncOperationRequest, user: User, db: Session) -> Sy
             business_payload = ReservaCreate.model_validate({**payload.payload, "operation_uuid": operation_uuid})
             result = await create_reserva(business_payload, user, db)
             result_type = "reserva"
-        else:
+        elif payload.operation_type == "venta_efectivo":
             if not _can_register_sale(db, user):
                 raise ForbiddenException("No tiene permiso para registrar ventas de contado")
             if str(payload.payload.get("metodo_pago", "efectivo")).lower() != "efectivo":
@@ -141,6 +160,19 @@ async def _process(payload: SyncOperationRequest, user: User, db: Session) -> Sy
             business_payload = VentaPresencialCreate.model_validate({**clean_payload, "operation_uuid": operation_uuid})
             result = await create_venta_presencial(business_payload, user, db)
             result_type = "venta"
+        else:
+            codigo = str(payload.payload.get("codigo") or "").strip()
+            if not codigo:
+                raise HTTPException(status_code=400, detail="La reseña no identifica una prenda")
+            review_payload = ResenaProductoUpsert.model_validate(payload.payload)
+            review_result = ResenaProductoService(db).upsert(
+                codigo, review_payload, user, operation_uuid=operation_uuid
+            )
+            own_review = review_result.get("mi_resena")
+            if not own_review:
+                raise RuntimeError("No se pudo recuperar la reseña sincronizada")
+            result = own_review
+            result_type = "resena_producto"
 
         record = _find_owned(db, operation_uuid, user)
         if record is None:
@@ -151,6 +183,7 @@ async def _process(payload: SyncOperationRequest, user: User, db: Session) -> Sy
         record.reason = None
         db.commit()
         db.refresh(record)
+        _notify_result(db, record, user)
         return _response(record, db)
     except (HTTPException, ValidationError) as error:
         detail = error.detail if isinstance(error, HTTPException) else "El contenido local no cumple el contrato vigente"
@@ -203,6 +236,7 @@ async def _process(payload: SyncOperationRequest, user: User, db: Session) -> Sy
             ))
         db.commit()
         db.refresh(rejected)
+        _notify_result(db, rejected, user)
         return _response(rejected, db)
 
 

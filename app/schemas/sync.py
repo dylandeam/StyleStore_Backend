@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 class SyncOperationRequest(BaseModel):
     operation_uuid: UUID
-    operation_type: Literal["reserva", "venta_efectivo"]
+    operation_type: Literal["reserva", "venta_efectivo", "resena_producto"]
     payload_version: Literal[1] = 1
     client_created_at: datetime
     payload: dict

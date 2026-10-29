@@ -26,6 +26,7 @@ class NotificacionService:
         mensaje: str,
         url_accion: Optional[str] = None,
         enviar_email: bool = True,
+        enviar_push: bool = True,
         empresa_id: int | None = None,
     ) -> Notificacion:
         """Crea una notificación in-app y opcionalmente envía correo electrónico al usuario."""
@@ -56,21 +57,64 @@ class NotificacionService:
                     action_url=url_accion,
                 )
 
-        PushNotificationService.send_to_user(
-            self.db,
-            user_id=user_id,
-            empresa_id=notif.empresa_id,
-            title=titulo,
-            body=mensaje,
-            data={
-                "notification_id": str(notif.id),
-                "type": tipo,
-                "route": url_accion or "/dashboard",
-                "empresa_id": str(notif.empresa_id),
-            },
-        )
+        if enviar_push:
+            PushNotificationService.send_to_user(
+                self.db,
+                user_id=user_id,
+                empresa_id=notif.empresa_id,
+                title=titulo,
+                body=mensaje,
+                data={
+                    "notification_id": str(notif.id),
+                    "type": tipo,
+                    "route": url_accion or "/dashboard",
+                    "empresa_id": str(notif.empresa_id),
+                },
+            )
 
         return notif
+
+    def notificar_resultado_operacion_offline(self, operation, user: User) -> Notificacion | None:
+        """Notifica una sola vez el resultado definitivo de una operación local."""
+        if not operation or operation.status not in {"confirmada", "rechazada", "conflicto"}:
+            return None
+        action_url = f"/cuenta/operaciones-pendientes?operation_uuid={operation.operation_uuid}"
+        existing = self.db.query(Notificacion).filter(
+            Notificacion.empresa_id == operation.empresa_id,
+            Notificacion.user_id == user.id,
+            Notificacion.tipo == "resultado_operacion_offline",
+            Notificacion.url_accion == action_url,
+        ).first()
+        if existing:
+            return existing
+
+        names = {
+            "reserva": ("Reserva confirmada", "Tu reserva guardada sin conexión fue confirmada correctamente."),
+            "venta_efectivo": ("Venta sincronizada", "La venta registrada sin conexión fue confirmada correctamente."),
+            "resena_producto": ("Opinión publicada", "Tu comentario y calificación ya están publicados."),
+        }
+        if operation.status == "confirmada":
+            title, message = names.get(
+                operation.operation_type,
+                ("Operación completada", "La acción que realizaste sin conexión fue confirmada correctamente."),
+            )
+        else:
+            title = "Operación pendiente de revisión"
+            message = (
+                f"No pudimos completar la acción guardada sin conexión: {operation.reason}"
+                if operation.reason
+                else "No pudimos completar la acción guardada sin conexión. Revisa el detalle e inténtalo nuevamente."
+            )
+        return self.crear_notificacion(
+            user_id=user.id,
+            tipo="resultado_operacion_offline",
+            titulo=title,
+            mensaje=message,
+            url_accion=action_url,
+            enviar_email=False,
+            enviar_push=False,
+            empresa_id=operation.empresa_id,
+        )
 
     def notificar_experiencia_poscompra(self, orden) -> Notificacion | None:
         """Envía una sola invitación a calificar por orden completada/pagada."""

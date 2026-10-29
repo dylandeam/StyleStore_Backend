@@ -1,5 +1,7 @@
 """Cobertura del módulo de reseñas por prenda."""
+from datetime import datetime, timezone
 from decimal import Decimal
+from uuid import uuid4
 
 import pytest
 
@@ -9,6 +11,8 @@ from app.models.cliente import Cliente
 from app.models.color import Color
 from app.models.empresa import Empresa
 from app.models.orden_venta import DetalleVenta, OrdenVenta
+from app.models.notificacion import Notificacion
+from app.models.resena_producto import ResenaProducto
 from app.models.producto import Producto
 from app.models.producto_color import ProductoColor
 from app.models.stock_inventario import StockInventario
@@ -172,4 +176,39 @@ def test_rating_validation_delete_and_tenant_boundary(client, db_session, review
     db_session.commit()
     foreign = client.get(f"/api/v1/productos/{other_product.codigo}/resenas", headers=env["headers"])
     assert foreign.status_code == 404
+
+
+def test_offline_review_sync_is_idempotent_and_notifies_client(client, db_session, review_environment):
+    env = review_environment
+    operation_uuid = str(uuid4())
+    body = {
+        "operation_uuid": operation_uuid,
+        "operation_type": "resena_producto",
+        "payload_version": 1,
+        "client_created_at": datetime.now(timezone.utc).isoformat(),
+        "payload": {
+            "codigo": env["product"].codigo,
+            "puntuacion": 5,
+            "comentario": "La guardé sin conexión y ahora ya está publicada.",
+        },
+    }
+
+    first = client.post("/api/v1/sync/operations", json=body, headers=env["headers"])
+    assert first.status_code == 200, first.text
+    assert first.json()["status"] == "confirmada"
+    assert first.json()["result_type"] == "resena_producto"
+
+    replay = client.post("/api/v1/sync/operations", json=body, headers=env["headers"])
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["result_id"] == first.json()["result_id"]
+    assert db_session.query(ResenaProducto).filter(
+        ResenaProducto.client_operation_uuid == operation_uuid
+    ).count() == 1
+    notifications = db_session.query(Notificacion).filter(
+        Notificacion.user_id == env["user"].id,
+        Notificacion.tipo == "resultado_operacion_offline",
+        Notificacion.url_accion.contains(operation_uuid),
+    ).all()
+    assert len(notifications) == 1
+    assert notifications[0].titulo == "Opinión publicada"
 

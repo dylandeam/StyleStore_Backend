@@ -26,6 +26,9 @@ class ResenaProducto(Base):
     )
     puntuacion: Mapped[int] = mapped_column(Integer, nullable=False)
     comentario: Mapped[str] = mapped_column(Text, nullable=False)
+    client_operation_uuid: Mapped[str | None] = mapped_column(
+        String(36), nullable=True, unique=True, index=True
+    )
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
