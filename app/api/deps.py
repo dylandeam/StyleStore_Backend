@@ -258,7 +258,7 @@ def require_permission(permission_code: str):
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
     ) -> User:
-        if current_user.is_platform_admin or current_user.role == "administrador":
+        if current_user.is_platform_admin:
             return current_user
 
         query_filter = [Permission.code == permission_code]

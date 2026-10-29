@@ -157,7 +157,7 @@ class RoleService:
 
     def effective_permission_codes(self, user: User) -> list[str]:
         """Return the matrix used by web/mobile to adapt without publishing a new app."""
-        if user.is_platform_admin or user.role == "administrador":
+        if user.is_platform_admin:
             return [item.code for item in self.list_all_permissions()]
         if not user.role_id:
             return []
