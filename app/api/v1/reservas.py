@@ -496,19 +496,22 @@ async def create_reserva(
         raise
     db.refresh(reserva)
 
-    try:
-        notif_srv = NotificacionService(db)
-        notif_srv.crear_notificacion(
-            user_id=current_user.id,
-            tipo="recordatorio_reserva",
-            titulo="Reserva Registrada en StyleStore",
-            mensaje=f"Tu reserva #{reserva.id} ha sido registrada. Vigencia hasta el {reserva.fecha.strftime('%d/%m/%Y')} para retirar en sucursal.",
-            url_accion="/reservas",
-            enviar_email=True,
-            empresa_id=current_user.empresa_id,
-        )
-    except Exception:
-        pass
+    # Las operaciones sincronizadas reciben un único aviso definitivo desde
+    # /sync (confirmada o conflicto). Evita duplicar la notificación de éxito.
+    if not payload.operation_uuid:
+        try:
+            notif_srv = NotificacionService(db)
+            notif_srv.crear_notificacion(
+                user_id=current_user.id,
+                tipo="recordatorio_reserva",
+                titulo="Reserva Registrada en StyleStore",
+                mensaje=f"Tu reserva #{reserva.id} ha sido registrada. Vigencia hasta el {reserva.fecha.strftime('%d/%m/%Y')} para retirar en sucursal.",
+                url_accion="/reservas",
+                enviar_email=True,
+                empresa_id=current_user.empresa_id,
+            )
+        except Exception:
+            pass
 
     BitacoraService.registrar(
         db=db,

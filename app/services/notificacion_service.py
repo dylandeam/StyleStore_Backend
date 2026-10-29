@@ -99,12 +99,33 @@ class NotificacionService:
                 ("Operación completada", "La acción que realizaste sin conexión fue confirmada correctamente."),
             )
         else:
-            title = "Operación pendiente de revisión"
-            message = (
-                f"No pudimos completar la acción guardada sin conexión: {operation.reason}"
-                if operation.reason
-                else "No pudimos completar la acción guardada sin conexión. Revisa el detalle e inténtalo nuevamente."
-            )
+            reason = str(operation.reason or "").strip()
+            stock_conflict = any(word in reason.lower() for word in ("stock", "agot", "disponib"))
+            if operation.operation_type == "reserva" and stock_conflict:
+                title = "Reserva no realizada · prenda agotada"
+                message = (
+                    "Al recuperar la conexión verificamos tu reserva, pero otra compra o reserva agotó "
+                    "la prenda antes de que pudiéramos confirmarla. No se descontó ni se cobró nada."
+                )
+            elif operation.operation_type == "reserva":
+                title = "Reserva no realizada"
+                message = (
+                    f"No pudimos confirmar la reserva guardada sin conexión: {reason}"
+                    if reason else
+                    "No pudimos confirmar la reserva guardada sin conexión. Revisa el detalle e inténtalo nuevamente."
+                )
+            elif operation.operation_type == "venta_efectivo" and stock_conflict:
+                title = "Venta offline no confirmada · sin stock"
+                message = (
+                    f"La venta guardada sin conexión no pudo consolidarse porque la prenda se agotó. {reason}"
+                )
+            else:
+                title = "Operación pendiente de revisión"
+                message = (
+                    f"No pudimos completar la acción guardada sin conexión: {reason}"
+                    if reason else
+                    "No pudimos completar la acción guardada sin conexión. Revisa el detalle e inténtalo nuevamente."
+                )
         return self.crear_notificacion(
             user_id=user.id,
             tipo="resultado_operacion_offline",

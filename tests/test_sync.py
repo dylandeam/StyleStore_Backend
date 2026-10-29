@@ -8,6 +8,7 @@ from app.models.color import Color
 from app.models.producto import Producto
 from app.models.producto_color import ProductoColor
 from app.models.reembolso_offline import ReembolsoOffline
+from app.models.notificacion import Notificacion
 from app.models.stock_inventario import StockInventario
 from app.models.sucursal import Sucursal
 from app.models.talla import Talla
@@ -76,6 +77,13 @@ def test_cash_sale_sync_is_idempotent(client, db_session, admin_token):
     assert second.json()["result_id"] == result_id
     db_session.refresh(stock)
     assert stock.cantidad == 2
+    notifications = db_session.query(Notificacion).filter(
+        Notificacion.user_id == admin.id,
+        Notificacion.tipo == "resultado_operacion_offline",
+        Notificacion.url_accion.contains(operation_uuid),
+    ).all()
+    assert len(notifications) == 1
+    assert notifications[0].titulo == "Venta sincronizada"
 
 
 def test_offline_qr_is_preserved_as_rejected(client, db_session, admin_token):
@@ -128,6 +136,71 @@ def test_reservation_sync_is_idempotent(client, db_session, admin_token):
     assert second.json()["result_id"] == first.json()["result_id"]
     db_session.refresh(stock)
     assert stock.cantidad == 2
+    notifications = db_session.query(Notificacion).filter(
+        Notificacion.user_id == admin.id,
+        Notificacion.tipo == "resultado_operacion_offline",
+        Notificacion.url_accion.contains(body["operation_uuid"]),
+    ).all()
+    assert len(notifications) == 1
+    assert notifications[0].titulo == "Reserva confirmada"
+    assert db_session.query(Notificacion).filter(
+        Notificacion.user_id == admin.id,
+        Notificacion.tipo == "recordatorio_reserva",
+    ).count() == 0
+
+
+def test_confirmed_reservation_blocks_a_later_offline_sale(
+    client, db_session, admin_token
+):
+    admin = db_session.query(User).filter(
+        User.email == "admin_test@stylestore.com"
+    ).one()
+    stock = _inventory(db_session, admin.empresa_id, quantity=1)
+    headers = {"Authorization": f"Bearer {admin_token}"}
+
+    reservation = client.post(
+        "/api/v1/sync/operations",
+        headers=headers,
+        json={
+            "operation_uuid": str(uuid4()),
+            "operation_type": "reserva",
+            "payload_version": 1,
+            "client_created_at": datetime.now(timezone.utc).isoformat(),
+            "payload": {
+                "sucursal_id": stock.sucursal_id,
+                "fecha_limite": (date.today() + timedelta(days=1)).isoformat(),
+                "hora_retiro": "12:00:00",
+                "items": [{"stock_inventario_id": stock.id, "cantidad": 1}],
+            },
+        },
+    )
+    assert reservation.status_code == 200, reservation.text
+    assert reservation.json()["status"] == "confirmada"
+    db_session.refresh(stock)
+    assert stock.cantidad == 0
+
+    sale = client.post(
+        "/api/v1/sync/operations",
+        headers=headers,
+        json={
+            "operation_uuid": str(uuid4()),
+            "operation_type": "venta_efectivo",
+            "payload_version": 1,
+            "client_created_at": datetime.now(timezone.utc).isoformat(),
+            "payload": {
+                "sucursal_id": stock.sucursal_id,
+                "metodo_pago": "efectivo",
+                "efectivo_recibido": 100,
+                "items": [{"stock_inventario_id": stock.id, "cantidad": 1}],
+                "snapshot": {"total": 100},
+            },
+        },
+    )
+    assert sale.status_code == 200, sale.text
+    assert sale.json()["status"] == "conflicto"
+    assert "Stock insuficiente" in sale.json()["reason"]
+    db_session.refresh(stock)
+    assert stock.cantidad == 0
 
 
 def test_last_unit_conflict_is_preserved_and_does_not_oversell(
@@ -178,6 +251,13 @@ def test_last_unit_conflict_is_preserved_and_does_not_oversell(
     assert reservation.status_code == 200, reservation.text
     assert reservation.json()["status"] == "conflicto"
     assert "Stock insuficiente" in reservation.json()["reason"]
+    notification = db_session.query(Notificacion).filter(
+        Notificacion.user_id == admin.id,
+        Notificacion.tipo == "resultado_operacion_offline",
+        Notificacion.url_accion.contains(losing_operation),
+    ).one()
+    assert notification.titulo == "Reserva no realizada · prenda agotada"
+    assert "otra compra o reserva agotó" in notification.mensaje
 
     retry = client.post(
         "/api/v1/sync/operations",
