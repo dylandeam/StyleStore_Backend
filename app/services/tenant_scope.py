@@ -1,7 +1,7 @@
 """Helpers that enforce the authenticated company's data boundary."""
 from sqlalchemy.orm import Query, Session
 
-from app.core.exceptions import NotFoundException
+from app.core.exceptions import BadRequestException, NotFoundException
 from app.models.sucursal import Sucursal
 from app.models.user import User
 
@@ -17,6 +17,16 @@ def effective_empresa_id(current_user: User) -> int | None:
     if current_user.is_platform_admin:
         return selected_tenant_id(current_user)
     return current_user.empresa_id
+
+
+def require_effective_empresa_id(current_user: User) -> int:
+    """Resolve the tenant for a write and reject ambiguous platform-wide writes."""
+    empresa_id = effective_empresa_id(current_user)
+    if empresa_id is None:
+        raise BadRequestException(
+            "Selecciona un tenant antes de crear o modificar información del catálogo."
+        )
+    return empresa_id
 
 
 def scoped_sucursal_ids(db: Session, current_user: User):

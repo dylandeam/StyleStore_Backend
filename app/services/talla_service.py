@@ -9,7 +9,7 @@ from app.models.stock_inventario import StockInventario
 from app.models.user import User
 from app.schemas.talla import TallaCreate, TallaUpdate, TallaResponse
 from app.services.bitacora_service import BitacoraService
-from app.services.tenant_scope import scope_by_empresa
+from app.services.tenant_scope import require_effective_empresa_id, scope_by_empresa
 
 
 class TallaService:
@@ -34,13 +34,14 @@ class TallaService:
         return TallaResponse.model_validate(t)
 
     def create_talla(self, req: TallaCreate, current_user: User) -> TallaResponse:
+        empresa_id = require_effective_empresa_id(current_user)
         nombre_clean = req.nombre.strip().upper()
         if self._query(current_user).filter(Talla.nombre == nombre_clean).first():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Ya existe una talla con el nombre '{nombre_clean}'.",
             )
-        t = Talla(empresa_id=current_user.empresa_id, nombre=nombre_clean)
+        t = Talla(empresa_id=empresa_id, nombre=nombre_clean)
         self.db.add(t)
         self.db.commit()
         self.db.refresh(t)

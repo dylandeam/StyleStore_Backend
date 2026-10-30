@@ -209,7 +209,10 @@ def test_sucursales_crud(client, admin_token, db_session):
 
 def test_productos_crud(client, admin_token):
     """Test full CRUD cycle for products catalog conforming to v4 diagram."""
-    headers = {"Authorization": f"Bearer {admin_token}"}
+    headers = {
+        "Authorization": f"Bearer {admin_token}",
+        "X-Tenant-Context": "1",
+    }
 
     # Ensure a category and season exist
     cat_res = client.post(

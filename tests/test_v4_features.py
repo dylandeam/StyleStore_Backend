@@ -9,7 +9,10 @@ from app.services.plan_service import PlanService
 
 def test_catalogo_maestros_crud(client, admin_token):
     """Test CRUD de Categorías, Colores, Tallas y Temporadas."""
-    headers = {"Authorization": f"Bearer {admin_token}"}
+    headers = {
+        "Authorization": f"Bearer {admin_token}",
+        "X-Tenant-Context": "1",
+    }
 
     # 1. Categoria
     cat_res = client.post("/api/v1/categorias", headers=headers, json={"nombre": "Calzados Deportivos"})

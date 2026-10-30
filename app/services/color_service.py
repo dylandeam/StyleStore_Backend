@@ -10,7 +10,7 @@ from app.models.stock_inventario import StockInventario
 from app.models.user import User
 from app.schemas.color import ColorCreate, ColorUpdate, ColorResponse
 from app.services.bitacora_service import BitacoraService
-from app.services.tenant_scope import scope_by_empresa
+from app.services.tenant_scope import require_effective_empresa_id, scope_by_empresa
 
 
 class ColorService:
@@ -35,13 +35,14 @@ class ColorService:
         return ColorResponse.model_validate(c)
 
     def create_color(self, req: ColorCreate, current_user: User) -> ColorResponse:
+        empresa_id = require_effective_empresa_id(current_user)
         nombre_clean = req.nombre.strip()
         if self._query(current_user).filter(Color.nombre.ilike(nombre_clean)).first():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Ya existe un color con el nombre '{nombre_clean}'.",
             )
-        c = Color(empresa_id=current_user.empresa_id, nombre=nombre_clean)
+        c = Color(empresa_id=empresa_id, nombre=nombre_clean)
         self.db.add(c)
         self.db.commit()
         self.db.refresh(c)

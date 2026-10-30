@@ -2,6 +2,7 @@
 Service para gestión de Categorías (CU11).
 """
 from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.categoria import Categoria
@@ -9,7 +10,7 @@ from app.models.producto import Producto
 from app.models.user import User
 from app.schemas.categoria import CategoriaCreate, CategoriaUpdate, CategoriaResponse
 from app.services.bitacora_service import BitacoraService
-from app.services.tenant_scope import scope_by_empresa
+from app.services.tenant_scope import require_effective_empresa_id, scope_by_empresa
 
 
 class CategoriaService:
@@ -34,15 +35,23 @@ class CategoriaService:
         return CategoriaResponse.model_validate(cat)
 
     def create_categoria(self, req: CategoriaCreate, current_user: User) -> CategoriaResponse:
+        empresa_id = require_effective_empresa_id(current_user)
         nombre_clean = req.nombre.strip()
         if self._query(current_user).filter(Categoria.nombre.ilike(nombre_clean)).first():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Ya existe una categoría con el nombre '{nombre_clean}'.",
             )
-        cat = Categoria(empresa_id=current_user.empresa_id, nombre=nombre_clean)
+        cat = Categoria(empresa_id=empresa_id, nombre=nombre_clean)
         self.db.add(cat)
-        self.db.commit()
+        try:
+            self.db.commit()
+        except IntegrityError as exc:
+            self.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Ya existe una categoría con el nombre '{nombre_clean}' en este tenant.",
+            ) from exc
         self.db.refresh(cat)
 
         if current_user:

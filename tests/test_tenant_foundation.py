@@ -976,6 +976,32 @@ def test_platform_admin_header_scopes_modules_and_login_accepts_tenant_code(
     scoped = client.get("/api/v1/sucursales", headers=master_a)
     assert scoped.status_code == 200, scoped.text
     assert {item["name"] for item in scoped.json()} == {"Context A"}
+
+    category_from_platform = client.post(
+        "/api/v1/categorias", headers=master_a, json={"nombre": "Camisas"}
+    )
+    assert category_from_platform.status_code == 201, category_from_platform.text
+    assert (
+        db_session.query(Categoria)
+        .filter(Categoria.id == category_from_platform.json()["id"])
+        .one()
+        .empresa_id
+        == company_a["id"]
+    )
+    duplicate_category = client.post(
+        "/api/v1/categorias", headers=master_a, json={"nombre": "camisas"}
+    )
+    assert duplicate_category.status_code == 409
+    assert "existe" in duplicate_category.json()["detail"].lower()
+
+    missing_context = client.post(
+        "/api/v1/categorias",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"nombre": "Categoría sin tenant"},
+    )
+    assert missing_context.status_code == 400
+    assert "selecciona un tenant" in missing_context.json()["detail"].lower()
+
     global_view = client.get(
         "/api/v1/sucursales", headers={"Authorization": f"Bearer {admin_token}"}
     )
