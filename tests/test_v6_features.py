@@ -597,8 +597,14 @@ def test_cambios_devoluciones_workflow(client: TestClient, auth_tokens, sample_i
     assert res_resp.status_code == 200
     assert res_resp.json()["estado"] == "aceptada"
 
-    # 3. Canje completado en caja
-    res_comp = client.post(f"/api/v1/cambios/{sol_id}/completar", json={"reponer_prenda_original": True}, headers=headers_adm)
+    # 3. El ajuste se prepara y luego se liquida en caja
+    preparado = client.post(
+        f"/api/v1/cambios/{sol_id}/preparar-liquidacion",
+        json={"reponer_prenda_original": True},
+        headers=headers_adm,
+    )
+    assert preparado.status_code == 200
+    res_comp = client.post(f"/api/v1/cambios/{sol_id}/completar", json={}, headers=headers_adm)
     assert res_comp.status_code == 200
     assert res_comp.json()["estado"] == "completada"
 
@@ -639,7 +645,7 @@ def test_cambios_devoluciones_workflow(client: TestClient, auth_tokens, sample_i
     assert "7 días" in res_old.json()["detail"]
 
 
-def test_cambio_menor_genera_saldo_y_nota_venta(client: TestClient, auth_tokens, sample_inventory, db_session):
+def test_cambio_menor_genera_reembolso_pendiente_y_nota_venta(client: TestClient, auth_tokens, sample_inventory, db_session):
     headers_cli = {"Authorization": f"Bearer {auth_tokens['client_token']}"}
     headers_adm = {"Authorization": f"Bearer {auth_tokens['admin_token']}"}
     stock = sample_inventory["stock"]
@@ -667,20 +673,25 @@ def test_cambio_menor_genera_saldo_y_nota_venta(client: TestClient, auth_tokens,
         "nuevo_estado": "aceptada", "respuesta_encargado": "Aprobado",
     }, headers=headers_adm).status_code == 200
 
-    completado = client.post(f"/api/v1/cambios/{solicitud_id}/completar", json={
+    preparado = client.post(f"/api/v1/cambios/{solicitud_id}/preparar-liquidacion", json={
         "reponer_prenda_original": True, "nuevo_stock_inventario_id": stock.id,
+    }, headers=headers_adm)
+    assert preparado.status_code == 200, preparado.text
+    assert Decimal(str(preparado.json()["monto_reembolsado"])) == Decimal("100.00")
+    completado = client.post(f"/api/v1/cambios/{solicitud_id}/completar", json={
+        "metodo_reembolso": "efectivo",
     }, headers=headers_adm)
     assert completado.status_code == 200, completado.text
     data = completado.json()
     assert Decimal(str(data["precio_original"])) == Decimal("250.00")
     assert Decimal(str(data["precio_nuevo"])) == Decimal("150.00")
-    assert Decimal(str(data["saldo_favor_generado"])) == Decimal("100.00")
+    assert Decimal(str(data["saldo_favor_generado"])) == Decimal("0.00")
+    assert Decimal(str(data["monto_reembolsado"])) == Decimal("100.00")
     assert data["nota_venta_numero"].startswith("NCJ-")
 
-    saldo = client.get("/api/v1/cambios/mi-saldo", headers=headers_cli)
-    assert saldo.status_code == 200
-    assert Decimal(str(saldo.json()["saldo"])) == Decimal("100.00")
-    assert db_session.query(SaldoFavorCliente).filter_by(user_id=auth_tokens["client_user"].id).one().saldo == Decimal("100.00")
+    pago_salida = db_session.query(Pago).filter(Pago.orden_venta_id == data["orden_ajuste_id"]).one()
+    assert pago_salida.estado == "reembolsado"
+    assert pago_salida.tipo_pago == "devolucion en caja"
 
 
 def test_tenant_configura_plazo_de_cambios(client: TestClient, auth_tokens):
@@ -704,9 +715,11 @@ def test_cambio_mayor_exige_y_registra_cobro(client: TestClient, auth_tokens, sa
     solicitud_id = res.json()["solicitud_id"]
     client.put(f"/api/v1/cambios/{solicitud_id}/responder", json={"nuevo_estado": "aceptada", "respuesta_encargado": "Aprobado"}, headers=headers_adm)
 
-    sin_pago = client.post(f"/api/v1/cambios/{solicitud_id}/completar", json={"nuevo_stock_inventario_id": stock.id}, headers=headers_adm)
+    preparado = client.post(f"/api/v1/cambios/{solicitud_id}/preparar-liquidacion", json={"nuevo_stock_inventario_id": stock.id}, headers=headers_adm)
+    assert preparado.status_code == 200, preparado.text
+    sin_pago = client.post(f"/api/v1/cambios/{solicitud_id}/completar", json={}, headers=headers_adm)
     assert sin_pago.status_code == 400
-    completado = client.post(f"/api/v1/cambios/{solicitud_id}/completar", json={"nuevo_stock_inventario_id": stock.id, "metodo_pago_diferencia": "efectivo", "efectivo_recibido": 200}, headers=headers_adm)
+    completado = client.post(f"/api/v1/cambios/{solicitud_id}/completar", json={"metodo_pago_diferencia": "efectivo", "efectivo_recibido": 200}, headers=headers_adm)
     assert completado.status_code == 200, completado.text
     assert Decimal(str(completado.json()["monto_adicional"])) == Decimal("150.00")
     orden_ajuste_id = completado.json()["orden_ajuste_id"]

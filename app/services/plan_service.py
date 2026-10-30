@@ -1,4 +1,4 @@
-"""Business rules for the three configurable subscription plans."""
+"""Business rules for configurable subscription plans."""
 from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -9,7 +9,7 @@ from app.models.empresa import Empresa
 from app.models.plan_suscripcion import ContratacionPlan, PlanSuscripcion
 from app.models.sucursal import Sucursal
 from app.models.user import User
-from app.schemas.plan_suscripcion import ContratacionCreate, PLAN_CODES, PlanUpdate
+from app.schemas.plan_suscripcion import ContratacionCreate, PLAN_CODES, PlanCreate, PlanUpdate
 from app.services.bitacora_service import BitacoraService
 
 
@@ -131,7 +131,7 @@ class PlanService:
                 PlanSuscripcion.scope_key == "global"
             ).all()
         }
-        for code in PLAN_CODES - tenant_codes:
+        for code in set(globals_by_code) - tenant_codes:
             source = globals_by_code[code]
             self.db.add(PlanSuscripcion(
                 empresa_id=empresa_id,
@@ -161,7 +161,7 @@ class PlanService:
         if active_only:
             query = query.filter(PlanSuscripcion.active.is_(True))
         order = {"basico": 0, "intermedio": 1, "profesional": 2}
-        return sorted(query.all(), key=lambda item: order[item.codigo])
+        return sorted(query.all(), key=lambda item: (order.get(item.codigo, 100), item.nombre.lower()))
 
     def resolve_admin_scope(self, current_user: User, empresa_id: int | None) -> int | None:
         if not current_user.is_platform_admin:
@@ -172,11 +172,11 @@ class PlanService:
 
     def update_plan(self, codigo: str, payload: PlanUpdate, current_user: User, empresa_id: int | None = None):
         code = codigo.strip().lower()
-        if code not in PLAN_CODES:
-            raise NotFoundException("Plan no encontrado.")
         scope_empresa_id = self.resolve_admin_scope(current_user, empresa_id)
         plans = self.list_plans(scope_empresa_id)
-        plan = next(item for item in plans if item.codigo == code)
+        plan = next((item for item in plans if item.codigo == code), None)
+        if not plan:
+            raise NotFoundException("Plan no encontrado.")
         changes = payload.model_dump(exclude_unset=True)
         for field, value in changes.items():
             setattr(plan, field, value)
@@ -210,6 +210,85 @@ class PlanService:
             module="planes",
         )
         return plan
+
+    def create_global_plan(self, payload: PlanCreate, current_user: User) -> PlanSuscripcion:
+        self.resolve_admin_scope(current_user, None)
+        self.seed_global_plans()
+        exists = self.db.query(PlanSuscripcion.id).filter(
+            PlanSuscripcion.scope_key == "global",
+            PlanSuscripcion.codigo == payload.codigo,
+        ).first()
+        if exists:
+            raise BadRequestException("Ya existe un plan global con ese código.")
+        capabilities = {**MANDATORY_CAPABILITIES, **payload.capacidades}
+        plan = PlanSuscripcion(
+            empresa_id=None,
+            scope_key="global",
+            codigo=payload.codigo,
+            nombre=payload.nombre,
+            descripcion=payload.descripcion,
+            precio_mensual=payload.precio_mensual,
+            moneda=payload.moneda,
+            max_sucursales=payload.max_sucursales,
+            ia_generativa=payload.ia_generativa,
+            beneficios=payload.beneficios,
+            capacidades=capabilities,
+            estilo=payload.estilo,
+            active=payload.active,
+        )
+        self.db.add(plan)
+        self.db.commit()
+        self.db.refresh(plan)
+        BitacoraService.registrar(
+            db=self.db,
+            user=current_user,
+            action=f"Creó el plan global {plan.nombre} ({plan.codigo})",
+            module="planes",
+        )
+        return plan
+
+    def subscription_overview(self, current_user: User) -> dict:
+        self.resolve_admin_scope(current_user, None)
+        plans = self.list_plans(None)
+        empresas = self.db.query(Empresa).order_by(Empresa.nombre.asc()).all()
+        today = date.today()
+        tenants = []
+        counts = {plan.codigo: {"plan_codigo": plan.codigo, "plan_nombre": plan.nombre, "total": 0, "activas": 0} for plan in plans}
+        for empresa in empresas:
+            self.reconcile_tenant_access(empresa.id)
+            contracts = self.db.query(ContratacionPlan).filter(
+                ContratacionPlan.empresa_id == empresa.id
+            ).order_by(ContratacionPlan.id.desc()).all()
+            contract = next((item for item in contracts if item.estado == "activa"), None)
+            contract = contract or next((item for item in contracts if item.estado == "pendiente"), None)
+            contract = contract or (contracts[0] if contracts else None)
+            days_remaining = None
+            if contract and contract.fecha_fin:
+                days_remaining = max((contract.fecha_fin - today).days, 0)
+            row = {
+                "empresa_id": empresa.id,
+                "empresa_codigo": empresa.codigo,
+                "empresa_nombre": empresa.nombre,
+                "empresa_activa": empresa.active,
+                "plan_codigo": contract.plan.codigo if contract and contract.plan else None,
+                "plan_nombre": contract.plan.nombre if contract and contract.plan else None,
+                "estado": contract.estado if contract else "sin_plan",
+                "estado_pago": contract.estado_pago if contract else "sin_pago",
+                "fecha_inicio": contract.fecha_inicio if contract else None,
+                "fecha_fin": contract.fecha_fin if contract else None,
+                "dias_restantes": days_remaining,
+                "precio": contract.precio_snapshot if contract else None,
+                "moneda": contract.moneda_snapshot if contract else None,
+            }
+            tenants.append(row)
+            if row["plan_codigo"]:
+                summary = counts.setdefault(row["plan_codigo"], {
+                    "plan_codigo": row["plan_codigo"], "plan_nombre": row["plan_nombre"], "total": 0, "activas": 0,
+                })
+                summary["total"] += 1
+                if row["estado"] == "activa" and row["estado_pago"] == "pagado" and (days_remaining is None or days_remaining >= 0):
+                    summary["activas"] += 1
+        return {"planes": list(counts.values()), "tenants": tenants}
 
     def reconcile_tenant_access(
         self, empresa_id: int, *, commit: bool = True

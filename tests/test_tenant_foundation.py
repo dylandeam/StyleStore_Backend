@@ -709,6 +709,60 @@ def test_three_plans_are_configurable_without_cross_tenant_changes(client, db_se
     assert empresa_a["id"] != empresa_b["id"]
 
 
+def test_platform_admin_creates_global_plan_and_sees_subscription_duration(client, db_session, admin_token):
+    platform_admin = db_session.query(User).filter(User.email == "admin_test@stylestore.com").one()
+    platform_admin.is_platform_admin = True
+    db_session.commit()
+    company = _create_empresa(client, admin_token, "plans-enterprise", "admin@plans-enterprise.example.com")
+    master_headers = {"Authorization": f"Bearer {admin_token}"}
+
+    created = client.post(
+        "/api/v1/planes/admin",
+        headers=master_headers,
+        json={
+            "codigo": "empresarial",
+            "nombre": "Empresarial",
+            "descripcion": "Plan a medida para operaciones amplias",
+            "precio_mensual": 500,
+            "moneda": "BOB",
+            "max_sucursales": 25,
+            "beneficios": ["Hasta 25 sucursales"],
+            "capacidades": {"chatbot": True, "predicciones": True},
+        },
+    )
+    assert created.status_code == 201, created.text
+    duplicate = client.post("/api/v1/planes/admin", headers=master_headers, json={
+        "codigo": "empresarial", "nombre": "Duplicado",
+    })
+    assert duplicate.status_code == 400
+
+    tenant_headers = {"Authorization": f"Bearer {_login(client, 'admin@plans-enterprise.example.com')}"}
+    tenant_plans = client.get("/api/v1/planes", headers=tenant_headers)
+    assert tenant_plans.status_code == 200
+    assert any(plan["codigo"] == "empresarial" for plan in tenant_plans.json())
+
+    paypal_order = client.post(
+        "/api/v1/planes/paypal/crear-orden", headers=tenant_headers,
+        json={"plan_codigo": "empresarial"},
+    )
+    assert paypal_order.status_code == 200, paypal_order.text
+    capture = client.post(
+        "/api/v1/planes/paypal/capturar-orden", headers=tenant_headers,
+        json={"paypal_order_id": paypal_order.json()["id"]},
+    )
+    assert capture.status_code == 200, capture.text
+
+    overview = client.get("/api/v1/planes/admin/suscripciones", headers=master_headers)
+    assert overview.status_code == 200, overview.text
+    tenant_row = next(item for item in overview.json()["tenants"] if item["empresa_id"] == company["id"])
+    assert tenant_row["plan_codigo"] == "empresarial"
+    assert tenant_row["estado"] == "activa"
+    assert 29 <= tenant_row["dias_restantes"] <= 30
+    summary = next(item for item in overview.json()["planes"] if item["plan_codigo"] == "empresarial")
+    assert summary["total"] == 1
+    assert summary["activas"] == 1
+
+
 def test_basic_plan_blocks_third_active_branch(client, db_session, admin_token):
     platform_admin = db_session.query(User).filter(User.email == "admin_test@stylestore.com").one()
     platform_admin.is_platform_admin = True

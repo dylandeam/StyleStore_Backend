@@ -14,6 +14,7 @@ from app.schemas.plan_suscripcion import (
     ContratacionPayPalCapture,
     ContratacionPayPalCreate,
     ContratacionResponse,
+    PlanCreate,
     PlanResponse,
     PlanUpdate,
 )
@@ -46,7 +47,7 @@ async def list_public_plans(
     return PlanService(db).list_plans(empresa_id, active_only=True)
 
 
-@router.get("/admin", response_model=list[PlanResponse], summary="Administrar los tres planes")
+@router.get("/admin", response_model=list[PlanResponse], summary="Administrar planes de suscripción")
 async def list_admin_plans(
     empresa_id: int | None = Query(None),
     current_user: User = Depends(get_current_user),
@@ -55,6 +56,23 @@ async def list_admin_plans(
     service = PlanService(db)
     scope_empresa_id = service.resolve_admin_scope(current_user, empresa_id)
     return service.list_plans(scope_empresa_id)
+
+
+@router.post("/admin", response_model=PlanResponse, status_code=201, summary="Crear un plan global")
+async def create_admin_plan(
+    payload: PlanCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return PlanService(db).create_global_plan(payload, current_user)
+
+
+@router.get("/admin/suscripciones", summary="Resumen de suscripciones por tenant")
+async def list_admin_subscriptions(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return PlanService(db).subscription_overview(current_user)
 
 
 @router.put("/admin/{codigo}", response_model=PlanResponse, summary="Configurar un plan")

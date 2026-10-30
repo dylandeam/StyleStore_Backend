@@ -4,7 +4,7 @@ Conforme a Especificación StyleStore v6.
 """
 from datetime import datetime, date, time
 from decimal import Decimal
-from sqlalchemy import String, Integer, Date, Time, DateTime, ForeignKey, Numeric, UniqueConstraint, func, Text
+from sqlalchemy import Boolean, String, Integer, Date, Time, DateTime, ForeignKey, Numeric, UniqueConstraint, func, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -59,6 +59,7 @@ class CambioDevolucion(Base):
     metodo_pago_diferencia: Mapped[str | None] = mapped_column(String(30), nullable=True)
     nota_venta_numero: Mapped[str | None] = mapped_column(String(50), unique=True, nullable=True, index=True)
     orden_ajuste_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("orden_venta.id", ondelete="SET NULL"), nullable=True)
+    reponer_prenda_original: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -75,7 +76,7 @@ class CambioDevolucion(Base):
     color_nuevo = relationship("Color", lazy="joined", foreign_keys=[color_nuevo_id])
     producto_nuevo = relationship("Producto", lazy="joined", foreign_keys=[producto_nuevo_codigo])
     nuevo_stock = relationship("StockInventario", lazy="joined", foreign_keys=[nuevo_stock_inventario_id])
-    orden_ajuste = relationship("OrdenVenta", lazy="joined", foreign_keys=[orden_ajuste_id])
+    orden_ajuste = relationship("OrdenVenta", lazy="joined", foreign_keys=[orden_ajuste_id], back_populates="cambio_ajuste")
 
     def __repr__(self) -> str:
         return f"<CambioDevolucion(id={self.id}, orden={self.orden_venta_id}, tipo='{self.tipo}', estado='{self.estado}')>"

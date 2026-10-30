@@ -69,6 +69,13 @@ class OrdenVenta(Base):
     detalles = relationship("DetalleVenta", back_populates="orden_venta", cascade="all, delete-orphan", lazy="selectin")
     pagos = relationship("Pago", back_populates="orden_venta", cascade="all, delete-orphan", lazy="selectin")
     envios = relationship("Envio", back_populates="orden_venta", cascade="all, delete-orphan", lazy="selectin")
+    cambio_ajuste = relationship(
+        "CambioDevolucion",
+        foreign_keys="CambioDevolucion.orden_ajuste_id",
+        back_populates="orden_ajuste",
+        uselist=False,
+        lazy="joined",
+    )
 
     def __repr__(self) -> str:
         return f"<OrdenVenta(id={self.id}, cliente='{self.codigo_cliente}', total={self.total}, tipo='{self.tipo_venta}')>"

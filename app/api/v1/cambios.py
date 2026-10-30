@@ -43,11 +43,14 @@ class ResponderCambioRequest(BaseModel):
 
 
 class CompletarCajaRequest(BaseModel):
-    reponer_prenda_original: bool = True
-    nuevo_stock_inventario_id: Optional[int] = None
     metodo_pago_diferencia: Optional[str] = Field(None, pattern="^(efectivo|qr)$")
     efectivo_recibido: Optional[Decimal] = Field(default=None, ge=Decimal("0"))
-    metodo_reembolso: Optional[str] = Field(None, pattern="^(efectivo|transferencia)$")
+    metodo_reembolso: Optional[str] = Field(None, pattern="^(efectivo|qr|transferencia)$")
+
+
+class PrepararLiquidacionRequest(BaseModel):
+    reponer_prenda_original: bool = True
+    nuevo_stock_inventario_id: Optional[int] = None
 
 
 class PoliticaCambiosRequest(BaseModel):
@@ -65,6 +68,11 @@ def _campos_financieros(s):
         "metodo_pago_diferencia": s.metodo_pago_diferencia,
         "nota_venta_numero": s.nota_venta_numero,
         "orden_ajuste_id": s.orden_ajuste_id,
+        "tipo_liquidacion": (
+            "cobro" if Decimal(s.monto_adicional or 0) > 0
+            else "reembolso" if Decimal(s.monto_reembolsado or 0) > 0
+            else "sin_ajuste"
+        ),
     }
 
 
@@ -270,7 +278,28 @@ async def responder_solicitud(
     return {"status": "ok", "estado": solicitud.estado, "mensaje": "Respuesta enviada exitosamente al cliente."}
 
 
-@router.post("/{solicitud_id}/completar", summary="Completar canje en caja física y ajustar stock")
+@router.post("/{solicitud_id}/preparar-liquidacion", summary="Generar el ajuste pendiente para caja")
+async def preparar_liquidacion(
+    solicitud_id: int,
+    payload: PrepararLiquidacionRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if current_user.role not in ["administrador", "encargado"]:
+        raise HTTPException(status_code=403, detail="Solo administradores y encargados pueden preparar la liquidación.")
+    solicitud = CambioService(db, current_user).preparar_liquidacion(
+        solicitud_id=solicitud_id,
+        reponer_prenda_original=payload.reponer_prenda_original,
+        nuevo_stock_inventario_id=payload.nuevo_stock_inventario_id,
+    )
+    BitacoraService.registrar(
+        db=db, user=current_user, module="cambios",
+        action=f"Preparó liquidación de solicitud #{solicitud.id} para caja; nota {solicitud.nota_venta_numero}",
+    )
+    return {"status": "ok", "estado": solicitud.estado, "mensaje": "Ajuste generado y enviado a caja.", **_campos_financieros(solicitud)}
+
+
+@router.post("/{solicitud_id}/completar", summary="Liquidar en caja y completar el cambio o devolución")
 async def completar_en_caja(
     solicitud_id: int,
     payload: CompletarCajaRequest,
@@ -283,15 +312,13 @@ async def completar_en_caja(
     service = CambioService(db, current_user)
     solicitud = service.completar_en_caja(
         solicitud_id=solicitud_id,
-        reponer_prenda_original=payload.reponer_prenda_original,
-        nuevo_stock_inventario_id=payload.nuevo_stock_inventario_id,
         metodo_pago_diferencia=payload.metodo_pago_diferencia,
         efectivo_recibido=payload.efectivo_recibido,
         metodo_reembolso=payload.metodo_reembolso,
     )
     BitacoraService.registrar(
         db=db, user=current_user, module="cambios",
-        action=f"Completó solicitud #{solicitud.id}; nota {solicitud.nota_venta_numero}; adicional Bs {solicitud.monto_adicional}; saldo Bs {solicitud.saldo_favor_generado}; reembolso Bs {solicitud.monto_reembolsado}",
+        action=f"Liquidó solicitud #{solicitud.id}; nota {solicitud.nota_venta_numero}; adicional Bs {solicitud.monto_adicional}; reembolso Bs {solicitud.monto_reembolsado}",
     )
     return {"status": "ok", "estado": solicitud.estado, "mensaje": "Cambio/Devolución completado con nota de venta.", **_campos_financieros(solicitud)}
 

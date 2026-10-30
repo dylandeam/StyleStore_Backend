@@ -204,7 +204,7 @@ class CambioService:
 
         return solicitud
 
-    def completar_en_caja(
+    def _completar_en_caja_legacy(
         self,
         solicitud_id: int,
         reponer_prenda_original: bool = True,
@@ -354,6 +354,236 @@ class CambioService:
             tipo="cambio_devolucion",
             titulo="Cambio/Devolución completado",
             mensaje=f"Operación {nota} completada. {resultado}",
+            url_accion="/cuenta/mis-compras",
+            enviar_email=True,
+            empresa_id=solicitud.sucursal.empresa_id,
+        )
+        return solicitud
+
+    def preparar_liquidacion(
+        self,
+        solicitud_id: int,
+        reponer_prenda_original: bool = True,
+        nuevo_stock_inventario_id: Optional[int] = None,
+    ) -> CambioDevolucion:
+        """Calcula el ajuste y lo deja pendiente para que caja lo revise y liquide."""
+        solicitud = self._scope_branch(
+            self.db.query(CambioDevolucion).options(
+                joinedload(CambioDevolucion.detalle_venta),
+                joinedload(CambioDevolucion.orden_venta).joinedload(OrdenVenta.cliente).joinedload(Cliente.user),
+            ),
+            CambioDevolucion.sucursal_id,
+        ).filter(CambioDevolucion.id == solicitud_id).first()
+        if not solicitud:
+            raise HTTPException(status_code=404, detail="Solicitud no encontrada.")
+        if solicitud.estado not in {"aceptada", "pendiente_liquidacion"}:
+            raise HTTPException(status_code=400, detail="Solo una solicitud aceptada puede enviarse a caja.")
+        if solicitud.orden_ajuste and solicitud.orden_ajuste.estado == "pendiente_pago":
+            solicitud.orden_ajuste.estado = "cancelada"
+        detalle = solicitud.detalle_venta
+        if not detalle:
+            raise HTTPException(status_code=400, detail="La solicitud no tiene una prenda original válida.")
+        cliente = solicitud.orden_venta.cliente if solicitud.orden_venta else None
+        if not cliente or not cliente.user:
+            raise HTTPException(status_code=400, detail="No se pudo identificar al cliente del cambio.")
+
+        precio_original = Decimal(detalle.precio_unitario)
+        precio_nuevo = Decimal("0.00")
+        nuevo_stk = None
+        if solicitud.tipo == "cambio":
+            nuevo_stock_inventario_id = nuevo_stock_inventario_id or detalle.stock_inventario_id
+            if not nuevo_stock_inventario_id:
+                raise HTTPException(status_code=400, detail="Selecciona la nueva prenda que se entregará.")
+            nuevo_stk = self._scope_branch(
+                self.db.query(StockInventario), StockInventario.sucursal_id
+            ).filter(
+                StockInventario.id == nuevo_stock_inventario_id,
+                StockInventario.sucursal_id == solicitud.sucursal_id,
+            ).first()
+            if not nuevo_stk or nuevo_stk.cantidad <= 0:
+                raise HTTPException(status_code=400, detail="La nueva prenda no tiene stock disponible en esta sucursal.")
+            producto = nuevo_stk.producto_color.producto if nuevo_stk.producto_color else None
+            if not producto:
+                raise HTTPException(status_code=400, detail="La nueva prenda no es válida.")
+            precio_nuevo = Decimal(
+                nuevo_stk.precio_variante if nuevo_stk.precio_variante is not None else producto.precio
+            )
+
+        diferencia = precio_nuevo - precio_original if solicitud.tipo == "cambio" else -precio_original
+        monto_adicional = max(diferencia, Decimal("0.00"))
+        monto_reembolsado = abs(min(diferencia, Decimal("0.00")))
+        tipo_ajuste = (
+            "cambio_cobro" if monto_adicional > 0
+            else "cambio_reembolso" if monto_reembolsado > 0
+            else "cambio_sin_ajuste"
+        )
+        monto_caja = monto_adicional if monto_adicional > 0 else monto_reembolsado
+        now = datetime.now()
+        nota = f"NCJ-{now.strftime('%Y%m%d%H%M%S')}-{solicitud.id}"
+        orden_ajuste = OrdenVenta(
+            fecha=now.date(),
+            estado="pendiente_pago",
+            total=monto_caja,
+            tipo_venta=tipo_ajuste,
+            codigo_cliente=cliente.codigo,
+            sucursal_id=solicitud.sucursal_id,
+            ticket_numero=nota,
+            metodo_pago=None,
+            inventario_descontado=False,
+        )
+        self.db.add(orden_ajuste)
+        self.db.flush()
+        if nuevo_stk:
+            producto = nuevo_stk.producto_color.producto
+            self.db.add(DetalleVenta(
+                orden_venta_id=orden_ajuste.id,
+                stock_inventario_id=nuevo_stk.id,
+                producto_nombre=producto.nombre,
+                color_nombre=nuevo_stk.producto_color.color.nombre if nuevo_stk.producto_color.color else None,
+                talla_nombre=nuevo_stk.talla.nombre if nuevo_stk.talla else None,
+                cantidad=1,
+                precio_unitario=precio_nuevo,
+                subtotal=precio_nuevo,
+            ))
+
+        solicitud.estado = "pendiente_liquidacion"
+        solicitud.reponer_prenda_original = reponer_prenda_original
+        solicitud.nuevo_stock_inventario_id = nuevo_stk.id if nuevo_stk else None
+        solicitud.producto_nuevo_codigo = nuevo_stk.producto_color.producto_codigo if nuevo_stk else solicitud.producto_nuevo_codigo
+        solicitud.talla_nueva_id = nuevo_stk.talla_id if nuevo_stk else solicitud.talla_nueva_id
+        solicitud.color_nuevo_id = nuevo_stk.producto_color.color_id if nuevo_stk else solicitud.color_nuevo_id
+        solicitud.precio_original = precio_original
+        solicitud.precio_nuevo = precio_nuevo if nuevo_stk else None
+        solicitud.monto_adicional = monto_adicional
+        solicitud.saldo_favor_generado = Decimal("0.00")
+        solicitud.monto_reembolsado = monto_reembolsado
+        solicitud.nota_venta_numero = nota
+        solicitud.orden_ajuste_id = orden_ajuste.id
+        self.db.commit()
+        self.db.refresh(solicitud)
+        NotificacionService(self.db).crear_notificacion(
+            user_id=cliente.user_id,
+            tipo="cambio_devolucion",
+            titulo="Ajuste preparado en caja",
+            mensaje=(
+                f"Tu solicitud #{solicitud.id} fue revisada. "
+                + (f"Queda pendiente pagar Bs {monto_adicional:.2f} en caja."
+                   if monto_adicional > 0 else
+                   f"Queda pendiente devolverte Bs {monto_reembolsado:.2f} en caja."
+                   if monto_reembolsado > 0 else
+                   "El cambio no tiene diferencia de precio y queda pendiente de confirmación en caja.")
+            ),
+            url_accion="/cuenta/mis-compras",
+            enviar_email=True,
+            empresa_id=solicitud.sucursal.empresa_id,
+        )
+        return solicitud
+
+    def completar_en_caja(
+        self,
+        solicitud_id: int,
+        metodo_pago_diferencia: Optional[str] = None,
+        efectivo_recibido: Optional[Decimal] = None,
+        metodo_reembolso: Optional[str] = None,
+        **_compat,
+    ) -> CambioDevolucion:
+        """Confirma en caja un ajuste previamente preparado y recién entonces mueve stock."""
+        solicitud = self._scope_branch(
+            self.db.query(CambioDevolucion).options(
+                joinedload(CambioDevolucion.detalle_venta),
+                joinedload(CambioDevolucion.orden_venta).joinedload(OrdenVenta.cliente).joinedload(Cliente.user),
+                joinedload(CambioDevolucion.orden_ajuste),
+            ),
+            CambioDevolucion.sucursal_id,
+        ).filter(CambioDevolucion.id == solicitud_id).first()
+        if not solicitud:
+            raise HTTPException(status_code=404, detail="Solicitud no encontrada.")
+        if solicitud.estado != "pendiente_liquidacion" or not solicitud.orden_ajuste:
+            raise HTTPException(status_code=400, detail="Primero debes preparar el ajuste y enviarlo a caja.")
+
+        monto_adicional = Decimal(solicitud.monto_adicional or 0)
+        monto_reembolso = Decimal(solicitud.monto_reembolsado or 0)
+        metodo_cobro = (metodo_pago_diferencia or "").lower()
+        metodo_salida = (metodo_reembolso or "").lower()
+        if monto_adicional > 0:
+            if metodo_cobro not in {"efectivo", "qr"}:
+                raise HTTPException(status_code=400, detail="La diferencia debe cobrarse por efectivo o QR.")
+            if metodo_cobro == "efectivo" and (efectivo_recibido is None or efectivo_recibido < monto_adicional):
+                raise HTTPException(status_code=400, detail="El efectivo recibido no cubre la diferencia del cambio.")
+        if monto_reembolso > 0 and metodo_salida not in {"efectivo", "qr", "transferencia"}:
+            raise HTTPException(status_code=400, detail="Indica si la devolución se realizó en efectivo, QR o transferencia.")
+
+        detalle = solicitud.detalle_venta
+        nuevo_stk = None
+        if solicitud.tipo == "cambio":
+            nuevo_stk = self._scope_branch(
+                self.db.query(StockInventario), StockInventario.sucursal_id
+            ).filter(
+                StockInventario.id == solicitud.nuevo_stock_inventario_id,
+                StockInventario.sucursal_id == solicitud.sucursal_id,
+            ).with_for_update(of=StockInventario).first()
+            if not nuevo_stk or nuevo_stk.cantidad <= 0:
+                raise HTTPException(status_code=409, detail="La prenda elegida se agotó antes de liquidar el cambio. Selecciona otra existencia.")
+        if solicitud.reponer_prenda_original and detalle and detalle.stock_inventario_id:
+            original = self._scope_branch(
+                self.db.query(StockInventario), StockInventario.sucursal_id
+            ).filter(StockInventario.id == detalle.stock_inventario_id).with_for_update(of=StockInventario).first()
+            if original:
+                original.cantidad += 1
+        if nuevo_stk:
+            nuevo_stk.cantidad -= 1
+
+        cliente = solicitud.orden_venta.cliente if solicitud.orden_venta else None
+        if not cliente or not cliente.user:
+            raise HTTPException(status_code=400, detail="No se pudo identificar al cliente del cambio.")
+        orden_ajuste = solicitud.orden_ajuste
+        metodo = metodo_cobro if monto_adicional > 0 else metodo_salida if monto_reembolso > 0 else "sin_ajuste"
+        orden_ajuste.estado = "pagada"
+        orden_ajuste.metodo_pago = metodo
+        orden_ajuste.inventario_descontado = True
+        pago = None
+        if monto_adicional > 0:
+            pago = Pago(
+                orden_venta_id=orden_ajuste.id,
+                monto=monto_adicional,
+                empresa_id=solicitud.sucursal.empresa_id,
+                tipo_pago="en caja",
+                metodo_pago=metodo,
+                estado="aprobado",
+            )
+            self.db.add(pago)
+        elif monto_reembolso > 0:
+            pago = Pago(
+                orden_venta_id=orden_ajuste.id,
+                monto=monto_reembolso,
+                empresa_id=solicitud.sucursal.empresa_id,
+                tipo_pago="devolucion en caja",
+                metodo_pago=metodo,
+                estado="reembolsado",
+                refund_reason=f"Liquidación de cambio/devolución #{solicitud.id}",
+                refunded_at=datetime.now(),
+                recibo_numero=f"DEV-{orden_ajuste.id:08d}",
+            )
+            self.db.add(pago)
+
+        solicitud.estado = "completada"
+        solicitud.metodo_pago_diferencia = metodo
+        self.db.commit()
+        self.db.refresh(solicitud)
+        if pago and monto_adicional > 0:
+            from app.services.pago_service import PagoService
+            self.db.refresh(pago)
+            PagoService(self.db).confirmar(pago)
+        resultado = (
+            f"Se cobró la diferencia de Bs {monto_adicional:.2f}." if monto_adicional > 0
+            else f"Se devolvieron Bs {monto_reembolso:.2f}." if monto_reembolso > 0
+            else "El cambio fue confirmado sin diferencia de precio."
+        )
+        NotificacionService(self.db).crear_notificacion(
+            user_id=cliente.user_id,
+            tipo="cambio_devolucion",
+            titulo="Cambio/Devolución completado",
+            mensaje=f"Operación {solicitud.nota_venta_numero} completada. {resultado}",
             url_accion="/cuenta/mis-compras",
             enviar_email=True,
             empresa_id=solicitud.sucursal.empresa_id,

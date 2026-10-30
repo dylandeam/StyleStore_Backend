@@ -108,6 +108,12 @@ def _serialize_orden(o: OrdenVenta) -> dict:
         "codigo_descuento": o.codigo_descuento,
         "porcentaje_codigo": o.porcentaje_codigo,
         "tipo_venta": o.tipo_venta,
+        "cambio_devolucion_id": o.cambio_ajuste.id if o.cambio_ajuste else None,
+        "liquidacion_tipo": (
+            "cobro" if o.cambio_ajuste and Decimal(o.cambio_ajuste.monto_adicional or 0) > 0
+            else "reembolso" if o.cambio_ajuste and Decimal(o.cambio_ajuste.monto_reembolsado or 0) > 0
+            else "sin_ajuste" if o.cambio_ajuste else None
+        ),
         "metodo_pago": o.metodo_pago,
         "tipo_entrega": o.tipo_entrega,
         "fecha_recojo": o.fecha_recojo,

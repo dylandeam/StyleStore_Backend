@@ -9,6 +9,15 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 PLAN_CODES = {"basico", "intermedio", "profesional"}
 
 
+def normalize_plan_code(value: str) -> str:
+    normalized = value.strip().lower().replace(" ", "-")
+    if not normalized or len(normalized) > 30:
+        raise ValueError("El código del plan debe tener entre 1 y 30 caracteres.")
+    if not all(character.isalnum() or character in {"-", "_"} for character in normalized):
+        raise ValueError("El código solo puede contener letras, números, guiones y guiones bajos.")
+    return normalized
+
+
 class PlanUpdate(BaseModel):
     nombre: str | None = Field(None, min_length=2, max_length=80)
     descripcion: str | None = Field(None, max_length=1200)
@@ -31,6 +40,38 @@ class PlanUpdate(BaseModel):
     def clean_benefits(cls, value: list[str] | None):
         if value is None:
             return value
+        cleaned = [item.strip() for item in value if item and item.strip()]
+        if any(len(item) > 180 for item in cleaned):
+            raise ValueError("Cada beneficio puede tener hasta 180 caracteres.")
+        return cleaned
+
+
+class PlanCreate(BaseModel):
+    codigo: str = Field(..., min_length=1, max_length=30)
+    nombre: str = Field(..., min_length=2, max_length=80)
+    descripcion: str | None = Field(None, max_length=1200)
+    precio_mensual: Decimal = Field(default=Decimal("0"), ge=Decimal("0"), max_digits=12, decimal_places=2)
+    moneda: str = Field(default="BOB", min_length=3, max_length=3)
+    max_sucursales: int | None = Field(default=None, ge=1, le=10000)
+    ia_generativa: bool = False
+    beneficios: list[str] = Field(default_factory=list, max_length=30)
+    capacidades: dict[str, bool] = Field(default_factory=dict)
+    estilo: dict[str, Any] = Field(default_factory=dict)
+    active: bool = True
+
+    @field_validator("codigo")
+    @classmethod
+    def valid_code(cls, value: str):
+        return normalize_plan_code(value)
+
+    @field_validator("moneda")
+    @classmethod
+    def normalize_currency(cls, value: str):
+        return value.upper()
+
+    @field_validator("beneficios")
+    @classmethod
+    def clean_benefits(cls, value: list[str]):
         cleaned = [item.strip() for item in value if item and item.strip()]
         if any(len(item) > 180 for item in cleaned):
             raise ValueError("Cada beneficio puede tener hasta 180 caracteres.")
@@ -64,10 +105,7 @@ class ContratacionCreate(BaseModel):
     @field_validator("plan_codigo")
     @classmethod
     def valid_plan_code(cls, value: str):
-        normalized = value.strip().lower()
-        if normalized not in PLAN_CODES:
-            raise ValueError("El plan debe ser basico, intermedio o profesional.")
-        return normalized
+        return normalize_plan_code(value)
 
 
 class ContratacionPayPalCreate(BaseModel):
@@ -78,10 +116,7 @@ class ContratacionPayPalCreate(BaseModel):
     @field_validator("plan_codigo")
     @classmethod
     def valid_plan_code(cls, value: str):
-        normalized = value.strip().lower()
-        if normalized not in PLAN_CODES:
-            raise ValueError("El plan debe ser basico, intermedio o profesional.")
-        return normalized
+        return normalize_plan_code(value)
 
 
 class ContratacionPayPalCapture(BaseModel):
