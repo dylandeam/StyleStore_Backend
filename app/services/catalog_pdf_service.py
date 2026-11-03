@@ -87,8 +87,9 @@ class CatalogPdfService:
         primary = self._color(empresa.color_primario, "#14263D")
         accent = self._color(empresa.color_acento, "#274C77")
         surface = self._color(empresa.color_secundario, "#FBF8F1")
-        text_color = self._color(empresa.color_texto, "#172536")
         primary_text = self._contrast_color(primary)
+        surface_text = self._contrast_color(surface)
+        card_text = colors.HexColor("#172536")
         brand = empresa.nombre_marca or empresa.nombre
 
         document = SimpleDocTemplate(
@@ -124,7 +125,7 @@ class CatalogPdfService:
         )
         body_style = ParagraphStyle(
             "ProductBody", parent=styles["BodyText"], fontSize=8.5,
-            leading=11.5, textColor=text_color,
+            leading=11.5, textColor=card_text,
         )
         price_style = ParagraphStyle(
             "ProductPrice", parent=styles["Heading2"], fontName="Helvetica-Bold",
@@ -224,7 +225,8 @@ class CatalogPdfService:
                 )
                 size_table.setStyle(TableStyle([
                     ("BACKGROUND", (0, 0), (-1, 0), surface),
-                    ("TEXTCOLOR", (0, 0), (-1, -1), text_color),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), surface_text),
+                    ("TEXTCOLOR", (0, 1), (-1, -1), card_text),
                     ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                     ("GRID", (0, 0), (-1, -1), .35, colors.HexColor("#D9D0BF")),
                     ("LEFTPADDING", (0, 0), (-1, -1), 5),
@@ -264,7 +266,7 @@ class CatalogPdfService:
                 canvas.drawRightString(190 * mm, 282 * mm, "Catálogo · continuación")
             canvas.setStrokeColor(accent)
             canvas.line(16 * mm, 12 * mm, 194 * mm, 12 * mm)
-            canvas.setFillColor(text_color)
+            canvas.setFillColor(card_text)
             canvas.setFont("Helvetica", 7.5)
             canvas.drawString(16 * mm, 8 * mm, f"{brand} · Catálogo generado desde StyleStore")
             canvas.drawRightString(194 * mm, 8 * mm, f"Página {doc.page}")

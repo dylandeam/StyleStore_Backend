@@ -18,6 +18,7 @@ from app.models.color import Color
 from app.models.talla import Talla
 from app.models.producto_color import ProductoColor
 from app.models.producto_talla_precio import ProductoTallaPrecio
+from app.models.sucursal import Sucursal
 from app.core.security import hash_password
 from app.services.report_ai_service import ReportAIService
 from app.services.plan_service import PlanService
@@ -399,6 +400,18 @@ def test_employee_has_workday_and_multiple_tenant_branch_schedules(
         )
         assert response.status_code == 201, response.text
         branches_a.append(response.json())
+    unassigned_branch = Sucursal(
+        empresa_id=branches_a[0]["empresa_id"],
+        name="Staff A Sur",
+        city="La Paz",
+        address="Calle Sur",
+        phone="70000112",
+        active=True,
+    )
+    db_session.add(unassigned_branch)
+    db_session.commit()
+    db_session.refresh(unassigned_branch)
+    branches_a.append({"id": unassigned_branch.id})
     foreign_branch = client.post(
         "/api/v1/sucursales",
         headers=headers_b,
@@ -453,6 +466,24 @@ def test_employee_has_workday_and_multiple_tenant_branch_schedules(
     assert employee["asignaciones"][0]["dias_semana"] == [
         "lunes", "miercoles", "viernes"
     ]
+
+    staff_login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "lucia@staff-a.example.com", "password": "StaffPass2026!"},
+    )
+    assert staff_login.status_code == 200, staff_login.text
+    staff_headers = {
+        "Authorization": f"Bearer {staff_login.json()['access_token']}"
+    }
+    visible_branches = client.get("/api/v1/sucursales", headers=staff_headers)
+    assert visible_branches.status_code == 200, visible_branches.text
+    assert {item["id"] for item in visible_branches.json()} == {
+        branches_a[0]["id"],
+        branches_a[1]["id"],
+    }
+    assert client.get(
+        f"/api/v1/sucursales/{branches_a[2]['id']}", headers=staff_headers
+    ).status_code == 404
 
     cross_tenant = client.put(
         f"/api/v1/empleados/{employee['codigo']}",
@@ -1195,6 +1226,7 @@ def test_chatbot_and_catalog_pdf_are_scoped_to_selected_tenant(
     empresa_b = db_session.query(Empresa).filter(Empresa.id == company_b["id"]).one()
     empresa_a.nombre_marca = "Moda Aurora"
     empresa_b.nombre_marca = "Moda Boreal"
+    empresa_a.color_texto = "#FFFFFF"
     for empresa, suffix in ((empresa_a, "AURORA"), (empresa_b, "BOREAL")):
         category = Categoria(empresa_id=empresa.id, nombre=f"Polos {suffix}")
         season = Temporada(empresa_id=empresa.id, nombre=f"Verano {suffix}")

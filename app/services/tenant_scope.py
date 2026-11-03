@@ -35,6 +35,29 @@ def scoped_sucursal_ids(db: Session, current_user: User):
     empresa_id = effective_empresa_id(current_user)
     if empresa_id is not None:
         query = query.filter(Sucursal.empresa_id == empresa_id)
+
+    # Los responsables operativos solo deben trabajar con las sucursales que
+    # el administrador del tenant les asignó. Mantener esta regla en el scope
+    # central protege inventario, caja, compras y reportes aunque el cliente
+    # intente enviar manualmente el ID de otra sucursal del mismo tenant.
+    role = (getattr(current_user, "role", "") or "").strip().lower()
+    branch_limited_roles = {"cajero", "encargado", "encargado_sucursal"}
+    if not current_user.is_platform_admin and role in branch_limited_roles:
+        from app.models.empleado import Empleado
+
+        empleado = db.query(Empleado).filter(Empleado.user_id == current_user.id).first()
+        assigned_ids: set[int] = set()
+        if empleado:
+            if empleado.sucursal_id:
+                assigned_ids.add(int(empleado.sucursal_id))
+            assigned_ids.update(
+                int(item.sucursal_id)
+                for item in (empleado.asignaciones or [])
+                if item.sucursal_id
+            )
+        if not assigned_ids:
+            return query.filter(Sucursal.id == -1)
+        query = query.filter(Sucursal.id.in_(sorted(assigned_ids)))
     return query
 
 
@@ -55,10 +78,10 @@ def scope_by_empresa(query: Query, current_user: User, column):
 
 def get_scoped_sucursal(db: Session, current_user: User, sucursal_id: int) -> Sucursal:
     """Resolve a branch without revealing whether a foreign tenant branch exists."""
-    query = db.query(Sucursal).filter(Sucursal.id == sucursal_id)
-    empresa_id = effective_empresa_id(current_user)
-    if empresa_id is not None:
-        query = query.filter(Sucursal.empresa_id == empresa_id)
+    query = db.query(Sucursal).filter(
+        Sucursal.id == sucursal_id,
+        Sucursal.id.in_(scoped_sucursal_ids(db, current_user)),
+    )
     sucursal = query.first()
     if not sucursal:
         raise NotFoundException(f"Sucursal con ID {sucursal_id} no encontrada.")

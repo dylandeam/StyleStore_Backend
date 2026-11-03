@@ -12,7 +12,7 @@ from app.schemas.sucursal import SucursalCreate, SucursalUpdate, SucursalRespons
 from app.schemas.common import MessageResponse
 from app.services.sucursal_service import SucursalService
 from app.core.exceptions import ForbiddenException
-from app.services.tenant_scope import effective_empresa_id
+from app.services.tenant_scope import effective_empresa_id, get_scoped_sucursal, scoped_sucursal_ids
 
 router = APIRouter(prefix="/sucursales", tags=["Sucursales"])
 
@@ -33,11 +33,15 @@ async def list_sucursales(
     default_empresa = None if current_user else db.query(Empresa).filter(
         Empresa.codigo == "stylestore", Empresa.active.is_(True)
     ).first()
-    return service.list_sucursales(
+    sucursales = service.list_sucursales(
         active_only=active_only,
         empresa_id=effective_empresa_id(current_user) if current_user else (default_empresa.id if default_empresa else -1),
         include_all_empresas=bool(current_user and current_user.is_platform_admin and effective_empresa_id(current_user) is None),
     )
+    if current_user:
+        allowed = {row[0] for row in scoped_sucursal_ids(db, current_user).all()}
+        sucursales = [sucursal for sucursal in sucursales if sucursal.id in allowed]
+    return sucursales
 
 
 @router.get(
@@ -52,6 +56,8 @@ async def get_sucursal(
     db: Session = Depends(get_db),
 ):
     """Obtener detalle de sucursal."""
+    if current_user:
+        return get_scoped_sucursal(db, current_user, sucursal_id)
     service = SucursalService(db)
     default_empresa = None if current_user else db.query(Empresa).filter(
         Empresa.codigo == "stylestore", Empresa.active.is_(True)
