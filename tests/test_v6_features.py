@@ -688,6 +688,12 @@ def test_cambio_menor_genera_reembolso_pendiente_y_nota_venta(client: TestClient
     assert Decimal(str(data["saldo_favor_generado"])) == Decimal("0.00")
     assert Decimal(str(data["monto_reembolsado"])) == Decimal("100.00")
     assert data["nota_venta_numero"].startswith("NCJ-")
+    comprobante = data["comprobante"]
+    assert comprobante["tipo_documento"] == "COMPROBANTE DE CAMBIO"
+    assert Decimal(str(comprobante["original"]["precio"])) == Decimal("250.00")
+    assert comprobante["reemplazo"]["producto"] == sample_inventory["producto"].nombre
+    assert Decimal(str(comprobante["reemplazo"]["precio"])) == Decimal("150.00")
+    assert Decimal(str(comprobante["diferencia_devuelta"])) == Decimal("100.00")
 
     pago_salida = db_session.query(Pago).filter(Pago.orden_venta_id == data["orden_ajuste_id"]).one()
     assert pago_salida.estado == "reembolsado"

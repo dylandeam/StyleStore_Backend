@@ -76,6 +76,37 @@ def _campos_financieros(s):
     }
 
 
+def _comprobante_cambio(s):
+    """Resumen imprimible de la liquidación, independiente del método de caja."""
+    original = s.detalle_venta
+    nuevo = s.nuevo_stock
+    nuevo_producto = nuevo.producto_color.producto if nuevo and nuevo.producto_color else None
+    return {
+        "tipo_documento": "COMPROBANTE DE CAMBIO" if s.tipo == "cambio" else "COMPROBANTE DE DEVOLUCIÓN",
+        "numero": s.nota_venta_numero,
+        "orden_original_id": s.orden_venta_id,
+        "orden_ajuste_id": s.orden_ajuste_id,
+        "fecha": s.updated_at,
+        "sucursal": s.sucursal.nombre if s.sucursal else None,
+        "original": {
+            "producto": original.producto_nombre if original else None,
+            "talla": original.talla_nombre if original else None,
+            "color": original.color_nombre if original else None,
+            "precio": s.precio_original,
+        },
+        "reemplazo": ({
+            "producto": nuevo_producto.nombre if nuevo_producto else s.producto_nuevo.nombre if s.producto_nuevo else None,
+            "talla": nuevo.talla.nombre if nuevo and nuevo.talla else s.talla_nueva.nombre if s.talla_nueva else None,
+            "color": nuevo.producto_color.color.nombre if nuevo and nuevo.producto_color and nuevo.producto_color.color else s.color_nuevo.nombre if s.color_nuevo else None,
+            "precio": s.precio_nuevo,
+        } if s.tipo == "cambio" else None),
+        "diferencia_cobrada": s.monto_adicional,
+        "diferencia_devuelta": s.monto_reembolsado,
+        "metodo": s.metodo_pago_diferencia,
+        "repuesto_a_inventario": s.reponer_prenda_original,
+    }
+
+
 @router.get("/politica", summary="Consultar plazo de cambios del tenant")
 async def consultar_politica(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     empresa = db.query(Empresa).filter(Empresa.id == current_user.empresa_id).first()
@@ -125,7 +156,9 @@ async def inventario_para_cambio(sucursal_id: int, current_user: User = Depends(
         "stock_inventario_id": s.id,
         "producto_codigo": s.producto_color.producto_codigo,
         "producto_nombre": s.producto_color.producto.nombre,
+        "color_id": s.producto_color.color_id,
         "color_nombre": s.producto_color.color.nombre if s.producto_color.color else None,
+        "talla_id": s.talla_id,
         "talla_nombre": s.talla.nombre if s.talla else None,
         "precio": s.precio_variante if s.precio_variante is not None else s.producto_color.producto.precio,
         "cantidad": s.cantidad,
@@ -205,11 +238,11 @@ async def listar_solicitudes_staff(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.role not in ["administrador", "encargado", "vendedor"]:
+    if current_user.role not in {"administrador", "encargado", "encargado_sucursal", "vendedor", "cajero"}:
         raise HTTPException(status_code=403, detail="Acceso denegado a personal autorizado.")
 
     # Encargado de sucursal: por defecto su sucursal si no especifica
-    if current_user.role in ["encargado", "vendedor"] and sucursal_id is None:
+    if current_user.role in {"encargado", "encargado_sucursal", "vendedor", "cajero"} and sucursal_id is None:
         empleado = db.query(Empleado).filter(Empleado.user_id == current_user.id).first()
         if empleado:
             sucursal_id = empleado.sucursal_id
@@ -266,7 +299,7 @@ async def responder_solicitud(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.role not in ["administrador", "encargado"]:
+    if current_user.role not in {"administrador", "encargado", "encargado_sucursal"}:
         raise HTTPException(status_code=403, detail="Solo administradores y encargados pueden responder solicitudes.")
 
     service = CambioService(db, current_user)
@@ -285,8 +318,8 @@ async def preparar_liquidacion(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.role not in ["administrador", "encargado"]:
-        raise HTTPException(status_code=403, detail="Solo administradores y encargados pueden preparar la liquidación.")
+    if current_user.role not in {"administrador", "encargado", "encargado_sucursal", "cajero"}:
+        raise HTTPException(status_code=403, detail="Solo administradores, encargados y cajeros pueden preparar la liquidación.")
     solicitud = CambioService(db, current_user).preparar_liquidacion(
         solicitud_id=solicitud_id,
         reponer_prenda_original=payload.reponer_prenda_original,
@@ -306,7 +339,7 @@ async def completar_en_caja(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.role not in ["administrador", "encargado", "vendedor"]:
+    if current_user.role not in {"administrador", "encargado", "encargado_sucursal", "vendedor", "cajero"}:
         raise HTTPException(status_code=403, detail="Acceso denegado a personal de caja.")
 
     service = CambioService(db, current_user)
@@ -320,7 +353,13 @@ async def completar_en_caja(
         db=db, user=current_user, module="cambios",
         action=f"Liquidó solicitud #{solicitud.id}; nota {solicitud.nota_venta_numero}; adicional Bs {solicitud.monto_adicional}; reembolso Bs {solicitud.monto_reembolsado}",
     )
-    return {"status": "ok", "estado": solicitud.estado, "mensaje": "Cambio/Devolución completado con nota de venta.", **_campos_financieros(solicitud)}
+    return {
+        "status": "ok",
+        "estado": solicitud.estado,
+        "mensaje": "Cambio/Devolución completado con comprobante emitido.",
+        **_campos_financieros(solicitud),
+        "comprobante": _comprobante_cambio(solicitud),
+    }
 
 
 @router.get("/opciones-disponibles", summary="Obtener tallas con stock y colores de la prenda para cambio (Punto 5)")

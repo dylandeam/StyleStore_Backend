@@ -87,6 +87,33 @@ class CambioService:
         if not detalle:
             raise HTTPException(status_code=404, detail="El artículo no pertenece a la orden indicada.")
 
+        # La selección del cliente es una preferencia. La existencia definitiva la
+        # confirma caja con stock real al preparar la liquidación.
+        if tipo == "devolucion":
+            producto_nuevo_codigo = None
+            talla_nueva_id = None
+            color_nuevo_id = None
+        elif producto_nuevo_codigo:
+            preferencia = self._scope_branch(
+                self.db.query(StockInventario).join(
+                    ProductoColor, StockInventario.producto_color_id == ProductoColor.id
+                ),
+                StockInventario.sucursal_id,
+            ).filter(
+                StockInventario.sucursal_id == sucursal_id,
+                StockInventario.cantidad > 0,
+                ProductoColor.producto_codigo == producto_nuevo_codigo,
+            )
+            if talla_nueva_id:
+                preferencia = preferencia.filter(StockInventario.talla_id == talla_nueva_id)
+            if color_nuevo_id:
+                preferencia = preferencia.filter(ProductoColor.color_id == color_nuevo_id)
+            if not preferencia.first():
+                raise HTTPException(
+                    status_code=400,
+                    detail="La prenda preferida ya no tiene una variante disponible en esta sucursal. Elige otra opción.",
+                )
+
         # 5. Crear la solicitud
         solicitud = CambioDevolucion(
             orden_venta_id=orden.id,
