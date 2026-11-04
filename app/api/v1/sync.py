@@ -29,9 +29,13 @@ from app.schemas.sync import (
     SyncBatchRequest,
     SyncDiagnosticoItem,
     SyncMetricasResponse,
+    SyncAdminOperationItem,
+    SyncAdminOperationsResponse,
     SyncOperationRequest,
     SyncOperationResponse,
 )
+from app.models.notificacion import Notificacion
+from app.models.sucursal import Sucursal
 
 router = APIRouter(prefix="/sync", tags=["Sincronización offline"])
 
@@ -114,6 +118,16 @@ def _notify_result(db: Session, record: SyncOperation, user: User) -> None:
         NotificacionService(db).notificar_resultado_operacion_offline(record, user)
     except Exception:
         # La notificación es complementaria: nunca debe revertir una operación confirmada.
+        db.rollback()
+
+
+def _notify_admin_incident(db: Session, record: SyncOperation) -> None:
+    try:
+        refund = db.query(ReembolsoOffline).filter(
+            ReembolsoOffline.sync_operation_id == record.id
+        ).first()
+        NotificacionService(db).notificar_incidente_operacion_offline(record, refund)
+    except Exception:
         db.rollback()
 
 
@@ -258,6 +272,7 @@ async def _process(payload: SyncOperationRequest, user: User, db: Session) -> Sy
         db.commit()
         db.refresh(rejected)
         _notify_result(db, rejected, user)
+        _notify_admin_incident(db, rejected)
         return _response(rejected, db)
 
 
@@ -291,6 +306,76 @@ async def list_sync_operations(
     if status:
         query = query.filter(SyncOperation.status == status)
     return [_response(item, db) for item in query.order_by(SyncOperation.created_at.desc()).all()]
+
+
+@router.get(
+    "/admin/operations",
+    response_model=SyncAdminOperationsResponse,
+    summary="Panel tenant de operaciones sincronizadas offline (CU44)",
+)
+async def list_admin_sync_operations(
+    status: str | None = Query(None, pattern="^(procesando|confirmada|rechazada|conflicto)$"),
+    operation_type: str | None = Query(None, pattern="^(reserva|venta_efectivo|resena_producto)$"),
+    sucursal_id: int | None = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if current_user.is_platform_admin or current_user.role != "administrador" or current_user.empresa_id is None:
+        raise ForbiddenException("Solo el administrador del tenant puede consultar el panel de procesos offline.")
+
+    query = db.query(SyncOperation).filter(SyncOperation.empresa_id == current_user.empresa_id)
+    if status:
+        query = query.filter(SyncOperation.status == status)
+    if operation_type:
+        query = query.filter(SyncOperation.operation_type == operation_type)
+    if sucursal_id is not None:
+        branch = db.query(Sucursal.id).filter(
+            Sucursal.id == sucursal_id,
+            Sucursal.empresa_id == current_user.empresa_id,
+        ).first()
+        if not branch:
+            raise ForbiddenException("La sucursal seleccionada no pertenece al tenant activo.")
+        query = query.filter(SyncOperation.sucursal_id == sucursal_id)
+
+    total = query.count()
+    records = query.order_by(SyncOperation.created_at.desc(), SyncOperation.id.desc()).offset(offset).limit(limit).all()
+    items: list[SyncAdminOperationItem] = []
+    for record in records:
+        user = db.query(User).filter(User.id == record.user_id).first()
+        branch = db.query(Sucursal).filter(Sucursal.id == record.sucursal_id).first() if record.sucursal_id else None
+        refund = db.query(ReembolsoOffline).filter(ReembolsoOffline.sync_operation_id == record.id).first()
+        action_url = f"/cuenta/operaciones-pendientes?operation_uuid={record.operation_uuid}"
+        notified = db.query(Notificacion.id).filter(
+            Notificacion.empresa_id == record.empresa_id,
+            Notificacion.user_id == record.user_id,
+            Notificacion.tipo == "resultado_operacion_offline",
+            Notificacion.url_accion == action_url,
+        ).first() is not None
+        items.append(SyncAdminOperationItem(
+            operation_uuid=str(record.operation_uuid),
+            operation_type=record.operation_type,
+            status=record.status,
+            user_id=record.user_id,
+            user_name=(f"{user.name} {user.apellido or ''}".strip() if user else "Usuario eliminado"),
+            user_email=user.email if user else "",
+            sucursal_id=record.sucursal_id,
+            sucursal_nombre=branch.name if branch else None,
+            client_created_at=record.client_created_at,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+            reason=record.reason,
+            result_type=record.result_type,
+            result_id=record.result_id,
+            resultado_notificado=notified,
+            refund_id=refund.id if refund else None,
+            refund_status=refund.estado if refund else None,
+            refund_amount=float(refund.monto) if refund else None,
+            refund_currency=refund.moneda if refund else None,
+            refund_reason=refund.motivo if refund else None,
+        ))
+    return SyncAdminOperationsResponse(total=total, limit=limit, offset=offset, items=items)
 
 
 @router.get("/metricas", response_model=SyncMetricasResponse, summary="Diagnóstico y métricas agregadas de sincronización offline")

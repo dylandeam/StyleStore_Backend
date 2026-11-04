@@ -137,6 +137,55 @@ class NotificacionService:
             empresa_id=operation.empresa_id,
         )
 
+    def notificar_incidente_operacion_offline(self, operation, refund=None) -> int:
+        """Avisa a los administradores tenant sobre conflictos/rechazos del CU44."""
+        if not operation or operation.status not in {"conflicto", "rechazada"}:
+            return 0
+        action_url = f"/admin/procesos-offline?operation_uuid={operation.operation_uuid}"
+        operation_labels = {
+            "reserva": "reserva",
+            "venta_efectivo": "venta en efectivo",
+            "resena_producto": "reseña de producto",
+        }
+        label = operation_labels.get(operation.operation_type, "operación")
+        reason = str(operation.reason or "No se pudo confirmar la operación.").strip()
+        if refund:
+            message = (
+                f"La {label} offline entró en conflicto: {reason} "
+                f"Se generó el reembolso #{refund.id} por {refund.moneda} {float(refund.monto):.2f} "
+                f"con estado {refund.estado}."
+            )
+        else:
+            message = f"La {label} offline entró en estado {operation.status}: {reason}"
+
+        admins = self.db.query(User).filter(
+            User.empresa_id == operation.empresa_id,
+            User.role == "administrador",
+            User.is_platform_admin == False,
+            User.is_active == True,
+        ).all()
+        sent = 0
+        for admin in admins:
+            exists = self.db.query(Notificacion.id).filter(
+                Notificacion.empresa_id == operation.empresa_id,
+                Notificacion.user_id == admin.id,
+                Notificacion.tipo == "incidente_operacion_offline",
+                Notificacion.url_accion == action_url,
+            ).first()
+            if exists:
+                continue
+            self.crear_notificacion(
+                user_id=admin.id,
+                tipo="incidente_operacion_offline",
+                titulo="Incidente en sincronización offline",
+                mensaje=message,
+                url_accion=action_url,
+                enviar_email=False,
+                empresa_id=operation.empresa_id,
+            )
+            sent += 1
+        return sent
+
     def notificar_experiencia_poscompra(self, orden) -> Notificacion | None:
         """Envía una sola invitación a calificar por orden completada/pagada."""
         if not orden or not orden.cliente or not orden.cliente.user_id:

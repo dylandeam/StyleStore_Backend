@@ -57,3 +57,33 @@ class SyncMetricasResponse(BaseModel):
     reembolsos_asociados: dict[str, Any]
     conflictos_recientes: list[SyncDiagnosticoItem]
 
+
+class SyncAdminOperationItem(BaseModel):
+    operation_uuid: str
+    operation_type: str
+    status: str
+    user_id: int
+    user_name: str
+    user_email: str
+    sucursal_id: int | None = None
+    sucursal_nombre: str | None = None
+    client_created_at: datetime
+    created_at: datetime
+    updated_at: datetime
+    reason: str | None = None
+    result_type: str | None = None
+    result_id: int | None = None
+    resultado_notificado: bool
+    refund_id: int | None = None
+    refund_status: str | None = None
+    refund_amount: float | None = None
+    refund_currency: str | None = None
+    refund_reason: str | None = None
+
+
+class SyncAdminOperationsResponse(BaseModel):
+    total: int
+    limit: int
+    offset: int
+    items: list[SyncAdminOperationItem]
+
