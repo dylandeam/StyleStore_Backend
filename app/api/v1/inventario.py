@@ -65,7 +65,7 @@ async def aprobar_traspaso(
     db: Session = Depends(get_db),
 ):
     service = TraspasoInventarioService(db)
-    return service.serialize(service.approve(traspaso_id, payload.respuesta, current_user))
+    return service.serialize(service.approve(traspaso_id, payload.respuesta, current_user, payload.cantidad))
 
 
 @router.post("/traspasos/{traspaso_id}/rechazar", response_model=TraspasoResponse)

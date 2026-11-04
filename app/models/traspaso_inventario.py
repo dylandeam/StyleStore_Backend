@@ -44,6 +44,7 @@ class TraspasoInventario(Base):
         Integer, ForeignKey("tallas.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     cantidad: Mapped[int] = mapped_column(Integer, nullable=False)
+    cantidad_aprobada: Mapped[int | None] = mapped_column(Integer, nullable=True)
     estado: Mapped[str] = mapped_column(String(20), nullable=False, default="pendiente", server_default="pendiente", index=True)
     idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
     observacion: Mapped[str | None] = mapped_column(String(500), nullable=True)

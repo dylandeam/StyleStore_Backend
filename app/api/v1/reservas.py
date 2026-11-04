@@ -510,6 +510,7 @@ async def create_reserva(
                 enviar_email=True,
                 empresa_id=current_user.empresa_id,
             )
+            notif_srv.notificar_nueva_reserva(reserva)
         except Exception:
             pass
 

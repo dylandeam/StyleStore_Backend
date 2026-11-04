@@ -216,6 +216,48 @@ class NotificacionService:
             enviados += 1
         return enviados
 
+    def notificar_nueva_reserva(self, reserva) -> int:
+        """Avisa al personal del tenant cuando una reserva requiere preparación en sucursal."""
+        sucursal = getattr(reserva, "sucursal", None)
+        empresa_id = getattr(sucursal, "empresa_id", None)
+        if not reserva or empresa_id is None:
+            return 0
+        action_url = f"/admin/reservas?reserva_id={reserva.id}"
+        cliente = getattr(reserva, "cliente", None)
+        cliente_nombre = getattr(cliente, "nombre", None) or getattr(reserva, "codigo_cliente", None) or "Cliente"
+        mensaje = (
+            f"Nueva reserva #{reserva.id} de {cliente_nombre} para {sucursal.name}. "
+            "Revisa las prendas y el horario de retiro."
+        )
+        users = self.db.query(User).filter(
+            User.empresa_id == empresa_id,
+            User.is_active == True,
+            User.is_platform_admin == False,
+        ).all()
+        sent = 0
+        for user in users:
+            if str(user.role or "").strip().lower() in {"cliente", "customer", "repartidor"}:
+                continue
+            exists = self.db.query(Notificacion).filter(
+                Notificacion.empresa_id == empresa_id,
+                Notificacion.user_id == user.id,
+                Notificacion.tipo == "nueva_reserva",
+                Notificacion.url_accion == action_url,
+            ).first()
+            if exists:
+                continue
+            self.crear_notificacion(
+                user_id=user.id,
+                tipo="nueva_reserva",
+                titulo="Nueva reserva para preparar",
+                mensaje=mensaje,
+                url_accion=action_url,
+                enviar_email=False,
+                empresa_id=empresa_id,
+            )
+            sent += 1
+        return sent
+
     def listar_notificaciones_usuario(
         self, user_id: int, empresa_id: int, limit: int = 30, offset: int = 0
     ) -> List[Dict[str, Any]]:

@@ -24,6 +24,7 @@ class TraspasoCreateRequest(BaseModel):
 
 class TraspasoDecisionRequest(BaseModel):
     respuesta: str | None = Field(None, max_length=500)
+    cantidad: int | None = Field(None, gt=0)
 
 
 class TraspasoResponse(BaseModel):
@@ -40,6 +41,8 @@ class TraspasoResponse(BaseModel):
     talla_id: int
     talla: str
     cantidad: int
+    cantidad_aprobada: int | None
+    cantidad_efectiva: int
     estado: str
     idempotency_key: str
     observacion: str | None

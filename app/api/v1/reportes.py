@@ -229,7 +229,7 @@ async def get_dashboard_stats(
     from app.services.dashboard_service import DashboardService
     from app.models.empleado import Empleado
 
-    if current_user.role in ["encargado", "vendedor"] and sucursal_id is None:
+    if current_user.role in ["encargado", "encargado_sucursal", "vendedor", "cajero"] and sucursal_id is None:
         emp = db.query(Empleado).filter(Empleado.user_id == current_user.id).first()
         if emp:
             sucursal_id = emp.sucursal_id
@@ -240,6 +240,26 @@ async def get_dashboard_stats(
     _validate_report_sucursal(db, current_user, sucursal_id)
     service = DashboardService(db, current_user)
     return service.get_dashboard_stats(sucursal_id=sucursal_id)
+
+
+@router.get("/dashboard-indicadores/{indicador}", summary="Detalle gráfico y tabular de un indicador")
+async def get_dashboard_indicator(
+    indicador: str,
+    sucursal_id: Optional[int] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.dashboard_service import DashboardService
+    from app.models.empleado import Empleado
+
+    if current_user.role in ["encargado", "encargado_sucursal", "vendedor", "cajero"] and sucursal_id is None:
+        employee = db.query(Empleado).filter(Empleado.user_id == current_user.id).first()
+        if employee:
+            sucursal_id = employee.sucursal_id
+    if sucursal_id == 0:
+        sucursal_id = None
+    _validate_report_sucursal(db, current_user, sucursal_id)
+    return DashboardService(db, current_user).get_indicator_detail(indicador, sucursal_id)
 
 
 @router.get("/predicciones", summary="Pronóstico de ventas y segmentación ML por tenant")
@@ -285,6 +305,11 @@ async def get_stock_transfer_recommendations(
     """Compara demanda, cobertura y excedentes por variante dentro del tenant autenticado."""
     from app.services.ml_service import MLService
 
+    if current_user.role in ["encargado", "encargado_sucursal"] and sucursal_id is None:
+        from app.models.empleado import Empleado
+        employee = db.query(Empleado).filter(Empleado.user_id == current_user.id).first()
+        if employee:
+            sucursal_id = employee.sucursal_id
     if sucursal_id == 0:
         sucursal_id = None
     _validate_report_sucursal(db, current_user, sucursal_id)

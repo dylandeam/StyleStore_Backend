@@ -5,7 +5,7 @@ Soporta filtrado por sucursal (para encargados de sucursal y administradores).
 from datetime import date, datetime, timedelta
 from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
+from sqlalchemy import case, func, or_
 
 from app.models.orden_venta import OrdenVenta
 from app.models.pago import Pago
@@ -16,6 +16,10 @@ from app.models.envio import Envio
 from app.models.cambio_devolucion import CambioDevolucion
 from app.models.sucursal import Sucursal
 from app.models.user import User
+from app.models.producto import Producto
+from app.models.producto_color import ProductoColor
+from app.models.categoria import Categoria
+from app.core.exceptions import ForbiddenException
 from app.services.tenant_scope import scope_by_empresa, scope_by_sucursal
 
 
@@ -26,6 +30,139 @@ class DashboardService:
 
     def _scope_branch(self, query, column):
         return scope_by_sucursal(query, self.db, self.current_user, column)
+
+    def available_indicators(self) -> list[str]:
+        role = str(self.current_user.role or "").strip().lower()
+        if role == "cliente":
+            return ["historial_compras"]
+        if role in {"cajero", "vendedor", "repartidor"}:
+            return ["ventas_sucursal", "historial_compras"]
+        if role in {"administrador", "administrador_tenant", "admin_tenant", "encargado", "encargado_sucursal"}:
+            return ["ventas_sucursal", "stock_categoria", "historial_compras"]
+        return []
+
+    def get_indicator_detail(self, indicator: str, sucursal_id: Optional[int] = None) -> Dict[str, Any]:
+        """Detalle navegable para los indicadores habilitados por rol y sucursal."""
+        if indicator not in self.available_indicators():
+            raise ForbiddenException("Este indicador no está disponible para tu rol.")
+        if indicator == "ventas_sucursal":
+            return self._sales_by_branch(sucursal_id)
+        if indicator == "stock_categoria":
+            return self._stock_by_category(sucursal_id)
+        return self._purchase_history(sucursal_id)
+
+    def _sales_by_branch(self, sucursal_id: Optional[int]) -> Dict[str, Any]:
+        query = (
+            self.db.query(
+                Sucursal.id,
+                Sucursal.name,
+                func.count(OrdenVenta.id).label("cantidad"),
+                func.coalesce(func.sum(OrdenVenta.total), 0).label("monto"),
+            )
+            .join(OrdenVenta, OrdenVenta.sucursal_id == Sucursal.id)
+            .filter(~OrdenVenta.estado.in_(["anulado", "cancelada"]))
+        )
+        query = self._scope_branch(query, Sucursal.id)
+        if sucursal_id:
+            query = query.filter(Sucursal.id == sucursal_id)
+        rows = query.group_by(Sucursal.id, Sucursal.name).order_by(func.sum(OrdenVenta.total).desc()).all()
+        data = [
+            {"sucursal": row.name, "ventas": int(row.cantidad), "monto": round(float(row.monto or 0), 2)}
+            for row in rows
+        ]
+        return {
+            "indicador": "ventas_sucursal",
+            "titulo": "Ventas por sucursal",
+            "descripcion": "Comparación de ventas válidas dentro de las sucursales permitidas para tu rol.",
+            "grafico": [{"label": row["sucursal"], "value": row["monto"]} for row in data],
+            "columnas": [
+                {"key": "sucursal", "label": "Sucursal"},
+                {"key": "ventas", "label": "Ventas"},
+                {"key": "monto", "label": "Monto (Bs)"},
+            ],
+            "filas": data,
+        }
+
+    def _stock_by_category(self, sucursal_id: Optional[int]) -> Dict[str, Any]:
+        query = (
+            self.db.query(
+                Categoria.nombre,
+                func.coalesce(func.sum(StockInventario.cantidad), 0).label("unidades"),
+                func.count(StockInventario.id).label("variantes"),
+                func.sum(case((StockInventario.cantidad <= 5, 1), else_=0)).label("criticos"),
+            )
+            .join(ProductoColor, ProductoColor.id == StockInventario.producto_color_id)
+            .join(Producto, Producto.codigo == ProductoColor.producto_codigo)
+            .join(Categoria, Categoria.id == Producto.categoria_id)
+        )
+        query = self._scope_branch(query, StockInventario.sucursal_id)
+        if sucursal_id:
+            query = query.filter(StockInventario.sucursal_id == sucursal_id)
+        rows = query.group_by(Categoria.id, Categoria.nombre).order_by(func.sum(StockInventario.cantidad).desc()).all()
+        data = [
+            {
+                "categoria": row.nombre,
+                "unidades": int(row.unidades or 0),
+                "variantes": int(row.variantes or 0),
+                "criticos": int(row.criticos or 0),
+            }
+            for row in rows
+        ]
+        return {
+            "indicador": "stock_categoria",
+            "titulo": "Stock por categoría",
+            "descripcion": "Unidades, variantes y alertas de bajo stock agrupadas por categoría.",
+            "grafico": [{"label": row["categoria"], "value": row["unidades"]} for row in data],
+            "columnas": [
+                {"key": "categoria", "label": "Categoría"},
+                {"key": "unidades", "label": "Unidades"},
+                {"key": "variantes", "label": "Variantes"},
+                {"key": "criticos", "label": "Stock crítico"},
+            ],
+            "filas": data,
+        }
+
+    def _purchase_history(self, sucursal_id: Optional[int]) -> Dict[str, Any]:
+        query = self.db.query(OrdenVenta).filter(~OrdenVenta.estado.in_(["anulado", "cancelada"]))
+        role = str(self.current_user.role or "").strip().lower()
+        if role == "cliente":
+            query = query.join(Cliente, Cliente.codigo == OrdenVenta.codigo_cliente).filter(
+                Cliente.user_id == self.current_user.id
+            )
+        else:
+            query = self._scope_branch(query, OrdenVenta.sucursal_id)
+        if sucursal_id:
+            query = query.filter(OrdenVenta.sucursal_id == sucursal_id)
+        orders = query.order_by(OrdenVenta.fecha.desc(), OrdenVenta.id.desc()).limit(50).all()
+        data = [
+            {
+                "orden": order.ticket_numero or f"ORD-{order.id:04d}",
+                "fecha": order.fecha.isoformat() if order.fecha else "",
+                "sucursal": order.sucursal.name if order.sucursal else "Sin sucursal",
+                "metodo": (order.metodo_pago or "Sin registrar").upper(),
+                "estado": order.estado,
+                "total": round(float(order.total or 0), 2),
+            }
+            for order in orders
+        ]
+        by_date: dict[str, float] = {}
+        for row in data:
+            by_date[row["fecha"]] = round(by_date.get(row["fecha"], 0) + row["total"], 2)
+        return {
+            "indicador": "historial_compras",
+            "titulo": "Historial de compras" if role == "cliente" else "Historial de ventas",
+            "descripcion": "Últimas operaciones visibles para tu rol y alcance de sucursal.",
+            "grafico": [{"label": label, "value": value} for label, value in sorted(by_date.items())[-10:]],
+            "columnas": [
+                {"key": "orden", "label": "Orden"},
+                {"key": "fecha", "label": "Fecha"},
+                {"key": "sucursal", "label": "Sucursal"},
+                {"key": "metodo", "label": "Pago"},
+                {"key": "estado", "label": "Estado"},
+                {"key": "total", "label": "Total (Bs)"},
+            ],
+            "filas": data,
+        }
 
     def get_dashboard_stats(self, sucursal_id: Optional[int] = None) -> Dict[str, Any]:
         """Calcula todas las métricas operativas del dashboard según la sucursal o global."""

@@ -7,6 +7,7 @@ from app.core.security import create_access_token
 from app.models.categoria import Categoria
 from app.models.color import Color
 from app.models.empresa import Empresa
+from app.models.empleado import Empleado
 from app.models.producto import Producto
 from app.models.producto_color import ProductoColor
 from app.models.orden_venta import DetalleVenta, OrdenVenta
@@ -88,10 +89,12 @@ def test_transfer_is_idempotent_and_moves_stock_once(client, db_session):
     approved = client.post(
         f"/api/v1/inventario/traspasos/{transfer_id}/aprobar",
         headers=headers,
-        json={"respuesta": "Autorizado"},
+        json={"respuesta": "Autorizado", "cantidad": 3},
     )
     assert approved.status_code == 200, approved.text
     assert approved.json()["estado"] == "aprobado"
+    assert approved.json()["cantidad"] == 4
+    assert approved.json()["cantidad_aprobada"] == 3
     approved_again = client.post(
         f"/api/v1/inventario/traspasos/{transfer_id}/aprobar", headers=headers, json={}
     )
@@ -101,8 +104,8 @@ def test_transfer_is_idempotent_and_moves_stock_once(client, db_session):
     destination_stock = db_session.query(StockInventario).filter_by(
         producto_color_id=variant.id, talla_id=size.id, sucursal_id=destination.id
     ).one()
-    assert source_stock.cantidad == 6
-    assert destination_stock.cantidad == 4
+    assert source_stock.cantidad == 7
+    assert destination_stock.cantidad == 3
     assert destination_stock.precio_variante == Decimal("275")
     assert destination_stock.medidas == {"pecho": 100}
 
@@ -231,3 +234,100 @@ def test_predictive_transfer_recommendations_require_the_plan_capability(client,
 
     assert response.status_code == 403
     assert "predicciones" in response.json()["detail"].lower()
+
+
+def test_branch_manager_requests_but_only_tenant_admin_approves(client, db_session):
+    admin, admin_token, origin, destination, variant, size, source_stock = _scenario(db_session)
+    manager = User(
+        empresa_id=admin.empresa_id,
+        email=f"manager-{uuid4().hex[:8]}@test.com",
+        name="Encargada Destino",
+        hashed_password="test",
+        role="encargado_sucursal",
+        is_active=True,
+    )
+    db_session.add(manager)
+    db_session.flush()
+    db_session.add(Empleado(
+        codigo=f"EMP-{uuid4().hex[:8]}",
+        user_id=manager.id,
+        sucursal_id=destination.id,
+        edad=30,
+        sueldo=Decimal("3500"),
+        telefono="70000003",
+        direccion="Destino 2",
+        jornada_tipo="tiempo_completo",
+    ))
+    db_session.commit()
+    manager_token = create_access_token(
+        data={"sub": str(manager.id), "email": manager.email, "role": manager.role}
+    )
+    payload = {
+        "sucursal_origen_id": origin.id,
+        "sucursal_destino_id": destination.id,
+        "producto_color_id": variant.id,
+        "talla_id": size.id,
+        "cantidad": 5,
+        "idempotency_key": str(uuid4()),
+        "observacion": "Sugerencia IA por demanda del destino",
+    }
+    created = client.post(
+        "/api/v1/inventario/traspasos",
+        headers={"Authorization": f"Bearer {manager_token}"},
+        json=payload,
+    )
+    assert created.status_code == 201, created.text
+
+    forbidden = client.post(
+        f"/api/v1/inventario/traspasos/{created.json()['id']}/aprobar",
+        headers={"Authorization": f"Bearer {manager_token}"},
+        json={"cantidad": 4},
+    )
+    assert forbidden.status_code == 403
+
+    approved = client.post(
+        f"/api/v1/inventario/traspasos/{created.json()['id']}/aprobar",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"cantidad": 4, "respuesta": "Mover cuatro unidades"},
+    )
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["cantidad_aprobada"] == 4
+    db_session.refresh(source_stock)
+    assert source_stock.cantidad == 6
+
+
+def test_dashboard_indicators_return_role_scoped_chart_and_table(client, db_session):
+    _, token, origin, _, variant, size, source_stock = _scenario(db_session)
+    order = OrdenVenta(
+        fecha=date.today(),
+        estado="pagada",
+        total=Decimal("550"),
+        tipo_venta="presencial",
+        sucursal_id=origin.id,
+        metodo_pago="EFECTIVO",
+    )
+    db_session.add(order)
+    db_session.flush()
+    db_session.add(DetalleVenta(
+        orden_venta_id=order.id,
+        stock_inventario_id=source_stock.id,
+        producto_nombre="Chaqueta",
+        talla_nombre=size.nombre,
+        cantidad=2,
+        precio_unitario=Decimal("275"),
+        subtotal=Decimal("550"),
+    ))
+    db_session.commit()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    sales = client.get("/api/v1/reportes/dashboard-indicadores/ventas_sucursal", headers=headers)
+    assert sales.status_code == 200, sales.text
+    assert sales.json()["grafico"][0]["value"] == 550.0
+    assert sales.json()["filas"][0]["sucursal"] == origin.name
+
+    stock = client.get("/api/v1/reportes/dashboard-indicadores/stock_categoria", headers=headers)
+    assert stock.status_code == 200, stock.text
+    assert stock.json()["filas"][0]["unidades"] == 10
+    assert {column["key"] for column in stock.json()["columnas"]} == {
+        "categoria", "unidades", "variantes", "criticos"
+    }
